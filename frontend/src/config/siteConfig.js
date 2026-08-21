@@ -7,6 +7,7 @@ export const SITE_CONFIG = {
   address: "Near Bada Jain Mandir, Tikamgarh Road, Mahruni, Uttar Pradesh, India",
   siteUrl: import.meta.env.VITE_SITE_URL || "https://chaudhary-kirana-store.vercel.app",
   defaultOgImage: "/og-image.jpg",
+  minOrderValue: 199,
   freeDeliveryRadiusKm: 0.0,
   deliveryChargePerExtraKm: 10
 };

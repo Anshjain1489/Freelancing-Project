@@ -40,6 +40,7 @@ export const Navbar = () => {
       }}>
         <span>📍 Near Bada Jain Mandir, Tikamgarh Road, Mahruni</span>
         <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+          <span>🛍️ Min Order ₹199</span>
           <span>🛵 Fast Delivery ₹10/KM</span>
           <a href="tel:7897837095" style={{ color: '#ffffff', fontWeight: 800 }}>📞 7897837095</a>
         </div>

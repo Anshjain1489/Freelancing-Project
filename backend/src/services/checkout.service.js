@@ -55,6 +55,12 @@ const getCheckoutPreview = async (userId, addressId) => {
     });
   }
 
+  const MIN_ORDER_VALUE = 199.0;
+  if (subtotal < MIN_ORDER_VALUE) {
+    const needed = (MIN_ORDER_VALUE - subtotal).toFixed(0);
+    throw new AppError(`Minimum order value for delivery is ₹199. Please add ₹${needed} more items to your cart.`, HTTP_STATUS.BAD_REQUEST);
+  }
+
   const deliveryCharge = deliveryInfo.deliveryCharge;
   const totalAmount = subtotal + deliveryCharge;
 

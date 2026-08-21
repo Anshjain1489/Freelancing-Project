@@ -95,17 +95,34 @@ export const CartPage = () => {
             <span>Delivery Charge</span>
             <span>Calculated at Checkout (🛵 Fast Delivery ₹10/KM)</span>
           </div>
-          <div style={{ borderTop: '1px dashed var(--color-primary)', paddingTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <span style={{ fontSize: '1.1rem', fontWeight: 800 }}>Estimated Subtotal</span>
-            <span style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--color-primary-dark)' }}>{formatCurrency(subtotal)}</span>
-          </div>
+          {subtotal < 199 && (
+            <div style={{
+              backgroundColor: '#FEF3C7',
+              border: '1px solid #F59E0B',
+              color: '#92400E',
+              padding: '10px 14px',
+              borderRadius: 'var(--radius-sm)',
+              fontSize: '0.85rem',
+              fontWeight: 700,
+              marginBottom: '16px',
+              textAlign: 'center'
+            }}>
+              🛍️ Minimum Order Amount is ₹199 (Add ₹{(199 - subtotal).toFixed(0)} more to place order)
+            </div>
+          )}
 
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
             <Button variant="outline" onClick={() => navigate('/products')}>
               Continue Shopping
             </Button>
-            <Button variant="primary" style={{ flex: 1 }} icon={ArrowRight} onClick={() => navigate('/checkout')}>
-              Proceed to Checkout
+            <Button
+              variant={subtotal >= 199 ? 'primary' : 'outline'}
+              style={{ flex: 1 }}
+              icon={ArrowRight}
+              onClick={() => navigate('/checkout')}
+              disabled={subtotal < 199}
+            >
+              {subtotal >= 199 ? 'Proceed to Checkout' : `Add ₹${(199 - subtotal).toFixed(0)} More to Checkout`}
             </Button>
           </div>
         </Card>

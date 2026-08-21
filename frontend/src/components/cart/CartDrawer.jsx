@@ -92,11 +92,35 @@ export const CartDrawer = () => {
                 {formatCurrency(subtotal)}
               </span>
             </div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: '16px' }}>
-              Delivery charges calculated at checkout (🛵 Fast Delivery ₹10/KM)
-            </span>
-            <Button variant="primary" fullWidth icon={ArrowRight} onClick={handleCheckoutClick}>
-              Proceed to Checkout
+
+            {subtotal < 199 ? (
+              <div style={{
+                backgroundColor: '#FEF3C7',
+                border: '1px solid #F59E0B',
+                color: '#92400E',
+                padding: '8px 12px',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                marginBottom: '12px',
+                textAlign: 'center'
+              }}>
+                🛍️ Minimum Order is ₹199 (Add ₹{(199 - subtotal).toFixed(0)} more)
+              </div>
+            ) : (
+              <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: '12px' }}>
+                Delivery charges calculated at checkout (🛵 Fast Delivery ₹10/KM)
+              </span>
+            )}
+
+            <Button
+              variant={subtotal >= 199 ? 'primary' : 'outline'}
+              fullWidth
+              icon={ArrowRight}
+              onClick={handleCheckoutClick}
+              disabled={subtotal < 199}
+            >
+              {subtotal >= 199 ? 'Proceed to Checkout' : `Add ₹${(199 - subtotal).toFixed(0)} More to Checkout`}
             </Button>
           </div>
         </div>

@@ -32,6 +32,7 @@ const config = {
     address: 'Near Bada Jain Mandir, Tikamgarh Road, Mahruni, India',
     latitude: parseFloat(process.env.STORE_LATITUDE) || 24.2381,
     longitude: parseFloat(process.env.STORE_LONGITUDE) || 78.7364,
+    minOrderValue: parseFloat(process.env.MIN_ORDER_VALUE) || 199.0,
     freeDeliveryRadiusKm: parseFloat(process.env.FREE_DELIVERY_RADIUS_KM) || 0.0,
     deliveryChargePerExtraKm: parseFloat(process.env.DELIVERY_CHARGE_PER_EXTRA_KM) || 10.0,
     maxDeliveryRadiusKm: parseFloat(process.env.MAX_DELIVERY_RADIUS_KM) || 15.0
