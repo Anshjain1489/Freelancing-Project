@@ -5,7 +5,7 @@ import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { showSuccess, showError } from '../../utils/toast';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Save, UploadCloud, X, Image as ImageIcon } from 'lucide-react';
 
 export const ProductFormPage = () => {
   const navigate = useNavigate();
@@ -26,6 +26,28 @@ export const ProductFormPage = () => {
     isActive: true
   });
   const [loading, setLoading] = useState(false);
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showError('Please select a valid image file (JPG, PNG, WebP)');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      showError('Image size must be less than 5MB');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setFormData(prev => ({ ...prev, imageUrl: event.target.result }));
+      showSuccess('Product photo uploaded successfully! 📸');
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -70,29 +92,90 @@ export const ProductFormPage = () => {
             required
           />
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <Input
-              label="Product Image URL"
-              placeholder="e.g. https://images.unsplash.com/photo-... or image link"
-              value={formData.imageUrl}
-              onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
-            />
+          {/* Product Image Upload Component */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>
+              Product Image (Upload Photo or Enter URL)
+            </label>
+
+            <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+              {/* File Upload Box */}
+              <label
+                htmlFor="product-image-file"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '10px 16px',
+                  backgroundColor: 'var(--color-mint-light)',
+                  border: '1.5px dashed var(--color-primary)',
+                  borderRadius: 'var(--radius-md)',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  color: 'var(--color-primary-dark)'
+                }}
+              >
+                <UploadCloud size={18} />
+                <span>Upload Photo from Device</span>
+                <input
+                  id="product-image-file"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileUpload}
+                  style={{ display: 'none' }}
+                />
+              </label>
+
+              <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>OR</span>
+
+              {/* Direct Image URL input */}
+              <div style={{ flex: 1, minWidth: '220px' }}>
+                <Input
+                  placeholder="Paste Image URL (e.g. https://...)"
+                  value={formData.imageUrl}
+                  onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
+                />
+              </div>
+            </div>
+
+            {/* Live Image Preview */}
             {formData.imageUrl && (
               <div style={{
-                marginTop: '6px',
-                height: '120px',
-                width: '120px',
-                borderRadius: '8px',
+                marginTop: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '8px',
                 border: '1px solid var(--color-border)',
-                overflow: 'hidden',
+                borderRadius: '8px',
                 backgroundColor: '#F9FAFB'
               }}>
-                <img
-                  src={formData.imageUrl}
-                  alt="Product preview"
-                  onError={(e) => { e.target.style.display = 'none'; }}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                />
+                <div style={{ width: '70px', height: '70px', borderRadius: '6px', overflow: 'hidden', backgroundColor: '#fff', flexShrink: 0 }}>
+                  <img
+                    src={formData.imageUrl}
+                    alt="Product preview"
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-primary-dark)', display: 'block' }}>
+                    📸 Image Attached
+                  </span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                    Will be displayed in product catalog and cart
+                  </span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={X}
+                  onClick={() => setFormData({ ...formData, imageUrl: '' })}
+                  style={{ color: 'var(--color-error)' }}
+                >
+                  Remove
+                </Button>
               </div>
             )}
           </div>
