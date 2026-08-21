@@ -85,21 +85,26 @@ export const ProductDetail = () => {
       }}>
         {/* Product Image Gallery */}
         <div style={{
-          backgroundColor: 'var(--color-mint-light)',
+          backgroundColor: '#F9FAFB',
           borderRadius: 'var(--radius-lg)',
           height: '320px',
           display: 'flex',
           alignItems: 'center',
           justify: 'center',
-          fontSize: '4rem',
-          position: 'relative'
+          position: 'relative',
+          overflow: 'hidden'
         }}>
           {discount > 0 && (
-            <div style={{ position: 'absolute', top: '16px', left: '16px' }}>
+            <div style={{ position: 'absolute', top: '16px', left: '16px', zIndex: 10 }}>
               <Badge variant="orange">{discount}% OFF</Badge>
             </div>
           )}
-          🌾
+          <img
+            src={product.imageUrl || product.images?.[0]?.image_url || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=500&q=80'}
+            alt={product.name}
+            onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=500&q=80'; }}
+            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+          />
         </div>
 
         {/* Product Information */}
@@ -150,7 +155,7 @@ export const ProductDetail = () => {
           <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Truck size={18} color="var(--color-primary)" />
-              <span>🟢 FREE Local Delivery within 1 KM radius</span>
+              <span>🛵 Fast Local Delivery at ₹10 per KM</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <ShieldCheck size={18} color="var(--color-primary)" />

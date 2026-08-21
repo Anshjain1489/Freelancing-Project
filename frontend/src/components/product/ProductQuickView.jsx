@@ -26,14 +26,19 @@ export const ProductQuickView = ({ product, isOpen, onClose }) => {
         <div style={{
           width: '180px',
           height: '180px',
-          backgroundColor: 'var(--color-mint-light)',
+          backgroundColor: '#F9FAFB',
           borderRadius: 'var(--radius-md)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          fontSize: '3rem'
+          overflow: 'hidden'
         }}>
-          🌾
+          <img
+            src={product.imageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=500&q=80'}
+            alt={product.name}
+            onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=500&q=80'; }}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'var(--radius-md)' }}
+          />
         </div>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>

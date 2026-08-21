@@ -47,6 +47,31 @@ const getStockStatus = (quantity, lowStockThreshold = 5) => {
   return 'IN_STOCK';
 };
 
+const defaultCategoryImages = {
+  'atta-grains': 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=500&q=80',
+  'rice-pulses': 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=500&q=80',
+  'oil-ghee': 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?auto=format&fit=crop&w=500&q=80',
+  'spices': 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=500&q=80',
+  'dairy': 'https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=500&q=80',
+  'snacks': 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?auto=format&fit=crop&w=500&q=80',
+  'biscuits': 'https://images.unsplash.com/photo-1558961363-fa8fdf82db35?auto=format&fit=crop&w=500&q=80',
+  'beverages': 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?auto=format&fit=crop&w=500&q=80',
+  'personal-care': 'https://images.unsplash.com/photo-1607006482602-76ca9bd4a908?auto=format&fit=crop&w=500&q=80',
+  'cleaning-household': 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&w=500&q=80',
+  'instant-food': 'https://images.unsplash.com/photo-1612927601601-6638404737ce?auto=format&fit=crop&w=500&q=80',
+  'daily-essentials': 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=500&q=80'
+};
+
+const getFallbackProductImage = (categorySlug, productSlug = '') => {
+  if (productSlug.includes('atta')) return 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=500&q=80';
+  if (productSlug.includes('oil') || productSlug.includes('ghee')) return 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?auto=format&fit=crop&w=500&q=80';
+  if (productSlug.includes('rice') || productSlug.includes('dal') || productSlug.includes('chana')) return 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=500&q=80';
+  if (productSlug.includes('tea') || productSlug.includes('coffee')) return 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?auto=format&fit=crop&w=500&q=80';
+  if (productSlug.includes('soap') || productSlug.includes('shampoo') || productSlug.includes('colgate')) return 'https://images.unsplash.com/photo-1607006482602-76ca9bd4a908?auto=format&fit=crop&w=500&q=80';
+  if (productSlug.includes('milk') || productSlug.includes('paneer') || productSlug.includes('butter')) return 'https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=500&q=80';
+  return defaultCategoryImages[categorySlug] || defaultCategoryImages['daily-essentials'];
+};
+
 const getProducts = async (queryParams) => {
   const { page, limit, offset } = getPaginationParams(queryParams.page, queryParams.limit);
   const { category, search, sort, minPrice, maxPrice } = queryParams;
@@ -102,7 +127,7 @@ const getProducts = async (queryParams) => {
 
     const formattedItems = data.map(p => {
       const inv = p.inventory?.[0] || { quantity: 0, low_stock_threshold: 5 };
-      const primaryImg = p.product_images?.find(i => i.is_primary)?.image_url || p.product_images?.[0]?.image_url || null;
+      const primaryImg = p.product_images?.find(i => i.is_primary)?.image_url || p.product_images?.[0]?.image_url || p.image_url || getFallbackProductImage(p.categories?.slug, p.slug);
 
       return {
         id: p.id,
@@ -154,7 +179,7 @@ const getFeaturedProducts = async () => {
       mrp: parseFloat(p.mrp),
       sellingPrice: parseFloat(p.selling_price),
       discountPercentage: p.discount_percentage,
-      imageUrl: p.product_images?.find(i => i.is_primary)?.image_url || null,
+      imageUrl: p.product_images?.find(i => i.is_primary)?.image_url || p.image_url || getFallbackProductImage(p.categories?.slug, p.slug),
       stockStatus: getStockStatus(p.inventory?.[0]?.quantity || 0, p.inventory?.[0]?.low_stock_threshold || 5)
     }));
   }
@@ -200,6 +225,7 @@ const searchProducts = async (searchQuery) => {
         mrp: parseFloat(p.mrp),
         sellingPrice: parseFloat(p.selling_price),
         discountPercentage: p.discount_percentage,
+        imageUrl: p.product_images?.find(i => i.is_primary)?.image_url || p.image_url || getFallbackProductImage(p.categories?.slug, p.slug),
         stockStatus: getStockStatus(p.inventory?.[0]?.quantity || 0)
       }));
       return items;
@@ -215,6 +241,7 @@ const searchProducts = async (searchQuery) => {
       mrp: parseFloat(p.mrp),
       sellingPrice: parseFloat(p.selling_price),
       discountPercentage: p.discount_percentage,
+      imageUrl: p.product_images?.find(i => i.is_primary)?.image_url || p.image_url || getFallbackProductImage(p.categories?.slug, p.slug),
       stockStatus: getStockStatus(p.inventory?.[0]?.quantity || 0)
     }));
   }
@@ -235,6 +262,7 @@ const getProductBySlug = async (slug) => {
 
     const inv = p.inventory?.[0] || { quantity: 0, reserved_quantity: 0, low_stock_threshold: 5 };
     const availableQty = Math.max(0, inv.quantity - inv.reserved_quantity);
+    const primaryImg = p.product_images?.find(i => i.is_primary)?.image_url || p.product_images?.[0]?.image_url || p.image_url || getFallbackProductImage(p.categories?.slug, p.slug);
 
     return {
       id: p.id,
@@ -250,7 +278,8 @@ const getProductBySlug = async (slug) => {
       sellingPrice: parseFloat(p.selling_price),
       discountPercentage: p.discount_percentage,
       category: p.categories ? { id: p.categories.id, name: p.categories.name, slug: p.categories.slug } : null,
-      images: p.product_images || [],
+      imageUrl: primaryImg,
+      images: p.product_images?.length > 0 ? p.product_images : [{ id: 'img-1', image_url: primaryImg, is_primary: true }],
       stockStatus: getStockStatus(availableQty, inv.low_stock_threshold),
       isAvailable: availableQty > 0
     };

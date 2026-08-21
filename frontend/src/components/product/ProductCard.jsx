@@ -47,11 +47,11 @@ export const ProductCard = ({ product, onQuickView }) => {
         <StatusBadge status={product.stockStatus || 'IN_STOCK'} />
       </div>
 
-      {/* Product Image Placeholder / Image */}
+      {/* Product Image */}
       <div style={{
-        height: '130px',
+        height: '140px',
         width: '100%',
-        backgroundColor: 'var(--color-mint-light)',
+        backgroundColor: '#F9FAFB',
         borderRadius: 'var(--radius-sm)',
         display: 'flex',
         alignItems: 'center',
@@ -59,11 +59,12 @@ export const ProductCard = ({ product, onQuickView }) => {
         marginBottom: '12px',
         overflow: 'hidden'
       }}>
-        {product.imageUrl ? (
-          <img src={product.imageUrl} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-        ) : (
-          <div style={{ fontSize: '2.5rem' }}>🌾</div>
-        )}
+        <img
+          src={product.imageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=500&q=80'}
+          alt={product.name}
+          onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=500&q=80'; }}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'var(--radius-sm)' }}
+        />
       </div>
 
       {/* Product Title & Brand Info */}
