@@ -34,7 +34,13 @@ export const AuthProvider = ({ children }) => {
     setIsLoading(true);
     try {
       const res = await authService.login(identifier, password);
-      const { user: userData, accessToken, refreshToken } = res.data;
+      const userData = res?.data?.user || res?.user || res?.data;
+      const accessToken = res?.data?.accessToken || res?.accessToken;
+      const refreshToken = res?.data?.refreshToken || res?.refreshToken;
+
+      if (!userData || !accessToken) {
+        throw new Error('Invalid authentication response structure from server');
+      }
 
       localStorage.setItem('accessToken', accessToken);
       localStorage.setItem('cks_auth_token', accessToken);
@@ -42,10 +48,10 @@ export const AuthProvider = ({ children }) => {
 
       setToken(accessToken);
       setUser(userData);
-      showSuccess(`Welcome back, ${userData.fullName}! 👋`);
+      showSuccess(`Welcome back, ${userData.fullName || 'User'}! 👋`);
       return userData;
     } catch (err) {
-      showError(err.message || err.response?.data?.message || 'Login failed. Please check credentials.');
+      showError(err.response?.data?.message || err.message || 'Login failed. Please check credentials.');
       throw err;
     } finally {
       setIsLoading(false);
@@ -56,7 +62,13 @@ export const AuthProvider = ({ children }) => {
     setIsLoading(true);
     try {
       const res = await authService.register(fullName, phone, email, password);
-      const { user: userData, accessToken, refreshToken } = res.data;
+      const userData = res?.data?.user || res?.user || res?.data;
+      const accessToken = res?.data?.accessToken || res?.accessToken;
+      const refreshToken = res?.data?.refreshToken || res?.refreshToken;
+
+      if (!userData || !accessToken) {
+        throw new Error('Invalid registration response structure from server');
+      }
 
       localStorage.setItem('accessToken', accessToken);
       localStorage.setItem('cks_auth_token', accessToken);
@@ -67,7 +79,7 @@ export const AuthProvider = ({ children }) => {
       showSuccess('Registration successful! Welcome to Chaudhary Kirana Store 🎉');
       return userData;
     } catch (err) {
-      showError(err.message || err.response?.data?.message || 'Registration failed. Please check details.');
+      showError(err.response?.data?.message || err.message || 'Registration failed. Please check details.');
       throw err;
     } finally {
       setIsLoading(false);
@@ -78,7 +90,13 @@ export const AuthProvider = ({ children }) => {
     setIsLoading(true);
     try {
       const res = await authService.googleLogin(idToken);
-      const { user: userData, accessToken, refreshToken } = res.data;
+      const userData = res?.data?.user || res?.user || res?.data;
+      const accessToken = res?.data?.accessToken || res?.accessToken;
+      const refreshToken = res?.data?.refreshToken || res?.refreshToken;
+
+      if (!userData || !accessToken) {
+        throw new Error('Invalid Google login response structure from server');
+      }
 
       localStorage.setItem('accessToken', accessToken);
       localStorage.setItem('cks_auth_token', accessToken);
@@ -86,10 +104,10 @@ export const AuthProvider = ({ children }) => {
 
       setToken(accessToken);
       setUser(userData);
-      showSuccess(`Welcome, ${userData.fullName}! 👋`);
+      showSuccess(`Welcome, ${userData.fullName || 'User'}! 👋`);
       return userData;
     } catch (err) {
-      showError(err.message || err.response?.data?.message || 'Google Authentication failed.');
+      showError(err.response?.data?.message || err.message || 'Google Authentication failed.');
       throw err;
     } finally {
       setIsLoading(false);
