@@ -219,14 +219,16 @@ const googleLogin = async (idToken) => {
 
   if (supabase) {
     // 1. Search existing user by google_id or email
-    let { data: existingUser } = await supabase
+    let { data: usersList } = await supabase
       .from('users')
       .select(`
         id, full_name, email, phone, is_active, google_id,
         user_roles ( roles ( name ) )
       `)
       .or(`google_id.eq.${googleId}${email ? `,email.eq.${email}` : ''}`)
-      .single();
+      .limit(1);
+
+    const existingUser = usersList?.[0];
 
     if (existingUser) {
       if (existingUser.is_active === false) {
@@ -253,16 +255,37 @@ const googleLogin = async (idToken) => {
     }
 
     // 2. Create new user with CUSTOMER role strictly
-    const { data: newUser, error: createError } = await supabase.from('users').insert([{
+    const dummyPasswordHash = await bcrypt.hash(`GOOGLE_OAUTH_${Date.now()}`, 10);
+    let insertData = {
       full_name: fullName,
       email,
       google_id: googleId,
       avatar_url: avatarUrl,
+      password_hash: dummyPasswordHash,
       is_active: true
-    }]).select().single();
+    };
+
+    let { data: newUser, error: createError } = await supabase
+      .from('users')
+      .insert([insertData])
+      .select()
+      .single();
+
+    // Fallback if database has NOT NULL constraint on phone column
+    if (createError && (createError.message?.includes('phone') || createError.code === '23502')) {
+      insertData.phone = `g-${Date.now().toString().slice(-10)}`;
+      const retryResult = await supabase
+        .from('users')
+        .insert([insertData])
+        .select()
+        .single();
+      newUser = retryResult.data;
+      createError = retryResult.error;
+    }
 
     if (createError || !newUser) {
-      throw new AppError('Failed to create user via Google Login', HTTP_STATUS.INTERNAL_SERVER_ERROR);
+      console.error(`[GOOGLE_LOGIN_INSERT_ERROR] ${createError?.message || 'Unknown error'}`);
+      throw new AppError(`Failed to create user via Google Login: ${createError?.message || ''}`, HTTP_STATUS.INTERNAL_SERVER_ERROR);
     }
 
     const { data: customerRole } = await supabase.from('roles').select('id').eq('name', ROLES.CUSTOMER).single();
