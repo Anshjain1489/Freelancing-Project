@@ -18,6 +18,9 @@ import { CartPage } from '../pages/public/CartPage';
 const SearchPage = lazy(() => import('../pages/public/SearchPage').then(m => ({ default: m.SearchPage })));
 const About = lazy(() => import('../pages/public/About').then(m => ({ default: m.About })));
 const Contact = lazy(() => import('../pages/public/Contact').then(m => ({ default: m.Contact })));
+const RefundPolicy = lazy(() => import('../pages/public/RefundPolicy').then(m => ({ default: m.RefundPolicy })));
+const TermsOfService = lazy(() => import('../pages/public/TermsOfService').then(m => ({ default: m.TermsOfService })));
+const PrivacyPolicy = lazy(() => import('../pages/public/PrivacyPolicy').then(m => ({ default: m.PrivacyPolicy })));
 const ComponentShowcase = lazy(() => import('../pages/dev/ComponentShowcase').then(m => ({ default: m.ComponentShowcase })));
 
 // Lazy-Loaded Auth Pages
@@ -80,6 +83,10 @@ export const AppRoutes = () => {
           <Route path="/cart" element={<CartPage />} />
           <Route path="/about" element={<About />} />
           <Route path="/contact" element={<Contact />} />
+          <Route path="/refund-policy" element={<RefundPolicy />} />
+          <Route path="/refund" element={<RefundPolicy />} />
+          <Route path="/terms" element={<TermsOfService />} />
+          <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route path="/dev/components" element={<ComponentShowcase />} />
 
           {/* Auth Pages */}

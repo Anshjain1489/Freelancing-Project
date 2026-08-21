@@ -85,9 +85,10 @@ export const Footer = () => {
         color: 'var(--color-text-secondary)'
       }}>
         <span>© {new Date().getFullYear()} Chaudhary Kirana Store. All rights reserved.</span>
-        <div style={{ display: 'flex', gap: '16px' }}>
+        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
           <Link to="/privacy">Privacy Policy</Link>
-          <Link to="/terms">Terms & Conditions</Link>
+          <Link to="/terms">Terms of Service</Link>
+          <Link to="/refund-policy">Refund & Replacement Policy</Link>
         </div>
       </div>
     </footer>
