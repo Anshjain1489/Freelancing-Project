@@ -1,18 +1,22 @@
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useCart } from '../../hooks/useCart';
-import { Home, LayoutGrid, Search, ShoppingBag, User } from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth';
+import { Home, LayoutGrid, Search, ShoppingBag, User, ShieldCheck } from 'lucide-react';
 
 export const MobileBottomNav = () => {
-  const { itemCount, openCart } = useCart();
+  const { itemCount } = useCart();
+  const { user } = useAuth();
   const location = useLocation();
+
+  const isAdmin = user?.role === 'ADMIN' || user?.role === 'admin';
 
   const navItems = [
     { label: 'Home', path: '/', icon: Home },
     { label: 'Categories', path: '/categories', icon: LayoutGrid },
     { label: 'Search', path: '/search', icon: Search },
     { label: 'Cart', path: '/cart', icon: ShoppingBag, badge: itemCount },
-    { label: 'Profile', path: '/profile', icon: User }
+    ...(isAdmin ? [{ label: 'Admin', path: '/admin', icon: ShieldCheck }] : [{ label: 'Profile', path: '/profile', icon: User }])
   ];
 
   return (

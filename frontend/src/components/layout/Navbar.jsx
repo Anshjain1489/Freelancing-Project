@@ -91,6 +91,26 @@ export const Navbar = () => {
 
         {/* Header Right Actions */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          {(user?.role === 'ADMIN' || user?.role === 'admin') && (
+            <Link
+              to="/admin"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                backgroundColor: '#1F2937',
+                color: '#F97316',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '0.85rem',
+                fontWeight: 800,
+                textDecoration: 'none'
+              }}
+            >
+              👑 Admin Portal
+            </Link>
+          )}
+
           <NotificationBell />
 
           {isAuthenticated ? (
