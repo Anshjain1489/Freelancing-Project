@@ -12,6 +12,12 @@ async function fixSchemaFull() {
   await client.connect();
   console.log('Connected to Supabase. Aligning all table schemas...');
   try {
+    // Users table columns for Google OAuth
+    await client.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR(255);');
+    await client.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;');
+    await client.query('ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;');
+    await client.query('ALTER TABLE users ALTER COLUMN phone DROP NOT NULL;');
+
     // Admin activity logs
     await client.query('ALTER TABLE admin_activity_logs DROP CONSTRAINT IF EXISTS admin_activity_logs_admin_id_fkey;');
     await client.query('ALTER TABLE admin_activity_logs ALTER COLUMN admin_id TYPE TEXT;');

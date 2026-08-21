@@ -56,7 +56,7 @@ const generateFallbackAIResponse = (userMessage, toolResults) => {
   }
 
   if (textLower.includes('delivery') || textLower.includes('charge')) {
-    return `Delivery is FREE for orders within 1 KM! 🛵\nBeyond 1 KM, delivery is ₹10 per additional KM. Maximum delivery radius is 15 KM.`;
+    return `Delivery is ₹10 per KM (minimum ₹10 charge)! 🛵\nMaximum delivery radius is 15 KM.`;
   }
 
   if (textLower.includes('contact') || textLower.includes('phone') || textLower.includes('where') || textLower.includes('address')) {
@@ -64,7 +64,7 @@ const generateFallbackAIResponse = (userMessage, toolResults) => {
   }
 
   if (textLower.includes('offer') || textLower.includes('discount') || textLower.includes('coupon')) {
-    return `🎉 Current Offers at Chaudhary Kirana Store:\n• Use coupon MAHRUNI50 for special local discounts!\n• FREE delivery on orders within 1 KM.`;
+    return `🎉 Current Offers at Chaudhary Kirana Store:\n• Use coupon MAHRUNI50 for special local discounts!\n• Fast local delivery at ₹10 per KM.`;
   }
 
   if (toolResults.order) {

@@ -24,7 +24,7 @@ export const About = () => {
             <div style={{ padding: '16px', backgroundColor: 'var(--color-mint-light)', borderRadius: 'var(--radius-md)' }}>
               <Truck size={20} color="var(--color-primary-dark)" />
               <div style={{ fontWeight: 800, color: 'var(--color-primary-dark)', marginTop: '6px' }}>Fast Local Delivery</div>
-              <div style={{ fontSize: '0.8rem', marginTop: '2px' }}>FREE delivery within 1 KM radius of Bada Jain Mandir.</div>
+              <div style={{ fontSize: '0.8rem', marginTop: '2px' }}>Fast local delivery at ₹10 per KM from Bada Jain Mandir.</div>
             </div>
 
             <div style={{ padding: '16px', backgroundColor: 'var(--color-mint-light)', borderRadius: 'var(--radius-md)' }}>

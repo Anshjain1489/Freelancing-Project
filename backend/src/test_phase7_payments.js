@@ -58,14 +58,14 @@ async function runPhase7Tests() {
   try {
     // 1. Delivery Charge Logic Verification
     const cases = [
-      { d: 0.5, expected: 0 },
-      { d: 1.0, expected: 0 },
-      { d: 1.1, expected: 10 },
-      { d: 1.5, expected: 10 },
-      { d: 2.0, expected: 10 },
-      { d: 2.1, expected: 20 },
-      { d: 3.0, expected: 20 },
-      { d: 5.0, expected: 40 }
+      { d: 0.5, expected: 10 },
+      { d: 1.0, expected: 10 },
+      { d: 1.1, expected: 20 },
+      { d: 1.5, expected: 20 },
+      { d: 2.0, expected: 20 },
+      { d: 2.1, expected: 30 },
+      { d: 3.0, expected: 30 },
+      { d: 5.0, expected: 50 }
     ];
 
     for (const c of cases) {

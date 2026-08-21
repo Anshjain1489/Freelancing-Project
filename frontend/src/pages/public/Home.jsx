@@ -62,8 +62,7 @@ export const Home = () => {
         gap: '16px'
       }}>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <span className="badge-green">🟢 FREE Delivery within 1 KM</span>
-          <span className="badge-orange">🛵 ₹10/extra KM</span>
+          <span className="badge-green">🛵 Fast Delivery ₹10/KM</span>
         </div>
         <h1 className="text-display" style={{ color: 'var(--color-text-primary)' }}>
           Online Grocery Delivery in Mahruni 🚀
@@ -187,8 +186,8 @@ export const Home = () => {
             <Truck size={24} />
           </div>
           <div>
-            <h4 style={{ fontSize: '0.95rem', fontWeight: 700 }}>Free Local Delivery</h4>
-            <p style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>Free within 1 KM. Delivery up to 15 KM radius.</p>
+            <h4 style={{ fontSize: '0.95rem', fontWeight: 700 }}>Fast Local Delivery</h4>
+            <p style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>Flat ₹10 per KM rate up to 15 KM radius.</p>
           </div>
         </div>
 

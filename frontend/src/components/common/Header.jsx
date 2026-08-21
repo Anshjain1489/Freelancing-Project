@@ -35,7 +35,7 @@ export const Header = () => {
           <span>Near Bada Jain Mandir, Tikamgarh Road, Mahruni</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <span className="badge-orange">Free Delivery ≤ 1 KM</span>
+          <span className="badge-orange">Fast Delivery ₹10/KM</span>
           <a href="tel:7897837095" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <PhoneCall size={13} /> 7897837095
           </a>

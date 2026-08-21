@@ -59,10 +59,10 @@ export const Footer = () => {
           <h4 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '12px' }}>Hyper-Local Delivery</h4>
           <div style={{ backgroundColor: 'var(--color-mint)', padding: '12px', borderRadius: 'var(--radius-md)', marginBottom: '12px' }}>
             <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-primary-dark)', display: 'block' }}>
-              🟢 FREE Delivery within 1 KM
+              🛵 Fast Delivery at ₹10 per KM
             </span>
             <span style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>
-              Flat ₹10 per additional KM beyond 1 KM zone up to 15 KM radius.
+              ₹10 per KM rate applied up to 15 KM max delivery radius.
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>

@@ -20,11 +20,11 @@ const calculateHaversineDistance = (lat1, lon1, lat2, lon2) => {
 /**
  * Calculates delivery charge based on exact distance.
  * Rule:
- * Distance <= 1.0 KM -> FREE (₹0)
- * Distance > 1.0 KM -> ₹10 per additional KM (ceil(distance - 1) * 10)
+ * ₹10 per KM (ceil(distance) * 10, minimum ₹10).
+ * Maximum delivery radius: 15.0 KM.
  */
 const calculateDeliveryFee = (distanceKm) => {
-  const freeRadius = config.store.freeDeliveryRadiusKm || 1.0;
+  const freeRadius = config.store.freeDeliveryRadiusKm || 0;
   const ratePerKm = config.store.deliveryChargePerExtraKm || 10.0;
   const maxRadius = config.store.maxDeliveryRadiusKm || 15.0;
 
@@ -37,7 +37,7 @@ const calculateDeliveryFee = (distanceKm) => {
     };
   }
 
-  if (distanceKm <= freeRadius) {
+  if (freeRadius > 0 && distanceKm <= freeRadius) {
     return {
       isDeliverable: true,
       distanceKm,
@@ -47,14 +47,14 @@ const calculateDeliveryFee = (distanceKm) => {
     };
   }
 
-  const additionalDistance = Math.ceil(distanceKm - freeRadius);
-  const deliveryCharge = additionalDistance * ratePerKm;
+  const chargeableKm = Math.max(1, Math.ceil(distanceKm));
+  const deliveryCharge = chargeableKm * ratePerKm;
 
   return {
     isDeliverable: true,
     distanceKm,
     freeDeliveryRadiusKm: freeRadius,
-    additionalDistanceKm: Math.max(0, Math.round((distanceKm - freeRadius) * 100) / 100),
+    additionalDistanceKm: chargeableKm,
     deliveryCharge
   };
 };

@@ -1,6 +1,6 @@
 export const updateMetaTags = ({
   title = 'Chaudhary Kirana Store — Fresh Groceries Delivered Fast',
-  description = 'Order daily Kirana & fresh groceries online from Chaudhary Kirana Store near Bada Jain Mandir, Mahruni. Free delivery within 1 KM.',
+  description = 'Order daily Kirana & fresh groceries online from Chaudhary Kirana Store near Bada Jain Mandir, Mahruni. Fast local delivery at ₹10/KM.',
   keywords = 'Kirana, Grocery, Mahruni, Atta, Dal, Oil, Home Delivery, Akash Chaudhary'
 }) => {
   document.title = title;

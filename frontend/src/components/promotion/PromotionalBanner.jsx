@@ -4,7 +4,7 @@ import { Button } from '../ui/Button';
 export const PromotionalBanner = ({
   title = '🛒 रोज़मर्रा का सामान, अब आपके घर तक!',
   subtitle = 'Fresh groceries. Fair prices. Fast local delivery in Mahruni.',
-  badge = '🟢 1 KM तक FREE Delivery!',
+  badge = '🛵 ₹10/KM Fast Delivery!',
   ctaText = 'Shop Now',
   onCtaClick
 }) => {
