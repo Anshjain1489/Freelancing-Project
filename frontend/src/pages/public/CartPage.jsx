@@ -45,8 +45,20 @@ export const CartPage = () => {
             <Card key={item.id} padding="16px">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '54px', height: '54px', backgroundColor: 'var(--color-mint-light)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>
-                    🌾
+                  <div style={{
+                    width: '54px',
+                    height: '54px',
+                    backgroundColor: '#F9FAFB',
+                    borderRadius: 'var(--radius-md)',
+                    overflow: 'hidden',
+                    flexShrink: 0
+                  }}>
+                    <img
+                      src={item.imageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=500&q=80'}
+                      alt={item.name}
+                      onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=500&q=80'; }}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
                   </div>
                   <div>
                     <h4 style={{ fontSize: '0.95rem', fontWeight: 700 }}>{item.name}</h4>
@@ -81,7 +93,7 @@ export const CartPage = () => {
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px', fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>
             <span>Delivery Charge</span>
-            <span>Calculated at Checkout (Free $\le$ 1 KM)</span>
+            <span>Calculated at Checkout (🛵 Fast Delivery ₹10/KM)</span>
           </div>
           <div style={{ borderTop: '1px dashed var(--color-primary)', paddingTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <span style={{ fontSize: '1.1rem', fontWeight: 800 }}>Estimated Subtotal</span>

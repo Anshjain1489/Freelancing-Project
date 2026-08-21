@@ -40,27 +40,43 @@ export const CartDrawer = () => {
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'space-between',
+                  gap: '12px',
                   padding: '12px',
                   border: '1px solid var(--color-border)',
                   borderRadius: 'var(--radius-md)',
                   backgroundColor: 'var(--color-surface)'
                 }}
               >
-                <div>
-                  <h4 style={{ fontSize: '0.85rem', fontWeight: 700 }}>{item.name}</h4>
+                <div style={{
+                  width: '48px',
+                  height: '48px',
+                  borderRadius: '6px',
+                  overflow: 'hidden',
+                  backgroundColor: '#F9FAFB',
+                  flexShrink: 0
+                }}>
+                  <img
+                    src={item.imageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=500&q=80'}
+                    alt={item.name}
+                    onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=500&q=80'; }}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                </div>
+
+                <div style={{ flex: 1 }}>
+                  <h4 style={{ fontSize: '0.85rem', fontWeight: 700, lineHeight: 1.2 }}>{item.name}</h4>
                   <span style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
                     {formatCurrency(item.sellingPrice)} x {item.quantity}
                   </span>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <QuantitySelector
                     quantity={item.quantity}
                     onChange={(q) => updateQuantity(item.id, q)}
                     size="sm"
                   />
-                  <button onClick={() => removeItem(item.id)} style={{ color: 'var(--color-error)' }}>
+                  <button onClick={() => removeItem(item.id)} style={{ color: 'var(--color-error)', cursor: 'pointer', padding: '4px' }}>
                     <Trash2 size={16} />
                   </button>
                 </div>
@@ -77,7 +93,7 @@ export const CartDrawer = () => {
               </span>
             </div>
             <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: '16px' }}>
-              Delivery charges calculated at checkout (FREE $\le$ 1 KM)
+              Delivery charges calculated at checkout (🛵 Fast Delivery ₹10/KM)
             </span>
             <Button variant="primary" fullWidth icon={ArrowRight} onClick={handleCheckoutClick}>
               Proceed to Checkout

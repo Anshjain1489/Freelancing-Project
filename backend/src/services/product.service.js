@@ -299,6 +299,7 @@ const createProduct = async (productData, adminId, req = null) => {
       category_id: productData.categoryId,
       name: productData.name,
       slug: generatedSlug,
+      image_url: productData.imageUrl || null,
       short_description: productData.shortDescription || null,
       description: productData.description || null,
       sku: productData.sku,
@@ -314,6 +315,14 @@ const createProduct = async (productData, adminId, req = null) => {
     }]).select().single();
 
     if (prodErr) throw new AppError('Failed to create product: ' + prodErr.message, HTTP_STATUS.BAD_REQUEST);
+
+    if (productData.imageUrl) {
+      await supabase.from('product_images').insert([{
+        product_id: newProd.id,
+        image_url: productData.imageUrl,
+        is_primary: true
+      }]);
+    }
 
     // Create matching Inventory entry
     await supabase.from('inventory').insert([{
@@ -345,6 +354,7 @@ const updateProduct = async (id, updateData, adminId, req = null) => {
     payload.slug = slugify(updateData.name);
   }
   if (updateData.categoryId) payload.category_id = updateData.categoryId;
+  if (updateData.imageUrl !== undefined) payload.image_url = updateData.imageUrl;
   if (updateData.shortDescription !== undefined) payload.short_description = updateData.shortDescription;
   if (updateData.description !== undefined) payload.description = updateData.description;
   if (updateData.sku) payload.sku = updateData.sku;
@@ -358,6 +368,15 @@ const updateProduct = async (id, updateData, adminId, req = null) => {
 
   if (supabase) {
     const { data, error } = await supabase.from('products').update(payload).eq('id', id).select().single();
+    if (error) throw new AppError('Failed to update product: ' + error.message, HTTP_STATUS.BAD_REQUEST);
+
+    if (updateData.imageUrl) {
+      await supabase.from('product_images').upsert([{
+        product_id: id,
+        image_url: updateData.imageUrl,
+        is_primary: true
+      }]);
+    }
     if (error) throw new AppError('Failed to update product: ' + error.message, HTTP_STATUS.BAD_REQUEST);
 
     await logAdminActivity(adminId, 'PRODUCT_UPDATED', 'product', id, payload, req);
