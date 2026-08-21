@@ -37,6 +37,7 @@ export const AuthProvider = ({ children }) => {
       const { user: userData, accessToken, refreshToken } = res.data;
 
       localStorage.setItem('accessToken', accessToken);
+      localStorage.setItem('cks_auth_token', accessToken);
       if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
 
       setToken(accessToken);
@@ -44,7 +45,7 @@ export const AuthProvider = ({ children }) => {
       showSuccess(`Welcome back, ${userData.fullName}! 👋`);
       return userData;
     } catch (err) {
-      showError(err.response?.data?.message || 'Login failed. Please check credentials.');
+      showError(err.message || err.response?.data?.message || 'Login failed. Please check credentials.');
       throw err;
     } finally {
       setIsLoading(false);
@@ -58,6 +59,7 @@ export const AuthProvider = ({ children }) => {
       const { user: userData, accessToken, refreshToken } = res.data;
 
       localStorage.setItem('accessToken', accessToken);
+      localStorage.setItem('cks_auth_token', accessToken);
       if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
 
       setToken(accessToken);
@@ -65,7 +67,7 @@ export const AuthProvider = ({ children }) => {
       showSuccess('Registration successful! Welcome to Chaudhary Kirana Store 🎉');
       return userData;
     } catch (err) {
-      showError(err.response?.data?.message || 'Registration failed. Please check details.');
+      showError(err.message || err.response?.data?.message || 'Registration failed. Please check details.');
       throw err;
     } finally {
       setIsLoading(false);
@@ -79,6 +81,7 @@ export const AuthProvider = ({ children }) => {
       const { user: userData, accessToken, refreshToken } = res.data;
 
       localStorage.setItem('accessToken', accessToken);
+      localStorage.setItem('cks_auth_token', accessToken);
       if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
 
       setToken(accessToken);
@@ -86,7 +89,7 @@ export const AuthProvider = ({ children }) => {
       showSuccess(`Welcome, ${userData.fullName}! 👋`);
       return userData;
     } catch (err) {
-      showError(err.response?.data?.message || 'Google Authentication failed.');
+      showError(err.message || err.response?.data?.message || 'Google Authentication failed.');
       throw err;
     } finally {
       setIsLoading(false);

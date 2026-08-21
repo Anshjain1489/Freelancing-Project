@@ -13,7 +13,7 @@ const apiClient = axios.create({
 // Request Interceptor: Attach JWT Token if available
 apiClient.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('cks_auth_token');
+    const token = localStorage.getItem('accessToken') || localStorage.getItem('cks_auth_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -24,12 +24,13 @@ apiClient.interceptors.request.use(
 
 // Response Interceptor: Uniform error handling
 apiClient.interceptors.response.use(
-  (response) => response.data,
+  (response) => response,
   (error) => {
     const customError = {
       message: error.response?.data?.message || error.message || 'An unexpected error occurred',
       code: error.response?.data?.code || 'NETWORK_ERROR',
-      status: error.response?.status || 500
+      status: error.response?.status || 500,
+      response: error.response
     };
     return Promise.reject(customError);
   }
