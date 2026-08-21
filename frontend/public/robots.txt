@@ -1,0 +1,17 @@
+# Robots.txt for Chaudhary Kirana Store
+User-agent: *
+Allow: /
+Allow: /products
+Allow: /categories
+Allow: /about
+Allow: /contact
+Allow: /search
+
+# Disallow Private & Protected Routes
+Disallow: /admin/
+Disallow: /profile/
+Disallow: /orders/
+Disallow: /checkout/
+Disallow: /api/
+
+Sitemap: https://chaudhary-kirana-store.vercel.app/api/v1/sitemap.xml

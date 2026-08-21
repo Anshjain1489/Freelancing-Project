@@ -1,0 +1,29 @@
+import apiClient from '../api/client';
+import { ENDPOINTS } from '../api/endpoints';
+
+export const orderService = {
+  createOrder: async (addressId) => {
+    const response = await apiClient.post(ENDPOINTS.ORDERS.CREATE, { addressId });
+    return response.data;
+  },
+
+  getUserOrders: async (params = {}) => {
+    const response = await apiClient.get(ENDPOINTS.ORDERS.LIST, { params });
+    return response.data;
+  },
+
+  getOrderById: async (id) => {
+    const response = await apiClient.get(ENDPOINTS.ORDERS.BY_ID(id));
+    return response.data;
+  },
+
+  cancelOrder: async (id, reason = '') => {
+    const response = await apiClient.post(ENDPOINTS.ORDERS.CANCEL(id), { reason });
+    return response.data;
+  },
+
+  retryPayment: async (id) => {
+    const response = await apiClient.post(ENDPOINTS.ORDERS.RETRY_PAYMENT(id));
+    return response.data;
+  }
+};

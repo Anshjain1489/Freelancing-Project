@@ -1,0 +1,20 @@
+/* Mobile Base Defaults (< 640px) */
+.desktop-only { display: none !important; }
+.mobile-only { display: block !important; }
+
+/* Tablet (640px to 1023px) */
+@media (min-width: 640px) {
+  .sm-grid-2 { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Desktop (>= 1024px) */
+@media (min-width: 1024px) {
+  .desktop-only { display: flex !important; }
+  .mobile-only { display: none !important; }
+  .lg-grid-4 { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* Large Desktop (>= 1280px) */
+@media (min-width: 1280px) {
+  .xl-grid-5 { grid-template-columns: repeat(5, 1fr); }
+}

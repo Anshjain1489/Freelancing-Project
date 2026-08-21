@@ -1,0 +1,61 @@
+:root {
+  /* Brand Primary Palette */
+  --color-primary: #06C167;
+  --color-primary-dark: #049B53;
+  --color-primary-light: #DDF8E9;
+
+  /* Brand Secondary / Discount Palette */
+  --color-secondary: #FF6B00;
+  --color-secondary-light: #FFF0E6;
+
+  /* Background & Neutral Surfaces */
+  --color-background: #FAFAFA;
+  --color-surface: #FFFFFF;
+
+  /* Soft Mint Accents */
+  --color-mint: #E8F7F0;
+  --color-mint-light: #F3FCF7;
+
+  /* Typography Colors */
+  --color-text-primary: #1F2937;
+  --color-text-secondary: #6B7280;
+  --color-text-muted: #9CA3AF;
+
+  /* Borders & Lines */
+  --color-border: #E5E7EB;
+
+  /* Semantic Feedback Colors */
+  --color-success: #16A34A;
+  --color-warning: #F59E0B;
+  --color-error: #DC2626;
+  --color-info: #2563EB;
+
+  /* Spacing System Scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Radii Scale */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  /* Shadows Scale */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12);
+
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.25s ease;
+  --transition-slow: 0.4s ease;
+}
