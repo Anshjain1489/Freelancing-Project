@@ -54,18 +54,6 @@ export const Login = () => {
     }
   };
 
-  const handleDemoGoogleClick = async () => {
-    setLoading(true);
-    try {
-      await loginWithGoogle('mock_g_token_customer');
-      navigate(from, { replace: true });
-    } catch (err) {
-      setError('Demo Google login failed.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div style={{ maxWidth: '420px', margin: '40px auto', padding: '0 16px' }}>
       <Card padding="32px">
@@ -91,13 +79,6 @@ export const Login = () => {
             shape="pill"
             width="320"
           />
-          <button
-            type="button"
-            onClick={handleDemoGoogleClick}
-            style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', textDecoration: 'underline', marginTop: '4px' }}
-          >
-            Quick 1-Click Demo Google Login (Dev Mode)
-          </button>
         </div>
 
         <Divider margin="16px 0">OR</Divider>
@@ -106,7 +87,7 @@ export const Login = () => {
           <Input
             label="Mobile Number or Email"
             icon={PhoneCall}
-            placeholder="e.g. 7897837095 or email"
+            placeholder="Mobile Number or Email"
             value={identifier}
             onChange={(e) => setIdentifier(e.target.value)}
             required
