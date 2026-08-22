@@ -89,6 +89,28 @@ export const ENDPOINTS = {
     SEND_MESSAGE: '/chatbot/messages'
   },
 
+  CANCELLATIONS: {
+    REQUEST: (orderId) => `/orders/${orderId}/cancellation-request`,
+    MY: '/cancellations/my'
+  },
+
+  RETURNS: {
+    REQUEST: (orderId) => `/orders/${orderId}/return-request`,
+    MY: '/returns/my'
+  },
+
+  REPLACEMENTS: {
+    REQUEST: (orderId) => `/orders/${orderId}/replacement-request`,
+    MY: '/replacements/my'
+  },
+
+  REVERSE_PICKUP: {
+    LIST: '/delivery/return-pickups',
+    ACCEPT: (id) => `/delivery/return-pickups/${id}/accept`,
+    PICKUP: (id) => `/delivery/return-pickups/${id}/pickup`,
+    FAIL: (id) => `/delivery/return-pickups/${id}/fail`
+  },
+
   ADMIN: {
     DASHBOARD: '/admin/dashboard',
     ANALYTICS_REVENUE: '/admin/analytics/revenue',
@@ -108,6 +130,18 @@ export const ENDPOINTS = {
     REJECT_ORDER: (id) => `/admin/orders/${id}/reject`,
     RETRY_REFUND: (id) => `/admin/orders/${id}/refund/retry`,
     UPDATE_ORDER_STATUS: (id) => `/admin/orders/${id}/status`,
+    CANCELLATIONS: '/admin/cancellations',
+    APPROVE_CANCELLATION: (id) => `/admin/cancellations/${id}/approve`,
+    REJECT_CANCELLATION: (id) => `/admin/cancellations/${id}/reject`,
+    RETURNS: '/admin/returns',
+    APPROVE_RETURN: (id) => `/admin/returns/${id}/approve`,
+    REJECT_RETURN: (id) => `/admin/returns/${id}/reject`,
+    ASSIGN_RETURN_PICKUP: (id) => `/admin/returns/${id}/assign-pickup`,
+    RECEIVE_RETURN: (id) => `/admin/returns/${id}/receive`,
+    REPLACEMENTS: '/admin/replacements',
+    APPROVE_REPLACEMENT: (id) => `/admin/replacements/${id}/approve`,
+    REJECT_REPLACEMENT: (id) => `/admin/replacements/${id}/reject`,
+    UPDATE_REPLACEMENT_FULFILLMENT: (id) => `/admin/replacements/${id}/fulfillment`,
     DELIVERY_PARTNERS: '/admin/delivery-partners',
     UNASSIGNED_DELIVERY_ORDERS: '/admin/delivery/orders/unassigned',
     ASSIGN_DELIVERY: (orderId) => `/admin/orders/${orderId}/assign-delivery`,

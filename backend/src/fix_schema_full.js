@@ -180,6 +180,97 @@ async function fixSchemaFull() {
     await client.query('CREATE INDEX IF NOT EXISTS idx_inventory_movements_created_at ON inventory_movements(created_at DESC);');
     await client.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_movements_order_product_sale ON inventory_movements(order_id, product_id, movement_type) WHERE movement_type = \'SALE\';');
 
+    // Phase 18: Cancellation, Return & Replacement Management Tables
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS cancellation_requests (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+        requested_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        request_reason TEXT NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'REQUESTED',
+        approved_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        approved_at TIMESTAMPTZ,
+        rejected_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        rejected_at TIMESTAMPTZ,
+        rejection_reason TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_active_cancellation_request ON cancellation_requests(order_id) WHERE status = \'REQUESTED\';');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS returns (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+        user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+        return_number VARCHAR(100) UNIQUE,
+        status VARCHAR(50) NOT NULL DEFAULT 'REQUESTED',
+        reason TEXT NOT NULL,
+        customer_description TEXT,
+        requested_at TIMESTAMPTZ DEFAULT NOW(),
+        approved_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        approved_at TIMESTAMPTZ,
+        rejected_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        rejected_at TIMESTAMPTZ,
+        rejection_reason TEXT,
+        pickup_required BOOLEAN DEFAULT TRUE,
+        pickup_delivery_partner_id UUID REFERENCES users(id) ON DELETE SET NULL,
+        picked_up_at TIMESTAMPTZ,
+        received_at TIMESTAMPTZ,
+        refund_status VARCHAR(50) DEFAULT 'NOT_INITIATED',
+        refund_id UUID,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_active_return_request ON returns(order_id) WHERE status IN (\'REQUESTED\', \'APPROVED\', \'PICKUP_ASSIGNED\', \'PICKED_UP\', \'RECEIVED\', \'REFUND_PROCESSING\');');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS return_items (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        return_id UUID NOT NULL REFERENCES returns(id) ON DELETE CASCADE,
+        order_item_id UUID REFERENCES order_items(id) ON DELETE SET NULL,
+        product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        quantity INTEGER NOT NULL CHECK (quantity > 0),
+        reason TEXT,
+        condition_status VARCHAR(50) DEFAULT 'RESTOCKABLE',
+        approved_quantity INTEGER DEFAULT 0 CHECK (approved_quantity >= 0),
+        received_quantity INTEGER DEFAULT 0 CHECK (received_quantity >= 0),
+        refund_amount NUMERIC(10,2) DEFAULT 0.00 CHECK (refund_amount >= 0),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS replacement_requests (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        reason TEXT NOT NULL,
+        description TEXT,
+        status VARCHAR(50) NOT NULL DEFAULT 'REQUESTED',
+        approved_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        approved_at TIMESTAMPTZ,
+        rejected_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        rejected_at TIMESTAMPTZ,
+        rejection_reason TEXT,
+        replacement_order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_active_replacement_request ON replacement_requests(order_id) WHERE status IN (\'REQUESTED\', \'APPROVED\', \'REPLACEMENT_PROCESSING\', \'READY_FOR_DELIVERY\', \'OUT_FOR_DELIVERY\');');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS store_settings (
+        key VARCHAR(100) PRIMARY KEY,
+        value TEXT NOT NULL,
+        description TEXT,
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
     // Disable RLS on all operational tables for backend service
     await client.query('ALTER TABLE orders DISABLE ROW LEVEL SECURITY;');
     await client.query('ALTER TABLE payments DISABLE ROW LEVEL SECURITY;');
@@ -192,6 +283,11 @@ async function fixSchemaFull() {
     await client.query('ALTER TABLE notification_preferences DISABLE ROW LEVEL SECURITY;');
     await client.query('ALTER TABLE admin_activity_logs DISABLE ROW LEVEL SECURITY;');
     await client.query('ALTER TABLE inventory_movements DISABLE ROW LEVEL SECURITY;');
+    await client.query('ALTER TABLE cancellation_requests DISABLE ROW LEVEL SECURITY;');
+    await client.query('ALTER TABLE returns DISABLE ROW LEVEL SECURITY;');
+    await client.query('ALTER TABLE return_items DISABLE ROW LEVEL SECURITY;');
+    await client.query('ALTER TABLE replacement_requests DISABLE ROW LEVEL SECURITY;');
+    await client.query('ALTER TABLE store_settings DISABLE ROW LEVEL SECURITY;');
 
     console.log('✅ All table schemas aligned 100%!');
   } catch (err) {

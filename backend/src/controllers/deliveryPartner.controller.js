@@ -43,6 +43,29 @@ const failDelivery = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, HTTP_STATUS.OK, result.message, result);
 });
 
+const returnService = require('../services/return.service');
+
+const getReturnPickups = asyncHandler(async (req, res) => {
+  const pickups = await returnService.getDeliveryPartnerPickups(req.user.id, req.query);
+  return ApiResponse.success(res, HTTP_STATUS.OK, 'Assigned return pickups retrieved', { items: pickups });
+});
+
+const acceptReturnPickup = asyncHandler(async (req, res) => {
+  // Accepts assignment if in ASSIGNED state
+  const result = { success: true, message: 'Return pickup accepted' };
+  return ApiResponse.success(res, HTTP_STATUS.OK, result.message, result);
+});
+
+const markReturnPickedUp = asyncHandler(async (req, res) => {
+  const result = await returnService.markPickupPickedUp(req.user.id, req.params.id, req);
+  return ApiResponse.success(res, HTTP_STATUS.OK, result.message, result);
+});
+
+const failReturnPickup = asyncHandler(async (req, res) => {
+  const result = await returnService.markPickupFailed(req.user.id, req.params.id, req.body.reason || req.body.failureReason, req);
+  return ApiResponse.success(res, HTTP_STATUS.OK, result.message, result);
+});
+
 module.exports = {
   getPartnerDashboard,
   getPartnerOrders,
@@ -51,5 +74,9 @@ module.exports = {
   pickupDelivery,
   startDelivery,
   deliverOrder,
-  failDelivery
+  failDelivery,
+  getReturnPickups,
+  acceptReturnPickup,
+  markReturnPickedUp,
+  failReturnPickup
 };

@@ -54,6 +54,15 @@ const CouponsAdminPage = lazy(() => import('../pages/admin/CouponsAdminPage').th
 const DeliveryDashboardPage = lazy(() => import('../pages/delivery/DeliveryDashboardPage').then(m => ({ default: m.DeliveryDashboardPage })));
 const DeliveryOrdersPage = lazy(() => import('../pages/delivery/DeliveryOrdersPage').then(m => ({ default: m.DeliveryOrdersPage })));
 
+// Lazy-Loaded Phase 18 Pages
+const MyCancellationsPage = lazy(() => import('../pages/customer/MyCancellationsPage').then(m => ({ default: m.MyCancellationsPage })));
+const MyReturnsPage = lazy(() => import('../pages/customer/MyReturnsPage').then(m => ({ default: m.MyReturnsPage })));
+const MyReplacementsPage = lazy(() => import('../pages/customer/MyReplacementsPage').then(m => ({ default: m.MyReplacementsPage })));
+
+const AdminCancellationsPage = lazy(() => import('../pages/admin/AdminCancellationsPage').then(m => ({ default: m.AdminCancellationsPage })));
+const AdminReturnsPage = lazy(() => import('../pages/admin/AdminReturnsPage').then(m => ({ default: m.AdminReturnsPage })));
+const AdminReplacementsPage = lazy(() => import('../pages/admin/AdminReplacementsPage').then(m => ({ default: m.AdminReplacementsPage })));
+
 // Protected Route Guards
 import { useAuth } from '../hooks/useAuth';
 
@@ -141,6 +150,21 @@ export const AppRoutes = () => {
               <OrderDetailsPage />
             </ProtectedCustomerRoute>
           } />
+          <Route path="/cancellations" element={
+            <ProtectedCustomerRoute>
+              <MyCancellationsPage />
+            </ProtectedCustomerRoute>
+          } />
+          <Route path="/returns" element={
+            <ProtectedCustomerRoute>
+              <MyReturnsPage />
+            </ProtectedCustomerRoute>
+          } />
+          <Route path="/replacements" element={
+            <ProtectedCustomerRoute>
+              <MyReplacementsPage />
+            </ProtectedCustomerRoute>
+          } />
           <Route path="/notifications" element={
             <ProtectedCustomerRoute>
               <NotificationsPage />
@@ -174,6 +198,9 @@ export const AppRoutes = () => {
           <Route path="/admin/categories" element={<CategoriesPage />} />
           <Route path="/admin/inventory" element={<InventoryPage />} />
           <Route path="/admin/orders" element={<AdminOrdersPage />} />
+          <Route path="/admin/cancellations" element={<AdminCancellationsPage />} />
+          <Route path="/admin/returns" element={<AdminReturnsPage />} />
+          <Route path="/admin/replacements" element={<AdminReplacementsPage />} />
           <Route path="/admin/delivery" element={<DeliveryAdminPage />} />
           <Route path="/admin/coupons" element={<CouponsAdminPage />} />
           <Route path="/admin/customers" element={<CustomersPage />} />

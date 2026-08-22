@@ -13,6 +13,10 @@ const couponAdminController = require('../controllers/admin/couponAdmin.controll
 const deliveryAdminController = require('../controllers/admin/deliveryAdmin.controller');
 const activityAdminController = require('../controllers/admin/activityAdmin.controller');
 
+const cancellationAdminController = require('../controllers/admin/cancellationAdmin.controller');
+const returnAdminController = require('../controllers/admin/returnAdmin.controller');
+const replacementAdminController = require('../controllers/admin/replacementAdmin.controller');
+
 const router = express.Router();
 
 // Strict Admin RBAC Protection Middleware
@@ -47,6 +51,24 @@ router.post('/orders/:id/accept', orderAdminController.acceptOrder);
 router.post('/orders/:id/reject', orderAdminController.rejectOrder);
 router.post('/orders/:id/refund/retry', orderAdminController.retryRefund);
 router.patch('/orders/:id/status', orderAdminController.updateOrderStatus);
+
+// Cancellation Management
+router.get('/cancellations', cancellationAdminController.getCancellations);
+router.post('/cancellations/:id/approve', cancellationAdminController.approveCancellation);
+router.post('/cancellations/:id/reject', cancellationAdminController.rejectCancellation);
+
+// Return Management
+router.get('/returns', returnAdminController.getReturns);
+router.post('/returns/:id/approve', returnAdminController.approveReturn);
+router.post('/returns/:id/reject', returnAdminController.rejectReturn);
+router.post('/returns/:id/assign-pickup', returnAdminController.assignPickup);
+router.post('/returns/:id/receive', returnAdminController.confirmReceived);
+
+// Replacement Management
+router.get('/replacements', replacementAdminController.getReplacements);
+router.post('/replacements/:id/approve', replacementAdminController.approveReplacement);
+router.post('/replacements/:id/reject', replacementAdminController.rejectReplacement);
+router.patch('/replacements/:id/fulfillment', replacementAdminController.updateFulfillment);
 
 // Delivery Management
 router.get('/delivery-partners', deliveryAdminController.getDeliveryPartners);

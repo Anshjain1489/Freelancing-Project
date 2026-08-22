@@ -190,6 +190,136 @@ const broadcastInventoryUpdate = (inventoryUpdate) => {
   });
 };
 
+/**
+ * Broadcast real-time cancellation update to Admins and targeted order Customer
+ */
+const broadcastCancellationUpdate = (cancellationUpdate) => {
+  const targetUserId = cancellationUpdate.userId || cancellationUpdate.requestedBy || cancellationUpdate.requested_by;
+
+  sseClients.forEach((clientsSet, userId) => {
+    clientsSet.forEach(res => {
+      if (!res.writable || res.destroyed || res.writableEnded) {
+        removeClient(userId, res);
+        return;
+      }
+
+      const isTargetCustomer = targetUserId && String(userId) === String(targetUserId);
+      const isAdmin = res.userRole === 'ADMIN';
+
+      if (isAdmin || isTargetCustomer) {
+        try {
+          res.write(`data: ${JSON.stringify({
+            eventType: cancellationUpdate.eventType || 'ORDER_CANCELLATION_UPDATED',
+            type: 'CANCELLATION_UPDATED',
+            ...cancellationUpdate
+          })}\n\n`);
+        } catch (err) {
+          logger.error(`[SSE_CANCELLATION_BROADCAST_ERR] Failed for userId=${userId}`, err);
+          removeClient(userId, res);
+        }
+      }
+    });
+  });
+};
+
+/**
+ * Broadcast real-time return request update to Admins and targeted Customer
+ */
+const broadcastReturnUpdate = (returnUpdate) => {
+  const targetUserId = returnUpdate.userId || returnUpdate.user_id;
+
+  sseClients.forEach((clientsSet, userId) => {
+    clientsSet.forEach(res => {
+      if (!res.writable || res.destroyed || res.writableEnded) {
+        removeClient(userId, res);
+        return;
+      }
+
+      const isTargetCustomer = targetUserId && String(userId) === String(targetUserId);
+      const isAdmin = res.userRole === 'ADMIN';
+
+      if (isAdmin || isTargetCustomer) {
+        try {
+          res.write(`data: ${JSON.stringify({
+            eventType: returnUpdate.eventType || 'RETURN_UPDATED',
+            type: 'RETURN_UPDATED',
+            ...returnUpdate
+          })}\n\n`);
+        } catch (err) {
+          logger.error(`[SSE_RETURN_BROADCAST_ERR] Failed for userId=${userId}`, err);
+          removeClient(userId, res);
+        }
+      }
+    });
+  });
+};
+
+/**
+ * Broadcast real-time replacement update to Admins and targeted Customer
+ */
+const broadcastReplacementUpdate = (replacementUpdate) => {
+  const targetUserId = replacementUpdate.userId || replacementUpdate.user_id;
+
+  sseClients.forEach((clientsSet, userId) => {
+    clientsSet.forEach(res => {
+      if (!res.writable || res.destroyed || res.writableEnded) {
+        removeClient(userId, res);
+        return;
+      }
+
+      const isTargetCustomer = targetUserId && String(userId) === String(targetUserId);
+      const isAdmin = res.userRole === 'ADMIN';
+
+      if (isAdmin || isTargetCustomer) {
+        try {
+          res.write(`data: ${JSON.stringify({
+            eventType: replacementUpdate.eventType || 'REPLACEMENT_UPDATED',
+            type: 'REPLACEMENT_UPDATED',
+            ...replacementUpdate
+          })}\n\n`);
+        } catch (err) {
+          logger.error(`[SSE_REPLACEMENT_BROADCAST_ERR] Failed for userId=${userId}`, err);
+          removeClient(userId, res);
+        }
+      }
+    });
+  });
+};
+
+/**
+ * Broadcast real-time return pickup update to Admins, assigned Delivery Partner, and targeted Customer
+ */
+const broadcastReturnPickupUpdate = (pickupUpdate) => {
+  const customerId = pickupUpdate.customerId || pickupUpdate.userId || pickupUpdate.user_id;
+  const partnerId = pickupUpdate.deliveryPartnerId || pickupUpdate.delivery_partner_id || pickupUpdate.pickup_delivery_partner_id;
+
+  sseClients.forEach((clientsSet, userId) => {
+    clientsSet.forEach(res => {
+      if (!res.writable || res.destroyed || res.writableEnded) {
+        removeClient(userId, res);
+        return;
+      }
+
+      const isAdmin = res.userRole === 'ADMIN';
+      const isAssignedPartner = partnerId && String(userId) === String(partnerId);
+      const isTargetCustomer = customerId && String(userId) === String(customerId);
+
+      if (isAdmin || isAssignedPartner || isTargetCustomer) {
+        try {
+          res.write(`data: ${JSON.stringify({
+            eventType: pickupUpdate.eventType || 'RETURN_PICKUP_UPDATED',
+            type: 'RETURN_PICKUP_UPDATED',
+            ...pickupUpdate
+          })}\n\n`);
+        } catch (err) {
+          logger.error(`[SSE_RETURN_PICKUP_BROADCAST_ERR] Failed for userId=${userId}`, err);
+          removeClient(userId, res);
+        }
+      }
+    });
+  });
+};
+
 // Send keep-alive heartbeat ping every 25 seconds for Render deployment compatibility
 setInterval(() => {
   sseClients.forEach((clientsSet, userId) => {
@@ -214,5 +344,9 @@ module.exports = {
   broadcastDecision,
   broadcastOrderStatusUpdate,
   broadcastDeliveryUpdate,
-  broadcastInventoryUpdate
+  broadcastInventoryUpdate,
+  broadcastCancellationUpdate,
+  broadcastReturnUpdate,
+  broadcastReplacementUpdate,
+  broadcastReturnPickupUpdate
 };

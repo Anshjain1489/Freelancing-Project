@@ -1,16 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { orderService } from '../../services/order.service';
+import { cancellationService } from '../../services/cancellation.service';
+import { returnService } from '../../services/return.service';
+import { replacementService } from '../../services/replacement.service';
 import { RazorpayCheckoutButton } from '../../components/payment/RazorpayCheckoutButton';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { Modal } from '../../components/ui/Modal';
+import { Input } from '../../components/ui/Input';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { Breadcrumbs } from '../../components/layout/Breadcrumbs';
 import { formatCurrency } from '../../utils/formatting';
 import { showSuccess, showError } from '../../utils/toast';
-import { MapPin, RefreshCw, XCircle } from 'lucide-react';
+import { MapPin, RefreshCw, XCircle, RotateCcw, Repeat, Truck } from 'lucide-react';
 
 export const OrderDetailsPage = () => {
   const { orderId } = useParams();
@@ -18,7 +23,23 @@ export const OrderDetailsPage = () => {
 
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Modals
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
+
+  const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
+  const [returnReason, setReturnReason] = useState('Defective / Damaged Item');
+  const [returnDesc, setReturnDesc] = useState('');
+  const [selectedReturnItems, setSelectedReturnItems] = useState({});
+  const [submittingReturn, setSubmittingReturn] = useState(false);
+
+  const [isReplacementModalOpen, setIsReplacementModalOpen] = useState(false);
+  const [replacementReason, setReplacementReason] = useState('Wrong Item / Quality Issue');
+  const [replacementDesc, setReplacementDesc] = useState('');
+  const [submittingReplacement, setSubmittingReplacement] = useState(false);
+
   const [retryPayload, setRetryPayload] = useState(null);
   const [retrying, setRetrying] = useState(false);
 
@@ -26,7 +47,21 @@ export const OrderDetailsPage = () => {
     setLoading(true);
     try {
       const res = await orderService.getOrderById(orderId);
-      setOrder(res.data?.order || null);
+      const fetchedOrder = res.data?.order || null;
+      setOrder(fetchedOrder);
+
+      // Pre-fill return item selection quantities
+      if (fetchedOrder && fetchedOrder.items) {
+        const initialSelection = {};
+        fetchedOrder.items.forEach(item => {
+          initialSelection[item.id || item.product_id] = {
+            selected: true,
+            productId: item.product_id,
+            quantity: item.quantity
+          };
+        });
+        setSelectedReturnItems(initialSelection);
+      }
     } catch (err) {
       console.error('Failed to load order details:', err);
     } finally {
@@ -58,12 +93,65 @@ export const OrderDetailsPage = () => {
   }, [orderId]);
 
   const handleCancelOrder = async () => {
+    if (!cancelReason.trim()) {
+      showError('Please provide a reason for cancellation');
+      return;
+    }
+    setCancelling(true);
     try {
-      await orderService.cancelOrder(order.id, 'Cancelled by customer');
-      showSuccess('Order cancelled successfully');
+      const res = await cancellationService.requestCancellation(order.id, cancelReason);
+      showSuccess(res.message || 'Cancellation processed successfully');
+      setIsCancelModalOpen(false);
+      setCancelReason('');
       fetchOrder();
     } catch (err) {
       showError(err.response?.data?.message || 'Failed to cancel order');
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  const handleSubmitReturn = async () => {
+    const activeItems = Object.values(selectedReturnItems)
+      .filter(i => i.selected && i.quantity > 0)
+      .map(i => ({ productId: i.productId, quantity: i.quantity, reason: returnReason }));
+
+    if (activeItems.length === 0) {
+      showError('Please select at least one item to return');
+      return;
+    }
+
+    setSubmittingReturn(true);
+    try {
+      const res = await returnService.requestReturn(order.id, {
+        reason: returnReason,
+        customerDescription: returnDesc,
+        items: activeItems
+      });
+      showSuccess(res.message || 'Return request submitted successfully');
+      setIsReturnModalOpen(false);
+      fetchOrder();
+    } catch (err) {
+      showError(err.response?.data?.message || 'Failed to submit return request');
+    } finally {
+      setSubmittingReturn(false);
+    }
+  };
+
+  const handleSubmitReplacement = async () => {
+    setSubmittingReplacement(true);
+    try {
+      const res = await replacementService.requestReplacement(order.id, {
+        reason: replacementReason,
+        description: replacementDesc
+      });
+      showSuccess(res.message || 'Replacement request submitted successfully');
+      setIsReplacementModalOpen(false);
+      fetchOrder();
+    } catch (err) {
+      showError(err.response?.data?.message || 'Failed to submit replacement request');
+    } finally {
+      setSubmittingReplacement(false);
     }
   };
 
@@ -92,7 +180,9 @@ export const OrderDetailsPage = () => {
     return <div style={{ textAlign: 'center', padding: '40px' }}>Order not found.</div>;
   }
 
-  const canCancel = ['PENDING_PAYMENT', 'CONFIRMED'].includes(order.status);
+  // Eligibility rules
+  const canCancel = ['PENDING_PAYMENT', 'CONFIRMED', 'PROCESSING', 'READY_FOR_DELIVERY'].includes(order.status);
+  const isDelivered = order.status === 'DELIVERED';
   const canRetry = order.paymentStatus === 'PENDING' || order.status === 'PAYMENT_FAILED';
 
   return (
@@ -103,7 +193,7 @@ export const OrderDetailsPage = () => {
         <div>
           <h1 className="text-h1">Order #{order.orderNumber}</h1>
           <span style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>
-            Placed on: {new Date(order.createdAt).toLocaleString()}
+            Placed on: {new Date(order.createdAt || order.created_at).toLocaleString()}
           </span>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -116,10 +206,9 @@ export const OrderDetailsPage = () => {
       {order.status !== 'REJECTED' && order.status !== 'CANCELLED' && (
         <Card padding="20px">
           <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Truck size={18} color="var(--color-primary)" /> Delivery Timeline & Real-Time Tracking 🚚
+            <Truck size={18} color="var(--color-primary)" /> Delivery Timeline & Tracking 🚚
           </h3>
 
-          {/* Timeline Bar */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '4px', marginBottom: '16px', textAlign: 'center', fontSize: '0.75rem' }}>
             {[
               { id: 'CONFIRMED', label: 'Confirmed', icon: '✓' },
@@ -148,8 +237,7 @@ export const OrderDetailsPage = () => {
                       alignItems: 'center',
                       justifyContent: 'center',
                       fontSize: '0.8rem',
-                      border: isCurrent ? '3px solid #27AE60' : 'none',
-                      boxShadow: isCurrent ? '0 0 8px rgba(6,193,103,0.5)' : 'none'
+                      border: isCurrent ? '3px solid #27AE60' : 'none'
                     }}
                   >
                     {isCompleted ? step.icon : idx + 1}
@@ -160,96 +248,6 @@ export const OrderDetailsPage = () => {
                 </div>
               );
             })}
-          </div>
-
-          {/* Estimated Delivery Time */}
-          <div style={{ background: '#FAF9FE', border: '1px solid #E2D9F3', borderRadius: '8px', padding: '12px', fontSize: '0.85rem', color: '#5A32A3', fontWeight: 700 }}>
-            {order.status === 'DELIVERED' ? (
-              <span>🎉 Delivered successfully! Thank you for shopping with Chaudhary Kirana Store.</span>
-            ) : order.status === 'OUT_FOR_DELIVERY' ? (
-              <span>🚚 Your order is on the way! Estimated Delivery: Today, 30–45 Mins</span>
-            ) : (
-              <span>⏱️ Estimated Delivery: Today, within 45 Minutes</span>
-            )}
-          </div>
-        </Card>
-      )}
-
-      {order.status === 'CONFIRMED' && (
-        <Card padding="16px" style={{ background: '#FFFDF5', border: '1px solid #FF6B00', borderRadius: 'var(--radius-md)' }}>
-          <div style={{ fontWeight: 700, color: '#B7950B', fontSize: '0.9rem' }}>
-            ⌛ Awaiting Admin Acceptance
-          </div>
-          <div style={{ fontSize: '0.85rem', color: '#2C3E50', marginTop: '2px' }}>
-            Your order has been received and is awaiting store confirmation.
-          </div>
-        </Card>
-      )}
-
-      {order.status === 'PROCESSING' && (
-        <Card padding="16px" style={{ background: '#E8F7F0', border: '1px solid #06C167', borderRadius: 'var(--radius-md)' }}>
-          <div style={{ fontWeight: 700, color: '#06C167', fontSize: '0.9rem' }}>
-            ✅ Order Accepted!
-          </div>
-          <div style={{ fontSize: '0.85rem', color: '#2C3E50', marginTop: '2px' }}>
-            Your order has been accepted and is being prepared.
-          </div>
-        </Card>
-      )}
-
-      {order.status === 'REJECTED' && (
-        <Card padding="16px" style={{ background: '#FFF5F5', border: '1px solid #E74C3C', borderRadius: 'var(--radius-md)' }}>
-          <div style={{ fontWeight: 700, color: '#C0392B', fontSize: '0.9rem' }}>
-            ❌ Order Rejected
-          </div>
-          <div style={{ fontSize: '0.85rem', color: '#2C3E50', marginTop: '2px' }}>
-            Unfortunately, your order could not be accepted.
-            {order.rejectionReason && (
-              <div style={{ marginTop: '4px', fontWeight: 600, color: '#C0392B' }}>
-                Reason: {order.rejectionReason}
-              </div>
-            )}
-
-            {order.refundStatus === 'PROCESSING' && (
-              <div style={{ marginTop: '8px', padding: '8px', background: '#FFFDF5', border: '1px solid #FF6B00', borderRadius: '6px', color: '#B7950B', fontWeight: 700 }}>
-                💰 Refund Processing: Your refund of {formatCurrency(order.totalAmount)} is being processed by your payment provider.
-              </div>
-            )}
-
-            {(order.refundStatus === 'COMPLETED' || order.paymentStatus === 'REFUNDED') && (
-              <div style={{ marginTop: '8px', padding: '8px', background: '#E8F7F0', border: '1px solid #06C167', borderRadius: '6px', color: '#27AE60', fontWeight: 700 }}>
-                🎉 Refund Completed: Your refund of {formatCurrency(order.totalAmount)} has been completed!
-              </div>
-            )}
-
-            {order.refundStatus === 'FAILED' && (
-              <div style={{ marginTop: '8px', padding: '8px', background: '#FFF0F0', border: '1px solid #E74C3C', borderRadius: '6px', color: '#C0392B', fontWeight: 700 }}>
-                ⚠️ Refund Notice: Your refund of {formatCurrency(order.totalAmount)} is pending store resolution. Our support team is processing it.
-              </div>
-            )}
-          </div>
-        </Card>
-      )}
-
-      {/* Payment Retry Action Banner */}
-      {canRetry && (
-        <Card padding="20px" style={{ backgroundColor: '#FFF0E6', border: '1px solid #FFD8BE' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-            <div>
-              <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--color-secondary)' }}>
-                ⚠️ Payment Pending or Failed
-              </h4>
-              <p style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>
-                Complete payment to confirm order dispatch from Chaudhary Kirana Store.
-              </p>
-            </div>
-            {retryPayload ? (
-              <RazorpayCheckoutButton orderDetails={retryPayload} />
-            ) : (
-              <Button variant="secondary" size="sm" loading={retrying} icon={RefreshCw} onClick={handleRetryPayment}>
-                Retry Payment (₹{order.totalAmount})
-              </Button>
-            )}
           </div>
         </Card>
       )}
@@ -295,37 +293,151 @@ export const OrderDetailsPage = () => {
         </div>
       </Card>
 
-      {/* Delivery Address Snapshot */}
-      {order.address && (
-        <Card padding="20px">
-          <h4 style={{ fontSize: '0.95rem', fontWeight: 800, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <MapPin size={18} color="var(--color-primary)" /> Delivery Location
-          </h4>
-          <p style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>
-            <strong>{order.address.recipient_name || order.address.recipientName}</strong> ({order.address.phone})<br />
-            {order.address.address_line1 || order.address.addressLine1}, {order.address.city}, {order.address.state} - {order.address.postal_code || order.address.postalCode}
-          </p>
-        </Card>
-      )}
-
-      {/* Actions */}
-      {canCancel && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <Button variant="danger" size="sm" icon={XCircle} onClick={() => setIsCancelModalOpen(true)}>
+      {/* Dynamic Action Buttons according to Eligibility */}
+      <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+        {canCancel && (
+          <Button variant="danger" icon={XCircle} onClick={() => setIsCancelModalOpen(true)}>
             Cancel Order
           </Button>
-        </div>
-      )}
+        )}
 
-      <ConfirmDialog
-        isOpen={isCancelModalOpen}
-        onClose={() => setIsCancelModalOpen(false)}
-        onConfirm={handleCancelOrder}
-        title="Cancel Order?"
-        message="Are you sure you want to cancel this order? This action cannot be undone."
-        confirmText="Yes, Cancel Order"
-        danger
-      />
+        {isDelivered && (
+          <>
+            <Button variant="outline" icon={RotateCcw} onClick={() => setIsReturnModalOpen(true)}>
+              Request Return
+            </Button>
+            <Button variant="secondary" icon={Repeat} onClick={() => setIsReplacementModalOpen(true)}>
+              Request Replacement
+            </Button>
+          </>
+        )}
+      </div>
+
+      {/* CANCELLATION MODAL */}
+      <Modal isOpen={isCancelModalOpen} onClose={() => setIsCancelModalOpen(false)} title="Cancel Order">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <p style={{ fontSize: '0.9rem', color: '#555' }}>
+            Please provide a reason for cancelling Order #{order.orderNumber}.
+          </p>
+          <Input
+            label="Cancellation Reason"
+            placeholder="e.g. Ordered by mistake, Changed my mind"
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+            required
+          />
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+            <Button variant="outline" onClick={() => setIsCancelModalOpen(false)}>Back</Button>
+            <Button variant="danger" loading={cancelling} onClick={handleCancelOrder}>Confirm Cancellation</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* RETURN MODAL */}
+      <Modal isOpen={isReturnModalOpen} onClose={() => setIsReturnModalOpen(false)} title="Request Return">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <p style={{ fontSize: '0.85rem', color: '#666' }}>
+            ⚡ <strong>7-Day Return Policy</strong>: Select items and quantities you wish to return.
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+            {order.items?.map((item) => {
+              const key = item.id || item.product_id;
+              const current = selectedReturnItems[key] || { selected: true, quantity: item.quantity };
+
+              return (
+                <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px', border: '1px solid #EEE', borderRadius: '6px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', fontWeight: 600 }}>
+                    <input
+                      type="checkbox"
+                      checked={current.selected}
+                      onChange={(e) => setSelectedReturnItems(prev => ({
+                        ...prev,
+                        [key]: { ...current, selected: e.target.checked, productId: item.product_id }
+                      }))}
+                    />
+                    {item.product_name || item.name}
+                  </label>
+                  {current.selected && (
+                    <input
+                      type="number"
+                      min="1"
+                      max={item.quantity}
+                      value={current.quantity}
+                      onChange={(e) => setSelectedReturnItems(prev => ({
+                        ...prev,
+                        [key]: { ...current, quantity: Math.min(item.quantity, parseInt(e.target.value, 10) || 1) }
+                      }))}
+                      style={{ width: '60px', padding: '4px', borderRadius: '4px', border: '1px solid #CCC' }}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div>
+            <label style={{ fontSize: '0.85rem', fontWeight: 700, display: 'block', marginBottom: '4px' }}>Return Reason</label>
+            <select
+              value={returnReason}
+              onChange={(e) => setReturnReason(e.target.value)}
+              style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #CCC' }}
+            >
+              <option value="Defective / Damaged Item">Defective / Damaged Item</option>
+              <option value="Wrong Item Delivered">Wrong Item Delivered</option>
+              <option value="Quality Not Satisfactory">Quality Not Satisfactory</option>
+              <option value="Expired Product">Expired Product</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+
+          <Input
+            label="Additional Details (Optional)"
+            placeholder="Describe the issue..."
+            value={returnDesc}
+            onChange={(e) => setReturnDesc(e.target.value)}
+          />
+
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+            <Button variant="outline" onClick={() => setIsReturnModalOpen(false)}>Cancel</Button>
+            <Button variant="primary" loading={submittingReturn} onClick={handleSubmitReturn}>Submit Return Request</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* REPLACEMENT MODAL */}
+      <Modal isOpen={isReplacementModalOpen} onClose={() => setIsReplacementModalOpen(false)} title="Request Replacement">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <p style={{ fontSize: '0.85rem', color: '#666' }}>
+            Request a fresh replacement unit for damaged or incorrect items.
+          </p>
+          <div>
+            <label style={{ fontSize: '0.85rem', fontWeight: 700, display: 'block', marginBottom: '4px' }}>Replacement Reason</label>
+            <select
+              value={replacementReason}
+              onChange={(e) => setReplacementReason(e.target.value)}
+              style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #CCC' }}
+            >
+              <option value="Wrong Item / Quality Issue">Wrong Item / Quality Issue</option>
+              <option value="Damaged Packaging / Leakage">Damaged Packaging / Leakage</option>
+              <option value="Defective Item">Defective Item</option>
+              <option value="Missing Items in Order">Missing Items in Order</option>
+            </select>
+          </div>
+
+          <Input
+            label="Replacement Description"
+            placeholder="Explain why replacement is needed..."
+            value={replacementDesc}
+            onChange={(e) => setReplacementDesc(e.target.value)}
+          />
+
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+            <Button variant="outline" onClick={() => setIsReplacementModalOpen(false)}>Cancel</Button>
+            <Button variant="secondary" loading={submittingReplacement} onClick={handleSubmitReplacement}>Submit Replacement Request</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
