@@ -398,7 +398,7 @@ export const CheckoutPage = () => {
                   icon={ShoppingBag}
                   onClick={handleProceedToPayment}
                 >
-                  Proceed to Payment ({formatCurrency(netPayable)})
+                  {creatingOrder ? 'Creating secure payment...' : `Proceed to Payment (${formatCurrency(netPayable)})`}
                 </Button>
               )}
             </div>

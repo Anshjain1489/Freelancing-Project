@@ -23,6 +23,10 @@ export const RazorpayCheckoutButton = ({ orderDetails, onSuccess, onError }) => 
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
+  const displayAmount = orderDetails?.totalPayableAmount !== undefined 
+    ? orderDetails.totalPayableAmount 
+    : (orderDetails?.totalAmount || '0');
+
   const handlePayment = async () => {
     if (!orderDetails) {
       showError('Payment details missing');
@@ -122,7 +126,7 @@ export const RazorpayCheckoutButton = ({ orderDetails, onSuccess, onError }) => 
       icon={CreditCard}
       onClick={handlePayment}
     >
-      Pay via Razorpay (₹{orderDetails?.totalAmount || '0'}) 💳
+      Pay via Razorpay (₹{displayAmount}) 💳
     </Button>
   );
 };

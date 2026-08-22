@@ -4,6 +4,7 @@ const deliveryService = require('./delivery.service');
 const couponService = require('./coupon.service');
 const AppError = require('../utils/AppError');
 const { HTTP_STATUS } = require('../constants/statusCodes');
+const config = require('../config/environment');
 
 const getCheckoutPreview = async (userId, addressId, couponCode = null) => {
   if (!addressId) {
@@ -56,13 +57,13 @@ const getCheckoutPreview = async (userId, addressId, couponCode = null) => {
     });
   }
 
-  const MIN_ORDER_VALUE = 199.0;
-  if (subtotal < MIN_ORDER_VALUE) {
-    const needed = (MIN_ORDER_VALUE - subtotal).toFixed(0);
-    throw new AppError(`Minimum order value for delivery is ₹199. Please add ₹${needed} more items to your cart.`, HTTP_STATUS.BAD_REQUEST);
+  const minOrderVal = config.store?.minOrderValue || 199.0;
+  if (subtotal < minOrderVal) {
+    const needed = (minOrderVal - subtotal).toFixed(0);
+    throw new AppError(`Minimum order value for delivery is ₹${minOrderVal}. Please add ₹${needed} more items to your cart.`, HTTP_STATUS.BAD_REQUEST);
   }
 
-  // 5. Server-Side Coupon Discount Calculation
+  // 5. Server-Side Coupon Discount Calculation (Phase 19.3)
   let discountAmount = 0;
   let appliedCoupon = null;
 
@@ -86,6 +87,7 @@ const getCheckoutPreview = async (userId, addressId, couponCode = null) => {
     subtotal,
     deliveryCharge,
     delivery: deliveryInfo,
+    couponCode: appliedCoupon ? appliedCoupon.code : null,
     coupon: appliedCoupon,
     appliedCoupon,
     discountAmount,

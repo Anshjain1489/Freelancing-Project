@@ -21,16 +21,17 @@ const parsePaymentInfo = (payments) => {
 };
 
 const createOrder = async (userId, addressId, couponCode = null) => {
-  // 1. Fetch user's active cart
+  // 1. Fetch user's active cart & calculate live subtotal
   const cart = await cartService.getUserCart(userId);
   if (!cart.items || cart.items.length === 0) {
     throw new AppError('Your cart is empty. Please add items before checkout.', HTTP_STATUS.BAD_REQUEST, ERROR_CODES.BAD_REQUEST);
   }
 
   // 2. Minimum Order Value Check (Phase 16)
-  if (cart.subtotal < config.store.minOrderValue) {
-    const shortage = config.store.minOrderValue - cart.subtotal;
-    throw new AppError(`Minimum order value for delivery is ₹${config.store.minOrderValue}. Please add ₹${shortage} more items to your cart.`, HTTP_STATUS.BAD_REQUEST, ERROR_CODES.BAD_REQUEST);
+  const minOrderVal = config.store.minOrderValue || 199.0;
+  if (cart.subtotal < minOrderVal) {
+    const shortage = (minOrderVal - cart.subtotal).toFixed(0);
+    throw new AppError(`Minimum order value for delivery is ₹${minOrderVal}. Please add ₹${shortage} more items to your cart.`, HTTP_STATUS.BAD_REQUEST, ERROR_CODES.BAD_REQUEST);
   }
 
   // 3. Calculate Delivery Charge (Phase 16 & 16.1)
@@ -46,7 +47,7 @@ const createOrder = async (userId, addressId, couponCode = null) => {
     }
   }
 
-  // 4. Validate and Apply Coupon Discount (Phase 15 & 19.2)
+  // 4. Validate and Apply Coupon Discount Server-Side (Phase 15 & 19.3)
   let coupon = null;
   let discountAmount = 0;
   if (couponCode && String(couponCode).trim().length > 0) {
@@ -55,10 +56,10 @@ const createOrder = async (userId, addressId, couponCode = null) => {
     discountAmount = couponRes.discountAmount || 0;
   }
 
-  // Single Canonical Formula (Phase 19.2)
+  // 5. Canonical Calculation — Single Source of Truth
   const totalPayableAmount = Math.max(0, cart.subtotal + deliveryCharge - discountAmount);
 
-  // 5. Reserve Inventory Stock (Phase 17)
+  // 6. Reserve Inventory Stock (Phase 17)
   const itemsToReserve = cart.items.map(i => ({ productId: i.productId, quantity: i.quantity }));
   let reservationSuccessful = false;
   try {
@@ -68,7 +69,7 @@ const createOrder = async (userId, addressId, couponCode = null) => {
     throw new AppError(err.message || 'Failed to reserve product stock for checkout.', HTTP_STATUS.BAD_REQUEST, ERROR_CODES.BAD_REQUEST);
   }
 
-  // 6. Create Order Database Record
+  // 7. Create Order Database Record
   const orderNumber = `CKS-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
 
   if (supabase) {
@@ -124,11 +125,11 @@ const createOrder = async (userId, addressId, couponCode = null) => {
         }
       }
 
-      // 7. Create Razorpay Payment Gateway Order with discounted total (Phase 19.2)
+      // 8. Create Razorpay Payment Gateway Order with discounted total in paise (Phase 19.3)
       const amountInPaise = Math.round(totalPayableAmount * 100);
       const razorpayOrder = await razorpayService.createRazorpayOrder(amountInPaise, 'INR', orderNumber);
 
-      // 8. Create Initial Payment Record
+      // 9. Create Initial Payment Record
       await supabase.from('payments').insert([{
         order_id: newOrder.id,
         payment_method: 'RAZORPAY',
@@ -149,6 +150,7 @@ const createOrder = async (userId, addressId, couponCode = null) => {
         couponCode: coupon ? coupon.code : null,
         discountAmount,
         totalPayableAmount,
+        totalAmount: totalPayableAmount, // Alias for backward compatibility
         amountInPaise,
         razorpayOrderId: razorpayOrder.id,
         currency: razorpayOrder.currency,
@@ -188,6 +190,7 @@ const createOrder = async (userId, addressId, couponCode = null) => {
     couponCode: coupon ? coupon.code : null,
     discountAmount,
     totalPayableAmount,
+    totalAmount: totalPayableAmount,
     amountInPaise,
     razorpayOrderId: `rzp_order_mock_${Date.now()}`,
     currency: 'INR',
