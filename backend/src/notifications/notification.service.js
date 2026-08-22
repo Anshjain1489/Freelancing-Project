@@ -152,6 +152,34 @@ eventBus.on(EVENT_TYPES.ORDER_CONFIRMED, async (payload) => {
   }
 });
 
+eventBus.on(EVENT_TYPES.ORDER_ACCEPTED, async (payload) => {
+  await createNotification({
+    userId: payload.userId,
+    type: 'ORDER',
+    title: '✅ Order Accepted!',
+    message: `Your order #${payload.orderNumber} has been accepted by the store and is being prepared.`,
+    eventType: EVENT_TYPES.ORDER_ACCEPTED,
+    referenceType: 'ORDER',
+    referenceId: payload.orderNumber,
+    metadata: payload,
+    recipientPhone: payload.customerPhone
+  });
+});
+
+eventBus.on(EVENT_TYPES.ORDER_REJECTED, async (payload) => {
+  await createNotification({
+    userId: payload.userId,
+    type: 'ORDER',
+    title: '❌ Order Update',
+    message: `Unfortunately, your order #${payload.orderNumber} could not be accepted. Reason: ${payload.rejectionReason || 'Item unavailable'}`,
+    eventType: EVENT_TYPES.ORDER_REJECTED,
+    referenceType: 'ORDER',
+    referenceId: payload.orderNumber,
+    metadata: payload,
+    recipientPhone: payload.customerPhone
+  });
+});
+
 eventBus.on(EVENT_TYPES.ORDER_OUT_FOR_DELIVERY, async (payload) => {
   await createNotification({
     userId: payload.userId,

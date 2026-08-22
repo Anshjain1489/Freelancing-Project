@@ -93,6 +93,45 @@ export const OrderDetailsPage = () => {
         </div>
       </div>
 
+      {/* Customer Order Decision Status Message Banner */}
+      {order.status === 'CONFIRMED' && (
+        <Card padding="16px" style={{ background: '#E8F7F0', border: '1px solid #06C167', borderRadius: 'var(--radius-md)' }}>
+          <div style={{ fontWeight: 700, color: '#06C167', fontSize: '0.9rem' }}>
+            ⏳ Order Awaiting Confirmation
+          </div>
+          <div style={{ fontSize: '0.85rem', color: '#2C3E50', marginTop: '2px' }}>
+            Your order has been received and is awaiting store confirmation.
+          </div>
+        </Card>
+      )}
+
+      {order.status === 'PROCESSING' && (
+        <Card padding="16px" style={{ background: '#E8F7F0', border: '1px solid #06C167', borderRadius: 'var(--radius-md)' }}>
+          <div style={{ fontWeight: 700, color: '#06C167', fontSize: '0.9rem' }}>
+            ✅ Order Accepted!
+          </div>
+          <div style={{ fontSize: '0.85rem', color: '#2C3E50', marginTop: '2px' }}>
+            Your order has been accepted and is being prepared.
+          </div>
+        </Card>
+      )}
+
+      {order.status === 'REJECTED' && (
+        <Card padding="16px" style={{ background: '#FFF5F5', border: '1px solid #E74C3C', borderRadius: 'var(--radius-md)' }}>
+          <div style={{ fontWeight: 700, color: '#C0392B', fontSize: '0.9rem' }}>
+            ❌ Order Rejected
+          </div>
+          <div style={{ fontSize: '0.85rem', color: '#2C3E50', marginTop: '2px' }}>
+            Unfortunately, your order could not be accepted.
+            {order.rejectionReason && (
+              <div style={{ marginTop: '4px', fontWeight: 600, color: '#C0392B' }}>
+                Reason: {order.rejectionReason}
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
       {/* Payment Retry Action Banner */}
       {canRetry && (
         <Card padding="20px" style={{ backgroundColor: '#FFF0E6', border: '1px solid #FFD8BE' }}>

@@ -71,6 +71,32 @@ const broadcastNotification = (notification) => {
   });
 };
 
+/**
+ * Broadcast order decision update (ACCEPT / REJECT) to all connected Admin SSE streams
+ */
+const broadcastDecision = (decision) => {
+  sseClients.forEach((clientsSet, userId) => {
+    clientsSet.forEach(res => {
+      if (!res.writable || res.destroyed || res.writableEnded) {
+        removeClient(userId, res);
+        return;
+      }
+      if (res.userRole === 'ADMIN') {
+        try {
+          res.write(`data: ${JSON.stringify({
+            eventType: 'ORDER_DECISION_UPDATED',
+            type: 'ORDER_DECISION',
+            ...decision
+          })}\n\n`);
+        } catch (err) {
+          logger.error(`[SSE_DECISION_BROADCAST_ERR] Failed for userId=${userId}`, err);
+          removeClient(userId, res);
+        }
+      }
+    });
+  });
+};
+
 // Send keep-alive heartbeat ping every 25 seconds for Render deployment compatibility
 setInterval(() => {
   sseClients.forEach((clientsSet, userId) => {
@@ -91,5 +117,6 @@ setInterval(() => {
 module.exports = {
   addClient,
   removeClient,
-  broadcastNotification
+  broadcastNotification,
+  broadcastDecision
 };

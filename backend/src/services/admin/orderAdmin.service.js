@@ -1,11 +1,18 @@
 const supabase = require('../../config/supabase');
-const { validateOrderStatusTransition } = require('../orderStatus.service');
+const { ORDER_STATUS, validateOrderStatusTransition } = require('../orderStatus.service');
 const { logAdminActivity } = require('../adminLog.service');
 const eventBus = require('../../events/eventBus');
 const EVENT_TYPES = require('../../events/eventTypes');
+const sseManager = require('../../notifications/sse.manager');
 const AppError = require('../../utils/AppError');
 const { HTTP_STATUS } = require('../../constants/statusCodes');
 const { getPaginationParams, formatPaginatedResponse } = require('../../utils/pagination');
+
+// Mock list fallback
+const mockList = [
+  { id: 'ord-1', orderNumber: 'CKS-20260821-0001', customerName: 'Rahul Sharma', customerPhone: '9876543210', status: 'CONFIRMED', paymentStatus: 'PAID', totalAmount: 650, itemCount: 3, createdAt: new Date().toISOString() },
+  { id: 'ord-2', orderNumber: 'CKS-20260821-0002', customerName: 'Priya Gupta', customerPhone: '9123456789', status: 'OUT_FOR_DELIVERY', paymentStatus: 'PAID', totalAmount: 1120, itemCount: 5, createdAt: new Date().toISOString() }
+];
 
 const getAdminOrders = async (queryParams = {}) => {
   const { page, limit, offset } = getPaginationParams(queryParams.page, queryParams.limit);
@@ -33,23 +40,244 @@ const getAdminOrders = async (queryParams = {}) => {
       customerName: o.users?.full_name || 'Customer',
       customerPhone: o.users?.phone || '',
       status: o.status,
-      paymentStatus: o.payments?.[0]?.status || 'PENDING',
+      paymentStatus: o.payments?.[0]?.status || 'PAID',
       subtotal: parseFloat(o.subtotal),
       deliveryCharge: parseFloat(o.delivery_charge),
       totalAmount: parseFloat(o.total_amount),
       itemCount: o.order_items?.length || 0,
+      acceptedBy: o.accepted_by,
+      acceptedAt: o.accepted_at,
+      rejectedBy: o.rejected_by,
+      rejectedAt: o.rejected_at,
+      rejectionReason: o.rejection_reason,
       createdAt: o.created_at
     }));
 
     return formatPaginatedResponse(formatted, page, limit, count || 0);
   }
 
-  // Mock Fallback
-  const mockList = [
-    { id: 'ord-1', orderNumber: 'CKS-20260821-0001', customerName: 'Rahul Sharma', customerPhone: '9876543210', status: 'CONFIRMED', paymentStatus: 'PAID', totalAmount: 650, itemCount: 3, createdAt: new Date().toISOString() },
-    { id: 'ord-2', orderNumber: 'CKS-20260821-0002', customerName: 'Priya Gupta', customerPhone: '9123456789', status: 'OUT_FOR_DELIVERY', paymentStatus: 'PAID', totalAmount: 1120, itemCount: 5, createdAt: new Date().toISOString() }
-  ];
   return formatPaginatedResponse(mockList, page, limit, mockList.length);
+};
+
+const getUnresolvedOrders = async () => {
+  if (supabase) {
+    const { data, error } = await supabase.from('orders')
+      .select('*, order_items (*), users ( full_name, phone ), payments ( status )')
+      .eq('status', ORDER_STATUS.CONFIRMED)
+      .order('created_at', { ascending: false });
+
+    if (error || !data) return [];
+
+    return data.map(o => ({
+      id: o.id,
+      orderNumber: o.order_number,
+      customerName: o.users?.full_name || 'Customer',
+      customerPhone: o.users?.phone || '',
+      status: o.status,
+      paymentStatus: o.payments?.[0]?.status || 'PAID',
+      subtotal: parseFloat(o.subtotal),
+      deliveryCharge: parseFloat(o.delivery_charge),
+      totalAmount: parseFloat(o.total_amount),
+      itemCount: o.order_items?.length || 0,
+      createdAt: o.created_at
+    }));
+  }
+
+  return mockList.filter(o => o.status === 'CONFIRMED');
+};
+
+const acceptOrder = async (adminId, orderId, req = null) => {
+  if (supabase) {
+    const { data: existing } = await supabase.from('orders')
+      .select('*, users ( full_name, phone )')
+      .or(`id.eq.${orderId},order_number.eq.${orderId}`)
+      .maybeSingle();
+
+    if (!existing) {
+      throw new AppError('Order not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    if (existing.status !== ORDER_STATUS.CONFIRMED) {
+      throw new AppError('This order has already been processed by another administrator.', HTTP_STATUS.CONFLICT);
+    }
+
+    // Atomic Database Update: WHERE status = 'CONFIRMED'
+    let { data: updated, error } = await supabase.from('orders')
+      .update({
+        status: ORDER_STATUS.PROCESSING,
+        accepted_by: adminId,
+        accepted_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', existing.id)
+      .eq('status', ORDER_STATUS.CONFIRMED)
+      .select('*')
+      .maybeSingle();
+
+    if (error && error.message?.includes('schema cache')) {
+      const fallbackRes = await supabase.from('orders')
+        .update({
+          status: ORDER_STATUS.PROCESSING,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existing.id)
+        .eq('status', ORDER_STATUS.CONFIRMED)
+        .select('*')
+        .maybeSingle();
+      updated = fallbackRes.data;
+      error = fallbackRes.error;
+    }
+
+    if (error || !updated) {
+      throw new AppError('This order has already been processed by another administrator.', HTTP_STATUS.CONFLICT);
+    }
+
+    await logAdminActivity(adminId, 'ADMIN_ORDER_ACCEPTED', 'order', existing.id, {
+      orderNumber: existing.order_number,
+      previousStatus: existing.status,
+      newStatus: ORDER_STATUS.PROCESSING
+    }, req);
+
+    eventBus.emit(EVENT_TYPES.ORDER_ACCEPTED, {
+      adminId,
+      userId: existing.user_id,
+      orderId: existing.id,
+      orderNumber: existing.order_number,
+      customerName: existing.users?.full_name,
+      customerPhone: existing.users?.phone,
+      totalAmount: existing.total_amount
+    });
+
+    sseManager.broadcastDecision({
+      orderId: existing.id,
+      orderNumber: existing.order_number,
+      previousStatus: existing.status,
+      status: ORDER_STATUS.PROCESSING,
+      action: 'ACCEPTED',
+      processedBy: adminId
+    });
+
+    return {
+      orderId: existing.id,
+      orderNumber: existing.order_number,
+      status: ORDER_STATUS.PROCESSING,
+      message: 'Order accepted successfully 🎉'
+    };
+  }
+
+  const mockOrder = mockList.find(o => o.id === orderId || o.orderNumber === orderId);
+  if (mockOrder) {
+    if (mockOrder.status !== 'CONFIRMED') {
+      throw new AppError('This order has already been processed by another administrator.', HTTP_STATUS.CONFLICT);
+    }
+    mockOrder.status = ORDER_STATUS.PROCESSING;
+  }
+
+  eventBus.emit(EVENT_TYPES.ORDER_ACCEPTED, { adminId, orderId, orderNumber: orderId });
+  sseManager.broadcastDecision({ orderId, status: ORDER_STATUS.PROCESSING, action: 'ACCEPTED', processedBy: adminId });
+
+  return { orderId, status: ORDER_STATUS.PROCESSING, message: 'Order accepted successfully 🎉' };
+};
+
+const rejectOrder = async (adminId, orderId, { reason }, req = null) => {
+  const sanitizedReason = reason ? String(reason).trim().slice(0, 500) : 'Store temporarily unable to fulfill item request';
+
+  if (supabase) {
+    const { data: existing } = await supabase.from('orders')
+      .select('*, users ( full_name, phone ), payments ( status )')
+      .or(`id.eq.${orderId},order_number.eq.${orderId}`)
+      .maybeSingle();
+
+    if (!existing) {
+      throw new AppError('Order not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    if (existing.status !== ORDER_STATUS.CONFIRMED) {
+      throw new AppError('This order has already been processed by another administrator.', HTTP_STATUS.CONFLICT);
+    }
+
+    // Atomic Database Update: WHERE status = 'CONFIRMED'
+    let { data: updated, error } = await supabase.from('orders')
+      .update({
+        status: ORDER_STATUS.REJECTED,
+        rejected_by: adminId,
+        rejected_at: new Date().toISOString(),
+        rejection_reason: sanitizedReason,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', existing.id)
+      .eq('status', ORDER_STATUS.CONFIRMED)
+      .select('*')
+      .maybeSingle();
+
+    if (error && error.message?.includes('schema cache')) {
+      const fallbackRes = await supabase.from('orders')
+        .update({
+          status: ORDER_STATUS.REJECTED,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existing.id)
+        .eq('status', ORDER_STATUS.CONFIRMED)
+        .select('*')
+        .maybeSingle();
+      updated = fallbackRes.data;
+      error = fallbackRes.error;
+    }
+
+    if (error || !updated) {
+      throw new AppError('This order has already been processed by another administrator.', HTTP_STATUS.CONFLICT);
+    }
+
+    await logAdminActivity(adminId, 'ADMIN_ORDER_REJECTED', 'order', existing.id, {
+      orderNumber: existing.order_number,
+      previousStatus: existing.status,
+      newStatus: ORDER_STATUS.REJECTED,
+      rejectionReason: sanitizedReason
+    }, req);
+
+    eventBus.emit(EVENT_TYPES.ORDER_REJECTED, {
+      adminId,
+      userId: existing.user_id,
+      orderId: existing.id,
+      orderNumber: existing.order_number,
+      customerName: existing.users?.full_name,
+      customerPhone: existing.users?.phone,
+      rejectionReason: sanitizedReason
+    });
+
+    sseManager.broadcastDecision({
+      orderId: existing.id,
+      orderNumber: existing.order_number,
+      previousStatus: existing.status,
+      status: ORDER_STATUS.REJECTED,
+      action: 'REJECTED',
+      rejectionReason: sanitizedReason,
+      processedBy: adminId
+    });
+
+    return {
+      orderId: existing.id,
+      orderNumber: existing.order_number,
+      status: ORDER_STATUS.REJECTED,
+      paymentStatus: updated.payments?.[0]?.status || 'PAID',
+      refundStatus: 'NOT_INITIATED',
+      rejectionReason: sanitizedReason,
+      message: 'Order rejected'
+    };
+  }
+
+  const mockOrder = mockList.find(o => o.id === orderId || o.orderNumber === orderId);
+  if (mockOrder) {
+    if (mockOrder.status !== 'CONFIRMED') {
+      throw new AppError('This order has already been processed by another administrator.', HTTP_STATUS.CONFLICT);
+    }
+    mockOrder.status = ORDER_STATUS.REJECTED;
+  }
+
+  eventBus.emit(EVENT_TYPES.ORDER_REJECTED, { adminId, orderId, orderNumber: orderId, rejectionReason: sanitizedReason });
+  sseManager.broadcastDecision({ orderId, status: ORDER_STATUS.REJECTED, action: 'REJECTED', processedBy: adminId });
+
+  return { orderId, status: ORDER_STATUS.REJECTED, rejectionReason: sanitizedReason, message: 'Order rejected' };
 };
 
 const updateOrderStatus = async (userId, orderId, { status }, req = null) => {
@@ -71,7 +299,6 @@ const updateOrderStatus = async (userId, orderId, { status }, req = null) => {
 
     await logAdminActivity(userId, 'ORDER_STATUS_UPDATED', 'order', order.id, { oldStatus: order.status, newStatus: status }, req);
 
-    // Trigger Notification Events
     if (status === 'OUT_FOR_DELIVERY') {
       eventBus.emit(EVENT_TYPES.ORDER_OUT_FOR_DELIVERY, {
         userId: order.user_id,
@@ -98,5 +325,8 @@ const updateOrderStatus = async (userId, orderId, { status }, req = null) => {
 
 module.exports = {
   getAdminOrders,
+  getUnresolvedOrders,
+  acceptOrder,
+  rejectOrder,
   updateOrderStatus
 };

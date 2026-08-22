@@ -47,6 +47,21 @@ export const adminService = {
     return response.data;
   },
 
+  getUnresolvedOrders: async () => {
+    const response = await apiClient.get(ENDPOINTS.ADMIN.UNRESOLVED_ORDERS);
+    return response.data;
+  },
+
+  acceptOrder: async (id) => {
+    const response = await apiClient.post(ENDPOINTS.ADMIN.ACCEPT_ORDER(id));
+    return response.data;
+  },
+
+  rejectOrder: async (id, reason) => {
+    const response = await apiClient.post(ENDPOINTS.ADMIN.REJECT_ORDER(id), { reason });
+    return response.data;
+  },
+
   updateOrderStatus: async (id, status) => {
     const response = await apiClient.patch(ENDPOINTS.ADMIN.UPDATE_ORDER_STATUS(id), { status });
     return response.data;

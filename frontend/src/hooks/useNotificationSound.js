@@ -12,6 +12,9 @@ export const useNotificationSound = () => {
   const processedIdsRef = useRef(new Set());
   const audioContextRef = useRef(null);
 
+  const pendingAlertOrderIdsRef = useRef(new Set());
+  const repeatingTimerRef = useRef(null);
+
   // Initialize Web Audio Context
   const getAudioContext = useCallback(() => {
     if (!audioContextRef.current) {
@@ -31,21 +34,6 @@ export const useNotificationSound = () => {
   const toggleSound = useCallback(() => {
     setSoundEnabled(prev => !prev);
   }, [setSoundEnabled]);
-
-  // Unlock AudioContext upon user gesture
-  const unlockAudio = useCallback(async () => {
-    try {
-      const ctx = getAudioContext();
-      if (ctx && ctx.state === 'suspended') {
-        await ctx.resume();
-      }
-      setAutoplayBlocked(false);
-      setSoundEnabled(true);
-      return true;
-    } catch (err) {
-      return false;
-    }
-  }, [getAudioContext, setSoundEnabled]);
 
   // Synthesize dual-frequency alert chime (659Hz -> 880Hz)
   const playChime = useCallback(() => {
@@ -91,8 +79,85 @@ export const useNotificationSound = () => {
     }
   }, [getAudioContext]);
 
+  // Single repeating alert loop manager
+  const stopRepeatingAlertLoop = useCallback(() => {
+    if (repeatingTimerRef.current) {
+      clearInterval(repeatingTimerRef.current);
+      repeatingTimerRef.current = null;
+    }
+  }, []);
+
+  const startRepeatingAlertLoop = useCallback(() => {
+    if (repeatingTimerRef.current) return; // Single loop constraint
+
+    playChime().catch((err) => {
+      if (err.name === 'NotAllowedError' || err.message?.includes('user gesture') || err.message?.includes('suspended')) {
+        setAutoplayBlocked(true);
+      }
+    });
+
+    repeatingTimerRef.current = setInterval(() => {
+      if (pendingAlertOrderIdsRef.current.size === 0 || !soundEnabled) {
+        stopRepeatingAlertLoop();
+        return;
+      }
+
+      playChime().catch((err) => {
+        if (err.name === 'NotAllowedError' || err.message?.includes('user gesture') || err.message?.includes('suspended')) {
+          setAutoplayBlocked(true);
+        }
+      });
+    }, 3500);
+  }, [playChime, soundEnabled, stopRepeatingAlertLoop]);
+
+  // Unlock AudioContext upon user gesture
+  const unlockAudio = useCallback(async () => {
+    try {
+      const ctx = getAudioContext();
+      if (ctx && ctx.state === 'suspended') {
+        await ctx.resume();
+      }
+      setAutoplayBlocked(false);
+      setSoundEnabled(true);
+      if (pendingAlertOrderIdsRef.current.size > 0) {
+        startRepeatingAlertLoop();
+      }
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }, [getAudioContext, setSoundEnabled, startRepeatingAlertLoop]);
+
+  const startIncomingOrderAlert = useCallback((orderId) => {
+    if (!orderId) return;
+    pendingAlertOrderIdsRef.current.add(String(orderId));
+    if (soundEnabled) {
+      startRepeatingAlertLoop();
+    }
+  }, [soundEnabled, startRepeatingAlertLoop]);
+
+  const stopIncomingOrderAlert = useCallback((orderId) => {
+    if (!orderId) return;
+    pendingAlertOrderIdsRef.current.delete(String(orderId));
+    if (pendingAlertOrderIdsRef.current.size === 0) {
+      stopRepeatingAlertLoop();
+    }
+  }, [stopRepeatingAlertLoop]);
+
+  const syncPendingOrderAlerts = useCallback((unresolvedOrderIdsArray) => {
+    if (!Array.isArray(unresolvedOrderIdsArray)) return;
+
+    pendingAlertOrderIdsRef.current = new Set(unresolvedOrderIdsArray.map(id => String(id)));
+
+    if (pendingAlertOrderIdsRef.current.size > 0 && soundEnabled) {
+      startRepeatingAlertLoop();
+    } else {
+      stopRepeatingAlertLoop();
+    }
+  }, [soundEnabled, startRepeatingAlertLoop, stopRepeatingAlertLoop]);
+
   /**
-   * Mark an array of existing notification IDs as processed on initial load (prevents sound replay on refresh)
+   * Mark an array of existing notification IDs as processed on initial load
    */
   const markBatchProcessed = useCallback((notifIdsArray) => {
     if (!Array.isArray(notifIdsArray)) return;
@@ -110,12 +175,10 @@ export const useNotificationSound = () => {
 
     const notifIdStr = String(notif.id);
 
-    // IDEMPOTENCY: Ignore if ID already processed
     if (processedIdsRef.current.has(notifIdStr)) {
       return;
     }
 
-    // Add to processed set immediately
     processedIdsRef.current.add(notifIdStr);
 
     playChime().catch((err) => {
@@ -125,15 +188,25 @@ export const useNotificationSound = () => {
     });
   }, [soundEnabled, playChime]);
 
+  // Handle soundEnabled state toggling
+  useEffect(() => {
+    if (!soundEnabled) {
+      stopRepeatingAlertLoop();
+    } else if (pendingAlertOrderIdsRef.current.size > 0) {
+      startRepeatingAlertLoop();
+    }
+  }, [soundEnabled, startRepeatingAlertLoop, stopRepeatingAlertLoop]);
+
   useEffect(() => {
     return () => {
+      stopRepeatingAlertLoop();
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
         try {
           audioContextRef.current.close();
         } catch {}
       }
     };
-  }, []);
+  }, [stopRepeatingAlertLoop]);
 
   return {
     soundEnabled,
@@ -142,7 +215,12 @@ export const useNotificationSound = () => {
     autoplayBlocked,
     unlockAudio,
     playNotificationSound,
+    startIncomingOrderAlert,
+    stopIncomingOrderAlert,
+    syncPendingOrderAlerts,
+    pendingAlertOrderIds: pendingAlertOrderIdsRef.current,
     markBatchProcessed,
     processedIds: processedIdsRef.current
   };
+};
 };

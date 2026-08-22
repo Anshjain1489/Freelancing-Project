@@ -13,7 +13,35 @@ const TEMPLATE_MAPPING = {
         ]
       }
     ],
-    fallbackText: (data) => `Hello ${data.customerName || 'Customer'} 👋\n\nYour order ${data.orderNumber} has been confirmed! 🎉\nOrder Total: ₹${data.totalAmount}\n\nThank you for shopping with Chaudhary Kirana Store 🛒`
+    fallbackText: (data) => `Hello ${data.customerName || 'Customer'} 👋\n\nYour order ${data.orderNumber} has been received and is awaiting store confirmation.`
+  },
+
+  [EVENT_TYPES.ORDER_ACCEPTED]: {
+    name: 'order_accepted',
+    buildComponents: (data) => [
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', text: data.customerName || 'Customer' },
+          { type: 'text', text: data.orderNumber }
+        ]
+      }
+    ],
+    fallbackText: (data) => `Hello ${data.customerName || 'Customer'} 👋\n\n✅ Your order ${data.orderNumber} has been accepted by Chaudhary Kirana Store and is being prepared!`
+  },
+
+  [EVENT_TYPES.ORDER_REJECTED]: {
+    name: 'order_rejected',
+    buildComponents: (data) => [
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', text: data.customerName || 'Customer' },
+          { type: 'text', text: data.orderNumber }
+        ]
+      }
+    ],
+    fallbackText: (data) => `Hello ${data.customerName || 'Customer'} 👋\n\n❌ Unfortunately, your order ${data.orderNumber} could not be accepted.\nReason: ${data.rejectionReason || 'Item unavailable'}`
   },
 
   [EVENT_TYPES.ORDER_OUT_FOR_DELIVERY]: {

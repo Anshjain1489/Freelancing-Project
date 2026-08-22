@@ -35,6 +35,11 @@ async function fixSchemaFull() {
     await client.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_distance_km NUMERIC(5,2) DEFAULT 0.00;');
     await client.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_attempts INT DEFAULT 0;');
     await client.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS razorpay_order_id VARCHAR(100);');
+    await client.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS accepted_by UUID;');
+    await client.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ;');
+    await client.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS rejected_by UUID;');
+    await client.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ;');
+    await client.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS rejection_reason TEXT;');
 
     // Order addresses table columns
     await client.query('ALTER TABLE order_addresses ADD COLUMN IF NOT EXISTS address_line1 TEXT;');

@@ -35,6 +35,9 @@ router.post('/inventory/:productId/adjust', inventoryAdminController.adjustStock
 
 // Order Management
 router.get('/orders', orderAdminController.getAdminOrders);
+router.get('/orders/unresolved', orderAdminController.getUnresolvedOrders);
+router.post('/orders/:id/accept', orderAdminController.acceptOrder);
+router.post('/orders/:id/reject', orderAdminController.rejectOrder);
 router.patch('/orders/:id/status', orderAdminController.updateOrderStatus);
 
 // Customer Management

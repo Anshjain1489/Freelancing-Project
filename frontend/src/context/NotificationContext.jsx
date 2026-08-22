@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { notificationService } from '../services/notification.service';
+import { adminService } from '../services/admin.service';
 import { useNotificationSound } from '../hooks/useNotificationSound';
 import { AuthContext } from './AuthContext';
 import { ENDPOINTS } from '../api/endpoints';
@@ -13,10 +14,17 @@ export const NotificationProvider = ({ children }) => {
 
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [unresolvedOrders, setUnresolvedOrders] = useState([]);
   const [loading, setLoading] = useState(false);
 
   const soundHook = useNotificationSound();
-  const { playNotificationSound, markBatchProcessed } = soundHook;
+  const {
+    playNotificationSound,
+    markBatchProcessed,
+    startIncomingOrderAlert,
+    stopIncomingOrderAlert,
+    syncPendingOrderAlerts
+  } = soundHook;
 
   const fetchUnreadCount = useCallback(async () => {
     if (!isAuthenticated) {
@@ -29,6 +37,22 @@ export const NotificationProvider = ({ children }) => {
     } catch {}
   }, [isAuthenticated]);
 
+  const fetchUnresolvedOrders = useCallback(async () => {
+    if (!isAuthenticated || user?.role !== 'ADMIN') {
+      setUnresolvedOrders([]);
+      syncPendingOrderAlerts([]);
+      return;
+    }
+    try {
+      const res = await adminService.getUnresolvedOrders();
+      const orders = res.data?.items || [];
+      setUnresolvedOrders(orders);
+      syncPendingOrderAlerts(orders.map(o => o.id));
+    } catch (err) {
+      console.error('Failed to fetch unresolved orders:', err);
+    }
+  }, [isAuthenticated, user?.role, syncPendingOrderAlerts]);
+
   const fetchNotifications = useCallback(async () => {
     if (!isAuthenticated) {
       setNotifications([]);
@@ -39,7 +63,6 @@ export const NotificationProvider = ({ children }) => {
       const res = await notificationService.getUserNotifications();
       const items = res.data?.items || [];
 
-      // Merge fetched items with current state using notification.id deduplication
       setNotifications(prev => {
         const map = new Map();
         items.forEach(n => map.set(String(n.id), n));
@@ -51,7 +74,6 @@ export const NotificationProvider = ({ children }) => {
         return Array.from(map.values()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       });
 
-      // Mark fetched notification IDs as processed to avoid sound replay on refresh
       markBatchProcessed(items.map(n => n.id));
     } catch {
     } finally {
@@ -64,15 +86,27 @@ export const NotificationProvider = ({ children }) => {
     if (!isAuthenticated) {
       setNotifications([]);
       setUnreadCount(0);
+      setUnresolvedOrders([]);
+      syncPendingOrderAlerts([]);
       return;
     }
 
     fetchUnreadCount();
     fetchNotifications();
 
-    const interval = setInterval(fetchUnreadCount, 30000);
+    if (user?.role === 'ADMIN') {
+      fetchUnresolvedOrders();
+    }
+
+    const interval = setInterval(() => {
+      fetchUnreadCount();
+      if (user?.role === 'ADMIN') {
+        fetchUnresolvedOrders();
+      }
+    }, 30000);
+
     return () => clearInterval(interval);
-  }, [isAuthenticated, fetchUnreadCount, fetchNotifications]);
+  }, [isAuthenticated, user?.role, fetchUnreadCount, fetchNotifications, fetchUnresolvedOrders, syncPendingOrderAlerts]);
 
   // Single SSE EventSource Listener per authenticated session
   useEffect(() => {
@@ -92,20 +126,36 @@ export const NotificationProvider = ({ children }) => {
           const data = JSON.parse(event.data);
           if (!data || data.eventType === 'CONNECTED') return;
 
-          // 1. Deduplicated Notification Merging
+          // 1. Multi-Admin SSE Decision Event Synchronization
+          if (data.eventType === 'ORDER_DECISION_UPDATED' || data.type === 'ORDER_DECISION') {
+            const targetId = data.orderId;
+            setUnresolvedOrders(prev => prev.filter(o => String(o.id) !== String(targetId) && String(o.orderNumber) !== String(targetId)));
+            stopIncomingOrderAlert(targetId);
+            fetchUnresolvedOrders();
+            return;
+          }
+
+          // 2. Standard Notification Processing
           setNotifications(prev => {
             if (prev.some(n => String(n.id) === String(data.id))) return prev;
             return [data, ...prev];
           });
 
-          // 2. Increment unread count
           setUnreadCount(prev => prev + 1);
 
-          // 3. Play sound ONLY if current user is ADMIN and event is an admin alert
+          // 3. Trigger Continuous Incoming Sound for Admins
           const isAdmin = user?.role === 'ADMIN';
-          const isAdminAlert = data.eventType === 'ADMIN_NEW_ORDER' || data.eventType === 'ORDER_CONFIRMED' || data.type === 'INVENTORY' || data.eventType === 'LOW_STOCK';
+          const isAdminOrderAlert = data.eventType === 'ADMIN_NEW_ORDER' || data.eventType === 'ORDER_CONFIRMED';
 
-          if (isAdmin && isAdminAlert) {
+          if (isAdmin && isAdminOrderAlert) {
+            const newOrderId = data.metadata?.orderId || data.referenceId || data.orderId;
+            if (newOrderId) {
+              startIncomingOrderAlert(newOrderId);
+              fetchUnresolvedOrders();
+            } else {
+              playNotificationSound(data);
+            }
+          } else if (isAdmin) {
             playNotificationSound(data);
           }
         } catch (err) {
@@ -125,7 +175,7 @@ export const NotificationProvider = ({ children }) => {
         eventSource.close();
       }
     };
-  }, [isAuthenticated, user?.role, playNotificationSound]);
+  }, [isAuthenticated, user?.role, playNotificationSound, startIncomingOrderAlert, stopIncomingOrderAlert, fetchUnresolvedOrders]);
 
   const markOneRead = async (id) => {
     await notificationService.markAsRead(id);
@@ -144,9 +194,11 @@ export const NotificationProvider = ({ children }) => {
       value={{
         notifications,
         unreadCount,
+        unresolvedOrders,
         loading,
         fetchNotifications,
         fetchUnreadCount,
+        fetchUnresolvedOrders,
         markOneRead,
         markAllRead,
         ...soundHook
