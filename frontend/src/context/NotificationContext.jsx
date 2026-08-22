@@ -5,7 +5,8 @@ import { useNotificationSound } from '../hooks/useNotificationSound';
 import { AuthContext } from './AuthContext';
 import { ENDPOINTS } from '../api/endpoints';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1';
+const rawApiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1';
+const API_BASE_URL = rawApiUrl.endsWith('/') ? rawApiUrl.slice(0, -1) : rawApiUrl;
 
 export const NotificationContext = createContext();
 
@@ -34,7 +35,9 @@ export const NotificationProvider = ({ children }) => {
     try {
       const res = await notificationService.getUnreadCount();
       setUnreadCount(res.data?.unreadCount || 0);
-    } catch {}
+    } catch (err) {
+      console.warn('[NOTIFICATIONS_UNREAD_COUNT_FAIL]', err?.message || err);
+    }
   }, [isAuthenticated]);
 
   const fetchUnresolvedOrders = useCallback(async () => {
@@ -49,7 +52,7 @@ export const NotificationProvider = ({ children }) => {
       setUnresolvedOrders(orders);
       syncPendingOrderAlerts(orders.map(o => o.id));
     } catch (err) {
-      console.error('Failed to fetch unresolved orders:', err);
+      console.warn('[NOTIFICATIONS_UNRESOLVED_ORDERS_FAIL]', err?.message || err);
     }
   }, [isAuthenticated, user?.role, syncPendingOrderAlerts]);
 
@@ -75,7 +78,8 @@ export const NotificationProvider = ({ children }) => {
       });
 
       markBatchProcessed(items.map(n => n.id));
-    } catch {
+    } catch (err) {
+      console.warn('[NOTIFICATIONS_FETCH_FAIL]', err?.message || err);
     } finally {
       setLoading(false);
     }
@@ -113,7 +117,7 @@ export const NotificationProvider = ({ children }) => {
     if (!isAuthenticated) return;
 
     const token = localStorage.getItem('accessToken') || localStorage.getItem('cks_auth_token');
-    if (!token) return;
+    if (!token || token === 'undefined' || token === 'null') return;
 
     const streamUrl = `${API_BASE_URL}${ENDPOINTS.NOTIFICATIONS.STREAM}?token=${encodeURIComponent(token)}`;
     let eventSource = null;
@@ -123,6 +127,7 @@ export const NotificationProvider = ({ children }) => {
 
       eventSource.onmessage = (event) => {
         try {
+          if (!event || !event.data) return;
           const data = JSON.parse(event.data);
           if (!data || data.eventType === 'CONNECTED') return;
 
@@ -176,20 +181,22 @@ export const NotificationProvider = ({ children }) => {
             playNotificationSound(data);
           }
         } catch (err) {
-          console.error('[SSE_MESSAGE_PARSER_ERROR]', err);
+          console.warn('[SSE_MESSAGE_PARSER_ERROR]', err?.message || err);
         }
       };
 
-      eventSource.onerror = () => {
-        // EventSource auto-reconnects
+      eventSource.onerror = (err) => {
+        console.warn('[SSE_CONNECTION_WARNING] EventSource lost connection or failed to connect to server.');
       };
     } catch (err) {
-      console.error('[SSE_CONNECTION_ERROR]', err);
+      console.warn('[SSE_CONNECTION_ERROR]', err?.message || err);
     }
 
     return () => {
       if (eventSource) {
-        eventSource.close();
+        try {
+          eventSource.close();
+        } catch {}
       }
     };
   }, [isAuthenticated, user?.role, playNotificationSound, startIncomingOrderAlert, stopIncomingOrderAlert, fetchUnresolvedOrders]);

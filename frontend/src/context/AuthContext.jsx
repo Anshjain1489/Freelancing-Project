@@ -4,30 +4,78 @@ import { showSuccess, showError } from '../utils/toast';
 
 export const AuthContext = createContext();
 
+const getValidInitialToken = () => {
+  try {
+    const token = localStorage.getItem('accessToken') || localStorage.getItem('cks_auth_token');
+    if (!token || token === 'undefined' || token === 'null' || typeof token !== 'string') {
+      return null;
+    }
+    return token;
+  } catch {
+    return null;
+  }
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('accessToken') || null);
+  const [token, setToken] = useState(getValidInitialToken());
   const [isLoading, setIsLoading] = useState(true);
 
   // Initialize Auth state on mount
   useEffect(() => {
+    let isMounted = true;
+
     const initAuth = async () => {
-      const storedToken = localStorage.getItem('accessToken');
-      if (storedToken) {
-        try {
+      try {
+        const storedToken = getValidInitialToken();
+        if (storedToken) {
           const res = await authService.getMe();
-          setUser(res.data.user);
-        } catch (err) {
+          const userData = res?.data?.user || res?.user || res?.data;
+          if (userData && isMounted) {
+            setUser(userData);
+          } else {
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            localStorage.removeItem('cks_auth_token');
+            if (isMounted) {
+              setToken(null);
+              setUser(null);
+            }
+          }
+        } else {
+          try {
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            localStorage.removeItem('cks_auth_token');
+          } catch {}
+          if (isMounted) {
+            setToken(null);
+            setUser(null);
+          }
+        }
+      } catch (err) {
+        console.warn('[AUTH_INIT_WARNING]', err?.message || 'Failed to authenticate stored session.');
+        try {
           localStorage.removeItem('accessToken');
           localStorage.removeItem('refreshToken');
+          localStorage.removeItem('cks_auth_token');
+        } catch {}
+        if (isMounted) {
           setToken(null);
           setUser(null);
         }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
-      setIsLoading(false);
     };
 
     initAuth();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const login = async (identifier, password) => {

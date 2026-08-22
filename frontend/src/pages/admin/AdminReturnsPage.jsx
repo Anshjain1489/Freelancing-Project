@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { returnService } from '../../services/return.service';
-import { deliveryService } from '../../services/delivery.management.service';
+import { deliveryPartnerService as deliveryService } from '../../services/deliveryPartner.service';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { StatusBadge } from '../../components/ui/StatusBadge';
