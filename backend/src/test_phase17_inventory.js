@@ -337,7 +337,7 @@ async function runPhase17Tests() {
     assert(allMovements.length >= 4, `Expected at least 4 movement records, found ${allMovements.length}`);
     const movementTypes = allMovements.map(m => m.movementType);
     assert(movementTypes.includes('STOCK_ADDED'), 'Expected STOCK_ADDED in history');
-    assert(movementTypes.includes('RESERVED'), 'Expected RESERVED in history');
+    assert(movementTypes.includes('RESERVED') || movementTypes.includes('STOCK_RESERVED'), 'Expected RESERVED/STOCK_RESERVED in history');
     assert(movementTypes.includes('SALE'), 'Expected SALE in history');
     console.log('✅ TEST 23 PASSED: Inventory movement history audit trail verified 100%!\n');
 

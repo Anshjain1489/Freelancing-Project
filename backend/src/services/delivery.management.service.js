@@ -274,9 +274,9 @@ const getAssignedDeliveries = async () => {
 
           return {
             assignmentId: a.id,
-            orderId: a.orders?.id,
-            orderNumber: a.orders?.order_number,
-            orderStatus: a.orders?.status,
+            orderId: a.orders?.id || a.order_id,
+            orderNumber: a.orders?.order_number || `CKS-DEL-${a.order_id}`,
+            orderStatus: a.orders?.status || 'PROCESSING',
             deliveryStatus: a.status,
             totalAmount: parseFloat(a.orders?.total_amount || 0),
             paymentStatus: a.orders?.payment_status || 'PAID',
@@ -314,7 +314,9 @@ const getAssignedDeliveries = async () => {
     customer: { name: 'Valued Customer', phone: '9876543210', email: 'customer@example.com' },
     deliveryAddress: defaultDeliveryAddress,
     deliveryPartner: { name: 'Rahul Sharma', phone: '9876543210' },
-    assignedAt: a.assigned_at
+    assignedAt: a.assigned_at,
+    estimatedDeliveryAt: a.estimated_delivery_at,
+    notes: a.notes || null
   }));
 };
 
@@ -352,7 +354,8 @@ const assignDeliveryPartner = async (adminId, orderId, partnerId, estimatedMinut
       status: 'ASSIGNED',
       estimated_ready_at: estimatedReadyAt,
       estimated_delivery_at: estimatedDeliveryAt,
-      assigned_at: new Date().toISOString()
+      assigned_at: new Date().toISOString(),
+      notes: deliveryNotes || null
     };
 
     const { data: assignment, error: assignErr } = await supabase.from('delivery_assignments')
@@ -376,6 +379,7 @@ const assignDeliveryPartner = async (adminId, orderId, partnerId, estimatedMinut
         deliveryStatus: 'ASSIGNED',
         orderStatus: ORDER_STATUS.READY_FOR_DELIVERY,
         estimatedDeliveryAt,
+        notes: deliveryNotes || null,
         updatedAt: new Date().toISOString()
       };
 
@@ -403,6 +407,7 @@ const assignDeliveryPartner = async (adminId, orderId, partnerId, estimatedMinut
     delivery_partner_id: partnerId,
     status: 'ASSIGNED',
     estimated_delivery_at: estimatedDeliveryAt,
+    notes: deliveryNotes || null,
     assigned_at: new Date().toISOString()
   };
   mockDeliveryAssignments.push(mockAssign);
@@ -414,6 +419,7 @@ const assignDeliveryPartner = async (adminId, orderId, partnerId, estimatedMinut
     deliveryStatus: 'ASSIGNED',
     orderStatus: ORDER_STATUS.READY_FOR_DELIVERY,
     estimatedDeliveryAt,
+    notes: deliveryNotes || null,
     updatedAt: new Date().toISOString()
   };
 
@@ -434,7 +440,7 @@ const reassignDeliveryPartner = async (adminId, orderId, newPartnerId, req = nul
       .maybeSingle();
 
     if (existing) {
-      if (['OUT_FOR_DELIVERY', 'DELIVERED'].includes(existing.status)) {
+      if (['OUT_FOR_DELIVERY', 'DELIVERED', 'PICKED_UP'].includes(existing.status)) {
         throw new AppError('Cannot reassign order that is already picked up or delivered', HTTP_STATUS.BAD_REQUEST);
       }
 
@@ -473,7 +479,7 @@ const reassignDeliveryPartner = async (adminId, orderId, newPartnerId, req = nul
   const foundMock = mockDeliveryAssignments.find(a => String(a.order_id) === String(orderId));
   if (!foundMock) throw new AppError('No active delivery assignment found for this order', HTTP_STATUS.NOT_FOUND);
 
-  if (['OUT_FOR_DELIVERY', 'DELIVERED'].includes(foundMock.status)) {
+  if (['OUT_FOR_DELIVERY', 'DELIVERED', 'PICKED_UP'].includes(foundMock.status)) {
     throw new AppError('Cannot reassign order that is already picked up or delivered', HTTP_STATUS.BAD_REQUEST);
   }
 
@@ -540,9 +546,9 @@ const getPartnerOrders = async (partnerId, queryParams = {}) => {
 
         return {
           assignmentId: a.id,
-          orderId: a.orders?.id,
-          orderNumber: a.orders?.order_number,
-          orderStatus: a.orders?.status,
+          orderId: a.orders?.id || a.order_id,
+          orderNumber: a.orders?.order_number || `CKS-DEL-${a.order_id}`,
+          orderStatus: a.orders?.status || 'PROCESSING',
           deliveryStatus: a.status,
           customer: {
             id: a.orders?.users?.id,
@@ -625,8 +631,8 @@ const getPartnerOrderById = async (partnerId, orderId) => {
 
       return {
         assignmentId: assignment.id,
-        orderId: assignment.orders?.id,
-        orderNumber: assignment.orders?.order_number,
+        orderId: assignment.orders?.id || assignment.order_id,
+        orderNumber: assignment.orders?.order_number || `CKS-DEL-${assignment.order_id}`,
         orderStatus: assignment.orders?.status,
         deliveryStatus: assignment.status,
         customer: {

@@ -7,199 +7,187 @@ const EVENT_TYPES = require('../events/eventTypes');
 const sseManager = require('../notifications/sse.manager');
 const notificationService = require('../notifications/notification.service');
 
-// Memory fallback store for standalone unit testing environments
+// Memory fallback store for unit tests / offline mode
 const mockProductsStore = new Map();
-const mockMovementsStore = [];
-const mockReleasedOrders = new Set();
+const mockInventoryMovements = [];
+const mockReservedOrders = new Set();
 const mockConsumedOrders = new Set();
+const mockReleasedOrders = new Set();
+
+const isUuid = (val) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(val || ''));
 
 /**
- * 1. ATOMIC STOCK RESERVATION
- * Atomically reserves stock for a list of items for an order.
- * If any item cannot be reserved, previous reservations in this batch are rolled back.
+ * 1. RESERVE STOCK (CHECKOUT / ORDER CREATION / REPLACEMENT APPROVAL)
  */
 const reserveStock = async (items, orderId = null) => {
   if (!items || !Array.isArray(items) || items.length === 0) {
-    throw new AppError('Items array is required for stock reservation', HTTP_STATUS.BAD_REQUEST);
+    throw new AppError('Items list is required to reserve stock', HTTP_STATUS.BAD_REQUEST);
   }
 
-  const reservedBatch = [];
+  if (orderId && mockReservedOrders.has(String(orderId))) {
+    return { success: true, message: 'Stock already reserved for this order' };
+  }
 
   if (supabase) {
     try {
-      let dbFailed = false;
+      if (orderId && isUuid(orderId)) {
+        const { data: existingReservations } = await supabase.from('inventory_movements')
+          .select('id')
+          .eq('order_id', orderId)
+          .eq('movement_type', 'STOCK_RESERVED');
+
+        if (existingReservations && existingReservations.length > 0) {
+          mockReservedOrders.add(String(orderId));
+          return { success: true, message: 'Stock already reserved for this order' };
+        }
+      }
+
+      let allFoundInDb = true;
       for (const item of items) {
         const productId = item.productId || item.product_id;
-        const qty = parseInt(item.quantity, 10);
-        if (!productId || isNaN(qty) || qty <= 0) {
-          throw new AppError('Invalid product or quantity for stock reservation', HTTP_STATUS.BAD_REQUEST);
-        }
+        const requestedQty = parseInt(item.quantity, 10);
+        if (!productId || isNaN(requestedQty) || requestedQty <= 0) continue;
 
-        // Fetch current product stock & reserved state
-        const { data: prod, error: fetchErr } = await supabase.from('products')
-          .select('id, name, stock_quantity, reserved_quantity, low_stock_threshold')
+        const { data: prod } = await supabase.from('products')
+          .select('id, name, stock_quantity, reserved_quantity, low_stock_threshold, low_stock_alert_active')
           .eq('id', productId)
-          .single();
-
-        if (fetchErr || !prod) {
-          dbFailed = true;
-          break;
-        }
-
-        const available = prod.stock_quantity - prod.reserved_quantity;
-        if (available < qty) {
-          throw new AppError(
-            `Insufficient stock available for product "${prod.name}". Requested: ${qty}, Available: ${Math.max(0, available)}`,
-            HTTP_STATUS.CONFLICT,
-            ERROR_CODES.OUT_OF_STOCK
-          );
-        }
-
-        // Atomic SQL Update: WHERE (stock_quantity - reserved_quantity) >= qty
-        const newReserved = prod.reserved_quantity + qty;
-        const { data: updated, error: updateErr } = await supabase.from('products')
-          .update({
-            reserved_quantity: newReserved,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', productId)
-          .gte('stock_quantity', newReserved)
-          .select()
           .maybeSingle();
 
-        if (updateErr || !updated) {
-          throw new AppError(
-            `Insufficient stock available for product "${prod.name}". Concurrent reservation failed.`,
-            HTTP_STATUS.CONFLICT,
-            ERROR_CODES.OUT_OF_STOCK
-          );
+        if (prod) {
+          const availableStock = prod.stock_quantity - prod.reserved_quantity;
+          if (availableStock < requestedQty) {
+            throw new AppError(
+              `Insufficient stock available for product "${prod.name}". Requested: ${requestedQty}, Available: ${Math.max(0, availableStock)}.`,
+              HTTP_STATUS.CONFLICT,
+              ERROR_CODES.OUT_OF_STOCK
+            );
+          }
+        } else {
+          allFoundInDb = false;
         }
-
-        reservedBatch.push({
-          productId,
-          productName: prod.name,
-          quantity: qty,
-          prevStock: prod.stock_quantity,
-          newStock: prod.stock_quantity,
-          prevReserved: prod.reserved_quantity,
-          newReserved
-        });
-
-        // Also update memory mock for consistency
-        const mockP = mockProductsStore.get(productId);
-        if (mockP) {
-          mockP.reserved_quantity = newReserved;
-        }
-
-        // Create inventory movement record
-        await supabase.from('inventory_movements').insert([{
-          product_id: productId,
-          order_id: orderId,
-          movement_type: 'RESERVED',
-          quantity: qty,
-          previous_stock: prod.stock_quantity,
-          new_stock: prod.stock_quantity,
-          previous_reserved: prod.reserved_quantity,
-          new_reserved: newReserved,
-          notes: `Stock reserved for order ${orderId || 'new order'}`
-        }]);
-
-        await supabase.from('inventory')
-          .update({ reserved_quantity: newReserved, updated_at: new Date().toISOString() })
-          .eq('product_id', productId);
       }
 
-      if (!dbFailed) {
-        return { success: true, items: reservedBatch };
+      if (allFoundInDb) {
+        for (const item of items) {
+          const productId = item.productId || item.product_id;
+          const requestedQty = parseInt(item.quantity, 10);
+          if (!productId || isNaN(requestedQty) || requestedQty <= 0) continue;
+
+          const { data: prod } = await supabase.from('products')
+            .select('id, name, stock_quantity, reserved_quantity')
+            .eq('id', productId)
+            .single();
+
+          if (prod) {
+            const availableStock = prod.stock_quantity - prod.reserved_quantity;
+            if (availableStock < requestedQty) {
+              throw new AppError(
+                `Insufficient stock available for product "${prod.name}". Requested: ${requestedQty}, Available: ${Math.max(0, availableStock)}.`,
+                HTTP_STATUS.CONFLICT,
+                ERROR_CODES.OUT_OF_STOCK
+              );
+            }
+
+            const newReserved = prod.reserved_quantity + requestedQty;
+            const { data: updatedProd, error: updErr } = await supabase.from('products')
+              .update({ reserved_quantity: newReserved, updated_at: new Date().toISOString() })
+              .eq('id', productId)
+              .eq('reserved_quantity', prod.reserved_quantity)
+              .select()
+              .maybeSingle();
+
+            if (updErr || !updatedProd) {
+              throw new AppError(
+                `Concurrent stock modification detected for product "${prod.name}". Please retry.`,
+                HTTP_STATUS.CONFLICT,
+                ERROR_CODES.OUT_OF_STOCK
+              );
+            }
+
+            await supabase.from('inventory')
+              .update({ reserved_quantity: newReserved, updated_at: new Date().toISOString() })
+              .eq('product_id', productId);
+
+            try {
+              await supabase.from('inventory_movements').insert([{
+                product_id: productId,
+                order_id: isUuid(orderId) ? orderId : null,
+                movement_type: 'STOCK_RESERVED',
+                quantity: requestedQty,
+                previous_stock: prod.stock_quantity,
+                new_stock: prod.stock_quantity,
+                previous_reserved: prod.reserved_quantity,
+                new_reserved: newReserved,
+                notes: `Stock reserved for order ${orderId || 'checkout'}`
+              }]);
+            } catch (err) {}
+
+            mockInventoryMovements.push({
+              id: `mov-${Date.now()}`,
+              product_id: productId,
+              order_id: orderId,
+              movement_type: 'STOCK_RESERVED',
+              quantity: requestedQty,
+              previous_stock: prod.stock_quantity,
+              new_stock: prod.stock_quantity,
+              previous_reserved: prod.reserved_quantity,
+              new_reserved: newReserved,
+              created_at: new Date().toISOString()
+            });
+
+            await checkLowStockAlert(productId);
+          }
+        }
+
+        if (orderId) mockReservedOrders.add(String(orderId));
+        return { success: true, message: 'Stock reserved successfully' };
       }
     } catch (err) {
-      if (err.statusCode === 409) {
-        // Rollback DB reservations already made in this loop
-        for (const rollbackItem of reservedBatch) {
-          try {
-            const { data: currentP } = await supabase.from('products')
-              .select('reserved_quantity')
-              .eq('id', rollbackItem.productId)
-              .single();
-
-            if (currentP) {
-              const rollbackReserved = Math.max(0, currentP.reserved_quantity - rollbackItem.quantity);
-              await supabase.from('products')
-                .update({ reserved_quantity: rollbackReserved })
-                .eq('id', rollbackItem.productId);
-
-              await supabase.from('inventory')
-                .update({ reserved_quantity: rollbackReserved })
-                .eq('product_id', rollbackItem.productId);
-            }
-          } catch (rbErr) {}
-        }
-        throw err;
-      }
+      if (err.statusCode === 409 || err.code === 'OUT_OF_STOCK') throw err;
     }
   }
 
-  // Fallback Mock Store Implementation for Testing & Offline Mode
-  const mockReservedBatch = [];
-  try {
-    for (const item of items) {
-      const productId = item.productId || item.product_id;
-      const qty = parseInt(item.quantity, 10);
-      const prod = mockProductsStore.get(productId) || {
-        id: productId,
-        name: `Product ${productId}`,
-        stock_quantity: 50,
-        reserved_quantity: 0,
-        low_stock_threshold: 5,
-        low_stock_alert_active: false
-      };
+  for (const item of items) {
+    const productId = item.productId || item.product_id;
+    const requestedQty = parseInt(item.quantity, 10);
+    const mockP = mockProductsStore.get(productId) || { stock_quantity: 100, reserved_quantity: 0, low_stock_threshold: 5 };
 
-      const available = prod.stock_quantity - prod.reserved_quantity;
-      if (available < qty) {
-        throw new AppError(
-          `Insufficient stock available for product "${prod.name}". Requested: ${qty}, Available: ${Math.max(0, available)}`,
-          HTTP_STATUS.CONFLICT,
-          ERROR_CODES.OUT_OF_STOCK
-        );
-      }
-
-      const prevReserved = prod.reserved_quantity;
-      prod.reserved_quantity += qty;
-      mockProductsStore.set(productId, prod);
-
-      mockReservedBatch.push({ productId, productName: prod.name, quantity: qty, prevReserved, newReserved: prod.reserved_quantity });
-      mockMovementsStore.push({
-        id: `mov-${Date.now()}-${Math.random()}`,
-        product_id: productId,
-        order_id: orderId,
-        movement_type: 'RESERVED',
-        quantity: qty,
-        previous_stock: prod.stock_quantity,
-        new_stock: prod.stock_quantity,
-        previous_reserved: prevReserved,
-        new_reserved: prod.reserved_quantity,
-        created_at: new Date().toISOString()
-      });
+    const available = mockP.stock_quantity - mockP.reserved_quantity;
+    if (available < requestedQty) {
+      throw new AppError(
+        `Insufficient stock available for product "${productId}". Requested: ${requestedQty}, Available: ${Math.max(0, available)}.`,
+        HTTP_STATUS.CONFLICT,
+        ERROR_CODES.OUT_OF_STOCK
+      );
     }
+    const prevReserved = mockP.reserved_quantity;
+    mockP.reserved_quantity += requestedQty;
+    mockProductsStore.set(productId, mockP);
 
-    return { success: true, items: mockReservedBatch };
-  } catch (err) {
-    for (const rb of mockReservedBatch) {
-      const p = mockProductsStore.get(rb.productId);
-      if (p) {
-        p.reserved_quantity = Math.max(0, p.reserved_quantity - rb.quantity);
-      }
-    }
-    throw err;
+    mockInventoryMovements.push({
+      id: `mov-${Date.now()}`,
+      product_id: productId,
+      order_id: orderId,
+      movement_type: 'STOCK_RESERVED',
+      quantity: requestedQty,
+      previous_stock: mockP.stock_quantity,
+      new_stock: mockP.stock_quantity,
+      previous_reserved: prevReserved,
+      new_reserved: mockP.reserved_quantity,
+      created_at: new Date().toISOString()
+    });
   }
+
+  if (orderId) mockReservedOrders.add(String(orderId));
+  return { success: true, message: 'Stock reserved successfully' };
 };
 
 /**
- * 2. RELEASE STOCK RESERVATION
+ * 2. RELEASE STOCK (ORDER REJECTION / CANCELLATION / EXPIRY)
  */
-const releaseStock = async (items, orderId = null, reason = 'ORDER_REJECTED') => {
+const releaseStock = async (items, orderId = null, reason = 'ORDER_CANCELLED') => {
   if (orderId && mockReleasedOrders.has(String(orderId))) {
-    return { success: true, message: 'Stock reservation already released' };
+    return { success: true, message: 'Stock already released for this order' };
   }
 
   let itemsToRelease = items;
@@ -234,40 +222,59 @@ const releaseStock = async (items, orderId = null, reason = 'ORDER_REJECTED') =>
             .update({ reserved_quantity: newReserved, updated_at: new Date().toISOString() })
             .eq('product_id', productId);
 
-          await supabase.from('inventory_movements').insert([{
+          try {
+            await supabase.from('inventory_movements').insert([{
+              product_id: productId,
+              order_id: isUuid(orderId) ? orderId : null,
+              movement_type: 'STOCK_RELEASED',
+              quantity: qty,
+              previous_stock: prod.stock_quantity,
+              new_stock: prod.stock_quantity,
+              previous_reserved: prod.reserved_quantity,
+              new_reserved: newReserved,
+              notes: `Stock released due to ${reason}`
+            }]);
+          } catch (err) {}
+
+          mockInventoryMovements.push({
+            id: `mov-${Date.now()}`,
             product_id: productId,
             order_id: orderId,
-            movement_type: 'RESERVATION_RELEASED',
+            movement_type: 'STOCK_RELEASED',
             quantity: qty,
             previous_stock: prod.stock_quantity,
             new_stock: prod.stock_quantity,
             previous_reserved: prod.reserved_quantity,
             new_reserved: newReserved,
-            notes: `Reservation released: ${reason}`
-          }]);
+            created_at: new Date().toISOString()
+          });
         }
       }
+
+      if (orderId) mockReleasedOrders.add(String(orderId));
+      return { success: true, message: 'Stock released successfully' };
     } catch (err) {}
   }
 
-  // Memory mock release
   for (const item of itemsToRelease) {
     const productId = item.productId || item.product_id;
     const qty = parseInt(item.quantity, 10);
-    const prod = mockProductsStore.get(productId);
-    if (prod) {
-      const prevReserved = prod.reserved_quantity;
-      prod.reserved_quantity = Math.max(0, prod.reserved_quantity - qty);
-      mockMovementsStore.push({
-        id: `mov-rel-${Date.now()}-${Math.random()}`,
+    const mockP = mockProductsStore.get(productId);
+
+    if (mockP) {
+      const prevReserved = mockP.reserved_quantity;
+      mockP.reserved_quantity = Math.max(0, mockP.reserved_quantity - qty);
+
+      mockInventoryMovements.push({
+        id: `mov-${Date.now()}`,
         product_id: productId,
         order_id: orderId,
-        movement_type: 'RESERVATION_RELEASED',
+        movement_type: 'STOCK_RELEASED',
         quantity: qty,
-        previous_stock: prod.stock_quantity,
-        new_stock: prod.stock_quantity,
+        previous_stock: mockP.stock_quantity,
+        new_stock: mockP.stock_quantity,
         previous_reserved: prevReserved,
-        new_reserved: prod.reserved_quantity,
+        new_reserved: mockP.reserved_quantity,
         created_at: new Date().toISOString()
       });
     }
@@ -297,7 +304,7 @@ const consumeStock = async (items, orderId = null) => {
 
   if (supabase) {
     try {
-      if (orderId) {
+      if (orderId && isUuid(orderId)) {
         const { data: existingSales } = await supabase.from('inventory_movements')
           .select('id')
           .eq('order_id', orderId)
@@ -342,95 +349,115 @@ const consumeStock = async (items, orderId = null) => {
           try {
             await supabase.from('inventory_movements').insert([{
               product_id: productId,
-              order_id: orderId,
+              order_id: isUuid(orderId) ? orderId : null,
               movement_type: 'SALE',
               quantity: qty,
               previous_stock: prod.stock_quantity,
               new_stock: newStock,
               previous_reserved: prod.reserved_quantity,
               new_reserved: newReserved,
-              notes: `Order ${orderId} delivered - stock consumed`
+              notes: `Stock consumed upon order delivery (Order #${orderId})`
             }]);
-          } catch (dupErr) {}
+          } catch (err) {}
+
+          mockInventoryMovements.push({
+            id: `mov-${Date.now()}`,
+            product_id: productId,
+            order_id: orderId,
+            movement_type: 'SALE',
+            quantity: qty,
+            previous_stock: prod.stock_quantity,
+            new_stock: newStock,
+            previous_reserved: prod.reserved_quantity,
+            new_reserved: newReserved,
+            created_at: new Date().toISOString()
+          });
 
           await checkLowStockAlert(productId);
         }
       }
+
+      if (orderId) mockConsumedOrders.add(String(orderId));
+      return { success: true, message: 'Stock consumed upon delivery successfully' };
     } catch (err) {}
   }
 
-  // Memory mock consume
   for (const item of itemsToConsume) {
     const productId = item.productId || item.product_id;
     const qty = parseInt(item.quantity, 10);
-    const prod = mockProductsStore.get(productId);
-    if (prod) {
-      const prevStock = prod.stock_quantity;
-      const prevReserved = prod.reserved_quantity;
-      prod.stock_quantity = Math.max(0, prod.stock_quantity - qty);
-      prod.reserved_quantity = Math.max(0, prod.reserved_quantity - qty);
+    const mockP = mockProductsStore.get(productId);
 
-      mockMovementsStore.push({
-        id: `mov-sale-${Date.now()}-${Math.random()}`,
+    if (mockP) {
+      const prevStock = mockP.stock_quantity;
+      const prevReserved = mockP.reserved_quantity;
+
+      mockP.stock_quantity = Math.max(0, mockP.stock_quantity - qty);
+      mockP.reserved_quantity = Math.max(0, mockP.reserved_quantity - qty);
+
+      mockInventoryMovements.push({
+        id: `mov-${Date.now()}`,
         product_id: productId,
         order_id: orderId,
         movement_type: 'SALE',
         quantity: qty,
         previous_stock: prevStock,
-        new_stock: prod.stock_quantity,
+        new_stock: mockP.stock_quantity,
         previous_reserved: prevReserved,
-        new_reserved: prod.reserved_quantity,
+        new_reserved: mockP.reserved_quantity,
         created_at: new Date().toISOString()
       });
-
-      await checkLowStockAlert(productId);
     }
   }
 
   if (orderId) mockConsumedOrders.add(String(orderId));
-  return { success: true, message: 'Stock permanently consumed upon order delivery' };
+  return { success: true, message: 'Stock consumed upon delivery' };
 };
 
 /**
  * 4. ADMIN ADD STOCK
  */
-const addStock = async (adminId, productId, quantity, reason = 'Supplier Restock', req = null) => {
+const addStock = async (adminId, productId, quantity, reason = 'Restock', req = null) => {
   const qty = parseInt(quantity, 10);
   if (isNaN(qty) || qty <= 0) {
     throw new AppError('Quantity to add must be a positive integer', HTTP_STATUS.BAD_REQUEST);
   }
 
-  const mockP = mockProductsStore.get(productId);
-
+  let prod = null;
   if (supabase) {
     try {
-      const { data: prod } = await supabase.from('products')
-        .select('id, name, stock_quantity, reserved_quantity, low_stock_threshold, low_stock_alert_active')
+      const { data: found } = await supabase.from('products')
+        .select('id, name, stock_quantity, reserved_quantity, low_stock_threshold')
         .eq('id', productId)
         .single();
 
-      if (prod) {
+      if (found) {
+        prod = found;
         const newStock = prod.stock_quantity + qty;
-        const available = newStock - prod.reserved_quantity;
-        const resetAlert = available > prod.low_stock_threshold;
 
         await supabase.from('products')
-          .update({
-            stock_quantity: newStock,
-            low_stock_alert_active: resetAlert ? false : prod.low_stock_alert_active,
-            updated_at: new Date().toISOString()
-          })
+          .update({ stock_quantity: newStock, updated_at: new Date().toISOString() })
           .eq('id', productId);
 
         await supabase.from('inventory')
-          .update({
-            quantity: newStock,
-            low_stock_alert_active: resetAlert ? false : prod.low_stock_alert_active,
-            updated_at: new Date().toISOString()
-          })
+          .update({ quantity: newStock, updated_at: new Date().toISOString() })
           .eq('product_id', productId);
 
-        await supabase.from('inventory_movements').insert([{
+        try {
+          await supabase.from('inventory_movements').insert([{
+            product_id: productId,
+            movement_type: 'STOCK_ADDED',
+            quantity: qty,
+            previous_stock: prod.stock_quantity,
+            new_stock: newStock,
+            previous_reserved: prod.reserved_quantity,
+            new_reserved: prod.reserved_quantity,
+            performed_by: isUuid(adminId) ? adminId : null,
+            notes: reason
+          }]);
+        } catch (err) {}
+
+        mockInventoryMovements.push({
+          id: `mov-${Date.now()}`,
           product_id: productId,
           movement_type: 'STOCK_ADDED',
           quantity: qty,
@@ -439,66 +466,52 @@ const addStock = async (adminId, productId, quantity, reason = 'Supplier Restock
           previous_reserved: prod.reserved_quantity,
           new_reserved: prod.reserved_quantity,
           performed_by: adminId,
-          notes: reason
-        }]);
+          notes: reason,
+          created_at: new Date().toISOString()
+        });
 
         await logAdminActivity(adminId, 'ADMIN_STOCK_ADDED', 'product', productId, {
           previousStock: prod.stock_quantity,
-          newStock,
           addedQuantity: qty,
+          newStock,
           reason
         }, req);
 
-        if (mockP) {
-          mockP.stock_quantity = newStock;
-          if (resetAlert) mockP.low_stock_alert_active = false;
-        }
-
-        const payload = { productId, productName: prod.name, previousStock: prod.stock_quantity, newStock, addedQuantity: qty, reason };
-        eventBus.emit(EVENT_TYPES.INVENTORY_UPDATED, payload);
-        sseManager.broadcastInventoryUpdate(payload);
-
-        return { success: true, productId, previousStock: prod.stock_quantity, newStock, message: 'Stock added successfully' };
+        await checkLowStockAlert(productId);
       }
     } catch (err) {}
   }
 
-  // Memory Mock Fallback
-  const prod = mockP || {
-    id: productId,
-    name: 'Mock Product',
-    stock_quantity: 20,
-    reserved_quantity: 0,
-    low_stock_threshold: 5,
-    low_stock_alert_active: false
-  };
-
-  const prevStock = prod.stock_quantity;
-  prod.stock_quantity += qty;
-  const available = prod.stock_quantity - prod.reserved_quantity;
-  if (available > prod.low_stock_threshold) {
-    prod.low_stock_alert_active = false;
+  let mockP = mockProductsStore.get(productId);
+  if (!mockP) {
+    mockP = { stock_quantity: 20, reserved_quantity: 0, low_stock_threshold: 5, name: 'Product' };
   }
-  mockProductsStore.set(productId, prod);
 
-  mockMovementsStore.push({
-    id: `mov-add-${Date.now()}`,
+  const prevStock = mockP.stock_quantity;
+  mockP.stock_quantity += qty;
+  mockProductsStore.set(productId, mockP);
+
+  mockInventoryMovements.push({
+    id: `mov-${Date.now()}`,
     product_id: productId,
     movement_type: 'STOCK_ADDED',
     quantity: qty,
     previous_stock: prevStock,
-    new_stock: prod.stock_quantity,
-    previous_reserved: prod.reserved_quantity,
-    new_reserved: prod.reserved_quantity,
+    new_stock: mockP.stock_quantity,
+    previous_reserved: mockP.reserved_quantity,
+    new_reserved: mockP.reserved_quantity,
+    performed_by: adminId,
     notes: reason,
     created_at: new Date().toISOString()
   });
 
-  const payload = { productId, productName: prod.name, previousStock: prevStock, newStock: prod.stock_quantity, addedQuantity: qty };
+  await checkLowStockAlert(productId);
+
+  const payload = { productId, productName: mockP.name, previousStock: prevStock, newStock: mockP.stock_quantity, addedQuantity: qty };
   eventBus.emit(EVENT_TYPES.INVENTORY_UPDATED, payload);
   sseManager.broadcastInventoryUpdate(payload);
 
-  return { success: true, productId, previousStock: prevStock, newStock: prod.stock_quantity, message: 'Stock added successfully' };
+  return { success: true, productId, previousStock: prevStock, newStock: mockP.stock_quantity, message: 'Stock added successfully' };
 };
 
 /**
@@ -534,7 +547,22 @@ const removeStock = async (adminId, productId, quantity, reason = 'Damaged / Exp
           .update({ quantity: newStock, updated_at: new Date().toISOString() })
           .eq('product_id', productId);
 
-        await supabase.from('inventory_movements').insert([{
+        try {
+          await supabase.from('inventory_movements').insert([{
+            product_id: productId,
+            movement_type: 'STOCK_REMOVED',
+            quantity: qty,
+            previous_stock: prod.stock_quantity,
+            new_stock: newStock,
+            previous_reserved: prod.reserved_quantity,
+            new_reserved: prod.reserved_quantity,
+            performed_by: isUuid(adminId) ? adminId : null,
+            notes: reason
+          }]);
+        } catch (err) {}
+
+        mockInventoryMovements.push({
+          id: `mov-${Date.now()}`,
           product_id: productId,
           movement_type: 'STOCK_REMOVED',
           quantity: qty,
@@ -543,74 +571,60 @@ const removeStock = async (adminId, productId, quantity, reason = 'Damaged / Exp
           previous_reserved: prod.reserved_quantity,
           new_reserved: prod.reserved_quantity,
           performed_by: adminId,
-          notes: reason
-        }]);
+          notes: reason,
+          created_at: new Date().toISOString()
+        });
 
         await logAdminActivity(adminId, 'ADMIN_STOCK_REMOVED', 'product', productId, {
           previousStock: prod.stock_quantity,
-          newStock,
           removedQuantity: qty,
+          newStock,
           reason
         }, req);
 
-        // Keep mock in sync
-        const mockP = mockProductsStore.get(productId);
-        if (mockP) mockP.stock_quantity = newStock;
-
         await checkLowStockAlert(productId);
-
-        const payload = { productId, productName: prod.name, previousStock: prod.stock_quantity, newStock, removedQuantity: qty };
-        eventBus.emit(EVENT_TYPES.INVENTORY_UPDATED, payload);
-        sseManager.broadcastInventoryUpdate(payload);
-
-        return { success: true, productId, previousStock: prod.stock_quantity, newStock, message: 'Stock removed successfully' };
       }
     } catch (err) {
       if (err.statusCode === 400) throw err;
     }
   }
 
-  // Memory Mock Fallback
-  const prod = mockProductsStore.get(productId) || {
-    id: productId,
-    name: 'Mock Product',
-    stock_quantity: 20,
-    reserved_quantity: 0,
-    low_stock_threshold: 5,
-    low_stock_alert_active: false
-  };
+  let mockP = mockProductsStore.get(productId);
+  if (!mockP) {
+    mockP = { stock_quantity: 30, reserved_quantity: 0, low_stock_threshold: 5, name: 'Product' };
+  }
 
-  if (prod.stock_quantity - qty < prod.reserved_quantity) {
+  if (mockP.stock_quantity - qty < mockP.reserved_quantity) {
     throw new AppError(
-      `Cannot remove stock: requested reduction (${qty}) would drop stock (${prod.stock_quantity}) below reserved quantity (${prod.reserved_quantity}).`,
+      `Cannot remove stock: requested reduction (${qty}) would drop stock (${mockP.stock_quantity}) below reserved quantity (${mockP.reserved_quantity}).`,
       HTTP_STATUS.BAD_REQUEST
     );
   }
 
-  const prevStock = prod.stock_quantity;
-  prod.stock_quantity -= qty;
-  mockProductsStore.set(productId, prod);
+  const prevStock = mockP.stock_quantity;
+  mockP.stock_quantity -= qty;
+  mockProductsStore.set(productId, mockP);
 
-  mockMovementsStore.push({
-    id: `mov-rem-${Date.now()}`,
+  mockInventoryMovements.push({
+    id: `mov-${Date.now()}`,
     product_id: productId,
     movement_type: 'STOCK_REMOVED',
     quantity: qty,
     previous_stock: prevStock,
-    new_stock: prod.stock_quantity,
-    previous_reserved: prod.reserved_quantity,
-    new_reserved: prod.reserved_quantity,
+    new_stock: mockP.stock_quantity,
+    previous_reserved: mockP.reserved_quantity,
+    new_reserved: mockP.reserved_quantity,
     notes: reason,
     created_at: new Date().toISOString()
   });
 
   await checkLowStockAlert(productId);
 
-  const payload = { productId, productName: prod.name, previousStock: prevStock, newStock: prod.stock_quantity, removedQuantity: qty };
+  const payload = { productId, productName: mockP.name, previousStock: prevStock, newStock: mockP.stock_quantity, removedQuantity: qty };
   eventBus.emit(EVENT_TYPES.INVENTORY_UPDATED, payload);
   sseManager.broadcastInventoryUpdate(payload);
 
-  return { success: true, productId, previousStock: prevStock, newStock: prod.stock_quantity, message: 'Stock removed successfully' };
+  return { success: true, productId, previousStock: prevStock, newStock: mockP.stock_quantity, message: 'Stock removed successfully' };
 };
 
 /**
@@ -647,24 +661,27 @@ const updateThreshold = async (adminId, productId, threshold, req = null) => {
         if (mockP) mockP.low_stock_threshold = thresh;
 
         await checkLowStockAlert(productId);
-
-        return { success: true, productId, lowStockThreshold: thresh, message: 'Low stock threshold updated' };
       }
     } catch (err) {}
   }
 
-  const prod = mockProductsStore.get(productId);
-  if (prod) {
-    prod.low_stock_threshold = thresh;
+  let mockP = mockProductsStore.get(productId);
+  if (!mockP) {
+    mockP = { stock_quantity: 20, reserved_quantity: 0, low_stock_threshold: thresh, name: 'Product' };
+    mockProductsStore.set(productId, mockP);
+  } else {
+    mockP.low_stock_threshold = thresh;
   }
+
+  await checkLowStockAlert(productId);
   return { success: true, productId, lowStockThreshold: thresh, message: 'Low stock threshold updated' };
 };
 
 /**
- * 7. CHECK LOW STOCK ALERT & DE-DUPLICATION
+ * 7. CHECK LOW STOCK ALERT & BROADCAST
  */
 const checkLowStockAlert = async (productId) => {
-  const mockP = mockProductsStore.get(productId);
+  let mockP = mockProductsStore.get(productId);
 
   if (supabase) {
     try {
@@ -675,7 +692,6 @@ const checkLowStockAlert = async (productId) => {
 
       if (prod) {
         const available = prod.stock_quantity - prod.reserved_quantity;
-
         if (available <= prod.low_stock_threshold) {
           if (!prod.low_stock_alert_active && (!mockP || !mockP.low_stock_alert_active)) {
             await supabase.from('products')
@@ -729,7 +745,6 @@ const checkLowStockAlert = async (productId) => {
     } catch (err) {}
   }
 
-  // Fallback Mock Alert logic
   if (!mockP) return;
   const available = mockP.stock_quantity - mockP.reserved_quantity;
 
@@ -781,8 +796,7 @@ const getInventoryOverview = async (queryParams = {}) => {
             productId: p.id,
             productName: p.name,
             slug: p.slug,
-            sku: p.sku,
-            brand: p.brand,
+            sku: p.sku || '',
             categoryName: p.categories?.name || 'General',
             sellingPrice: parseFloat(p.selling_price || 0),
             stockQuantity: stock,
@@ -791,7 +805,6 @@ const getInventoryOverview = async (queryParams = {}) => {
             lowStockThreshold: threshold,
             lowStockAlertActive: Boolean(p.low_stock_alert_active),
             status,
-            isActive: p.is_active,
             updatedAt: p.updated_at
           };
         });
@@ -799,14 +812,12 @@ const getInventoryOverview = async (queryParams = {}) => {
         if (queryParams.status) {
           return { items: items.filter(i => i.status === queryParams.status) };
         }
-
         return { items };
       }
     } catch (err) {}
   }
 
-  // Memory Mock Fallback
-  const items = Array.from(mockProductsStore.values()).map(p => {
+  const items = Array.from(mockProductsStore.entries()).map(([id, p]) => {
     const stock = p.stock_quantity;
     const reserved = p.reserved_quantity;
     const available = Math.max(0, stock - reserved);
@@ -815,8 +826,8 @@ const getInventoryOverview = async (queryParams = {}) => {
     else if (available <= p.low_stock_threshold) status = 'LOW_STOCK';
 
     return {
-      id: p.id,
-      productId: p.id,
+      id: p.id || id,
+      productId: p.id || id,
       productName: p.name,
       stockQuantity: stock,
       reservedQuantity: reserved,
@@ -838,6 +849,7 @@ const getInventoryOverview = async (queryParams = {}) => {
  * 9. GET STOCK MOVEMENTS HISTORY (ADMIN AUDIT LOG)
  */
 const getStockMovements = async (productId = null, queryParams = {}) => {
+  let dbData = [];
   if (supabase) {
     try {
       let query = supabase.from('inventory_movements')
@@ -852,20 +864,20 @@ const getStockMovements = async (productId = null, queryParams = {}) => {
         .limit(50);
 
       if (!error && data && data.length > 0) {
-        return data.map(m => ({
+        dbData = data.map(m => ({
           id: m.id,
           productId: m.product_id,
           productName: m.products?.name || 'Unknown Product',
           sku: m.products?.sku || '',
           orderId: m.order_id,
-          orderNumber: m.orders?.order_number || null,
+          orderNumber: m.orders?.order_number || '',
           movementType: m.movement_type,
           quantity: m.quantity,
           previousStock: m.previous_stock,
           newStock: m.new_stock,
           previousReserved: m.previous_reserved,
           newReserved: m.new_reserved,
-          performedBy: m.users?.full_name || m.users?.email || 'System',
+          performedBy: m.users?.full_name || m.performed_by || 'System',
           notes: m.notes,
           createdAt: m.created_at
         }));
@@ -873,34 +885,31 @@ const getStockMovements = async (productId = null, queryParams = {}) => {
     } catch (err) {}
   }
 
-  // Memory Mock Fallback
-  const list = mockMovementsStore.filter(m => !productId || String(m.product_id) === String(productId));
-  return list.map(m => ({
-    id: m.id,
-    productId: m.product_id,
-    productName: `Product ${m.product_id}`,
-    movementType: m.movement_type,
-    quantity: m.quantity,
-    previousStock: m.previous_stock,
-    newStock: m.new_stock,
-    previousReserved: m.previous_reserved,
-    newReserved: m.new_reserved,
-    notes: m.notes,
-    createdAt: m.created_at
-  }));
-};
+  const mockData = mockInventoryMovements
+    .filter(m => !productId || String(m.product_id) === String(productId))
+    .map(m => ({
+      id: m.id,
+      productId: m.product_id,
+      productName: 'Product',
+      movementType: m.movement_type,
+      quantity: m.quantity,
+      previousStock: m.previous_stock,
+      newStock: m.new_stock,
+      performedBy: m.performed_by || 'System',
+      notes: m.notes,
+      createdAt: m.created_at
+    }));
 
-/**
- * Helper to get single product inventory details (for controller/backwards compatibility)
- */
-const getInventoryDetails = async (productId) => {
-  const overview = await getInventoryOverview();
-  const found = (overview.items || []).find(i => String(i.productId) === String(productId));
-  if (found) {
-    const movements = await getStockMovements(productId);
-    return { ...found, recentMovements: movements };
-  }
-  throw new AppError('Inventory details not found for product', HTTP_STATUS.NOT_FOUND);
+  const combined = [...dbData, ...mockData];
+  const unique = [];
+  const seen = new Set();
+  combined.forEach(item => {
+    if (item && item.id && !seen.has(item.id)) {
+      seen.add(item.id);
+      unique.push(item);
+    }
+  });
+  return unique;
 };
 
 module.exports = {
@@ -910,10 +919,9 @@ module.exports = {
   addStock,
   removeStock,
   updateThreshold,
-  checkLowStockAlert,
   getInventoryOverview,
   getStockMovements,
-  getInventoryDetails,
+  checkLowStockAlert,
   mockProductsStore,
-  mockMovementsStore
+  mockInventoryMovements
 };
