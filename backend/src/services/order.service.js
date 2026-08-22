@@ -22,7 +22,8 @@ const createOrder = async (userId, addressId, couponCode = null) => {
   const preview = await checkoutService.getCheckoutPreview(userId, addressId, couponCode);
 
   const orderNumber = generateOrderNumber();
-  const amountInPaise = Math.round(preview.totalAmount * 100);
+  const netPayable = preview.totalPayableAmount !== undefined ? preview.totalPayableAmount : preview.totalAmount;
+  const amountInPaise = Math.round(netPayable * 100);
 
   // 2. ATOMIC STOCK RESERVATION (Crash-Safe)
   const reservationResult = await inventoryService.reserveStock(preview.items, null);
@@ -40,7 +41,7 @@ const createOrder = async (userId, addressId, couponCode = null) => {
         coupon_id: preview.coupon?.id || null,
         coupon_code: preview.coupon?.code || null,
         discount_amount: preview.discountAmount || 0,
-        total_amount: preview.totalAmount
+        total_amount: netPayable
       }]).select().single();
 
       if (orderErr || !newOrder) {
@@ -80,9 +81,12 @@ const createOrder = async (userId, addressId, couponCode = null) => {
       await supabase.from('payments').insert([{
         order_id: newOrder.id,
         payment_method: 'RAZORPAY',
+        provider: 'RAZORPAY',
         status: PAYMENT_STATUS.PENDING,
+        payment_status: PAYMENT_STATUS.PENDING,
         razorpay_order_id: razorpayOrder.id,
-        amount: preview.totalAmount,
+        provider_order_id: razorpayOrder.id,
+        amount: netPayable,
         currency: 'INR'
       }]);
 
@@ -91,7 +95,10 @@ const createOrder = async (userId, addressId, couponCode = null) => {
         orderNumber: newOrder.order_number,
         couponCode: preview.coupon?.code || null,
         discountAmount: preview.discountAmount || 0,
-        totalAmount: preview.totalAmount,
+        subtotal: preview.subtotal,
+        deliveryCharge: preview.delivery.deliveryCharge,
+        totalPayableAmount: netPayable,
+        totalAmount: netPayable,
         currency: 'INR',
         razorpayOrderId: razorpayOrder.id,
         amountInPaise,
@@ -111,7 +118,8 @@ const createOrder = async (userId, addressId, couponCode = null) => {
       deliveryCharge: preview.delivery.deliveryCharge,
       couponCode: preview.coupon?.code || null,
       discountAmount: preview.discountAmount || 0,
-      totalAmount: preview.totalAmount,
+      totalPayableAmount: netPayable,
+      totalAmount: netPayable,
       items: preview.items,
       address: preview.address,
       createdAt: new Date().toISOString()
@@ -123,7 +131,10 @@ const createOrder = async (userId, addressId, couponCode = null) => {
       orderNumber: mockNew.orderNumber,
       couponCode: mockNew.couponCode,
       discountAmount: mockNew.discountAmount,
-      totalAmount: preview.totalAmount,
+      subtotal: preview.subtotal,
+      deliveryCharge: preview.delivery.deliveryCharge,
+      totalPayableAmount: netPayable,
+      totalAmount: netPayable,
       currency: 'INR',
       razorpayOrderId: `rzp_order_mock_${Date.now()}`,
       amountInPaise,
@@ -142,7 +153,7 @@ const getUserOrders = async (userId, queryParams = {}) => {
 
   if (supabase) {
     const { data, count, error } = await supabase.from('orders')
-      .select('*, order_items (*), payments ( status, razorpay_order_id )', { count: 'exact' })
+      .select('*, order_items (*), payments ( status, razorpay_order_id, razorpay_payment_id )', { count: 'exact' })
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
@@ -155,10 +166,12 @@ const getUserOrders = async (userId, queryParams = {}) => {
       status: o.status,
       paymentStatus: o.payments?.[0]?.status || PAYMENT_STATUS.PENDING,
       razorpayOrderId: o.payments?.[0]?.razorpay_order_id,
+      razorpayPaymentId: o.payments?.[0]?.razorpay_payment_id || o.razorpay_payment_id,
       subtotal: parseFloat(o.subtotal),
       deliveryCharge: parseFloat(o.delivery_charge),
       couponCode: o.coupon_code,
       discountAmount: parseFloat(o.discount_amount || 0),
+      totalPayableAmount: parseFloat(o.total_amount),
       totalAmount: parseFloat(o.total_amount),
       itemCount: o.order_items?.length || 0,
       createdAt: o.created_at
@@ -181,16 +194,19 @@ const getOrderById = async (userId, orderId) => {
 
     if (error || !order) throw new AppError('Order not found', HTTP_STATUS.NOT_FOUND);
 
+    const pay = order.payments?.[0] || {};
     return {
       id: order.id,
       orderNumber: order.order_number,
       status: order.status,
-      paymentStatus: order.payments?.[0]?.status || PAYMENT_STATUS.PENDING,
-      razorpayOrderId: order.payments?.[0]?.razorpay_order_id,
+      paymentStatus: pay.status || order.payment_status || PAYMENT_STATUS.PENDING,
+      razorpayOrderId: pay.razorpay_order_id,
+      razorpayPaymentId: pay.razorpay_payment_id || pay.provider_payment_id || order.razorpay_payment_id,
       subtotal: parseFloat(order.subtotal),
       deliveryCharge: parseFloat(order.delivery_charge),
       couponCode: order.coupon_code,
       discountAmount: parseFloat(order.discount_amount || 0),
+      totalPayableAmount: parseFloat(order.total_amount),
       totalAmount: parseFloat(order.total_amount),
       items: order.order_items || [],
       address: order.order_addresses?.[0] || null,
@@ -224,20 +240,23 @@ const retryOrderPayment = async (userId, orderId) => {
     throw new AppError('This order has already been paid and confirmed.', HTTP_STATUS.BAD_REQUEST);
   }
 
-  const amountInPaise = Math.round(order.totalAmount * 100);
+  const amountInPaise = Math.round(order.totalPayableAmount * 100);
   const razorpayOrder = await razorpayService.createRazorpayOrder(amountInPaise, 'INR', order.orderNumber);
 
   if (supabase) {
     await supabase.from('payments').update({
       razorpay_order_id: razorpayOrder.id,
-      status: PAYMENT_STATUS.PENDING
+      provider_order_id: razorpayOrder.id,
+      status: PAYMENT_STATUS.PENDING,
+      payment_status: PAYMENT_STATUS.PENDING
     }).eq('order_id', order.id);
   }
 
   return {
     orderId: order.id,
     orderNumber: order.orderNumber,
-    totalAmount: order.totalAmount,
+    totalPayableAmount: order.totalPayableAmount,
+    totalAmount: order.totalPayableAmount,
     currency: 'INR',
     razorpayOrderId: razorpayOrder.id,
     amountInPaise

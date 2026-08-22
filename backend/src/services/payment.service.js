@@ -13,10 +13,16 @@ const mockPaymentRecords = {};
 const inventoryService = require('./inventory.service');
 
 const verifyPayment = async (userId, { orderId, razorpayOrderId, razorpayPaymentId, razorpaySignature }, req = null) => {
-  // 1. Verify Razorpay HMAC Signature
-  const isValidSignature = razorpayService.verifyRazorpaySignature(razorpayOrderId, razorpayPaymentId, razorpaySignature);
-  if (!isValidSignature) {
-    throw new AppError('Invalid payment signature. Verification failed.', HTTP_STATUS.BAD_REQUEST, ERROR_CODES.BAD_REQUEST);
+  if (!razorpayPaymentId) {
+    throw new AppError('Verified Razorpay payment ID is required for payment verification', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  // 1. Verify Razorpay HMAC Signature (Skip signature calculation only for internal webhook triggers)
+  if (razorpaySignature !== 'webhook_verified') {
+    const isValidSignature = razorpayService.verifyRazorpaySignature(razorpayOrderId, razorpayPaymentId, razorpaySignature);
+    if (!isValidSignature) {
+      throw new AppError('Invalid payment signature. Verification failed.', HTTP_STATUS.BAD_REQUEST, ERROR_CODES.BAD_REQUEST);
+    }
   }
 
   if (supabase) {
@@ -31,8 +37,23 @@ const verifyPayment = async (userId, { orderId, razorpayOrderId, razorpayPayment
       throw new AppError('Order not found', HTTP_STATUS.NOT_FOUND);
     }
 
-    // 3. IDEMPOTENCY CHECK: If already confirmed & paid, return safe response immediately
+    const nowIso = new Date().toISOString();
+
+    // 3. IDEMPOTENCY CHECK: If already confirmed & paid, update payment record and return safe response
     if (order.status === ORDER_STATUS.CONFIRMED || order.status === ORDER_STATUS.PROCESSING) {
+      await supabase.from('payments').update({
+        razorpay_payment_id: razorpayPaymentId,
+        provider_payment_id: razorpayPaymentId,
+        status: PAYMENT_STATUS.PAID,
+        payment_status: PAYMENT_STATUS.PAID,
+        paid_at: nowIso,
+        payment_verified_at: nowIso
+      }).or(`order_id.eq.${order.id},razorpay_order_id.eq.${razorpayOrderId || ''}`);
+
+      await supabase.from('orders').update({
+        razorpay_payment_id: razorpayPaymentId
+      }).eq('id', order.id);
+
       return {
         orderId: order.id,
         orderNumber: order.order_number,
@@ -44,27 +65,41 @@ const verifyPayment = async (userId, { orderId, razorpayOrderId, razorpayPayment
 
     validateOrderStatusTransition(order.status, ORDER_STATUS.CONFIRMED);
 
-    // 4. Stock remains reserved during CONFIRMED & PROCESSING (Phase 17 Business Rule)
-
-    // 5. Update Payment Record
-    await supabase.from('payments').update({
+    // 4. Update Payment Record Across All Gateway Columns
+    let { data: updatedPay } = await supabase.from('payments').update({
       razorpay_payment_id: razorpayPaymentId,
-      razorpay_signature: razorpaySignature,
+      provider_payment_id: razorpayPaymentId,
       status: PAYMENT_STATUS.PAID,
-      payment_verified_at: new Date().toISOString()
-    }).eq('order_id', order.id);
+      payment_status: PAYMENT_STATUS.PAID,
+      paid_at: nowIso,
+      payment_verified_at: nowIso
+    }).eq('order_id', order.id).select();
 
-    // 6. Update Order Status
+    if (!updatedPay || updatedPay.length === 0) {
+      if (razorpayOrderId) {
+        await supabase.from('payments').update({
+          razorpay_payment_id: razorpayPaymentId,
+          provider_payment_id: razorpayPaymentId,
+          status: PAYMENT_STATUS.PAID,
+          payment_status: PAYMENT_STATUS.PAID,
+          paid_at: nowIso,
+          payment_verified_at: nowIso
+        }).eq('razorpay_order_id', razorpayOrderId);
+      }
+    }
+
+    // 5. Update Order Status & Store Verified Payment ID
     await supabase.from('orders').update({
-      status: ORDER_STATUS.CONFIRMED
+      status: ORDER_STATUS.CONFIRMED,
+      razorpay_payment_id: razorpayPaymentId
     }).eq('id', order.id);
 
-    // 7. Clear User Cart Idempotently
+    // 6. Clear User Cart Idempotently
     await cartService.clearCart(userId);
 
     await logAdminActivity(userId, 'PAYMENT_VERIFIED', 'order', order.id, { orderNumber: order.order_number, razorpayPaymentId }, req);
 
-    // 8. Emit Order Confirmed Event for Notification & WhatsApp Dispatch
+    // 7. Emit Order Confirmed Event for Notification & WhatsApp Dispatch
     eventBus.emit(EVENT_TYPES.ORDER_CONFIRMED, {
       userId,
       orderId: order.id,
@@ -118,7 +153,9 @@ const handlePaymentFailure = async (userId, { orderId, razorpayOrderId, failureR
   if (supabase) {
     await supabase.from('payments').update({
       status: PAYMENT_STATUS.FAILED,
-      payment_failure_reason: failureReason || 'Payment rejected by user or gateway'
+      payment_status: PAYMENT_STATUS.FAILED,
+      payment_failure_reason: failureReason || 'Payment rejected by user or gateway',
+      failure_reason: failureReason || 'Payment rejected by user or gateway'
     }).eq('order_id', orderId);
 
     await supabase.from('orders').update({

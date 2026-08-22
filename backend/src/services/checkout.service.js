@@ -69,26 +69,28 @@ const getCheckoutPreview = async (userId, addressId, couponCode = null) => {
   if (couponCode && String(couponCode).trim()) {
     try {
       const couponValidation = await couponService.validateCoupon(userId, couponCode, addressId);
-      discountAmount = couponValidation.discountAmount;
-      appliedCoupon = couponValidation.coupon;
+      discountAmount = couponValidation.discountAmount || 0;
+      appliedCoupon = couponValidation.coupon || null;
     } catch (couponErr) {
-      // If coupon validation fails during general preview, rethrow or return error
       throw couponErr;
     }
   }
 
-  const deliveryCharge = deliveryInfo.deliveryCharge;
-  const totalAmount = Math.max(0, subtotal + deliveryCharge - discountAmount);
+  const deliveryCharge = deliveryInfo.deliveryCharge || 0;
+  const totalPayableAmount = Math.max(0, subtotal + deliveryCharge - discountAmount);
 
   return {
     address: selectedAddress,
     items: validatedItems,
     itemCount: validatedItems.reduce((acc, curr) => acc + curr.quantity, 0),
     subtotal,
+    deliveryCharge,
     delivery: deliveryInfo,
     coupon: appliedCoupon,
+    appliedCoupon,
     discountAmount,
-    totalAmount
+    totalPayableAmount,
+    totalAmount: totalPayableAmount // Backward compatibility alias
   };
 };
 

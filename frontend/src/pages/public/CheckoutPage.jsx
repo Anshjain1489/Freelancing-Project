@@ -13,7 +13,7 @@ import { ErrorState } from '../../components/ui/ErrorState';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { formatCurrency } from '../../utils/formatting';
 import { showSuccess, showError } from '../../utils/toast';
-import { MapPin, Plus, Truck, ShieldCheck, ShoppingBag, Tag, CheckCircle, XCircle } from 'lucide-react';
+import { MapPin, Plus, Truck, ShieldCheck, ShoppingBag, Tag, CheckCircle } from 'lucide-react';
 
 export const CheckoutPage = () => {
   const navigate = useNavigate();
@@ -71,10 +71,13 @@ export const CheckoutPage = () => {
     try {
       const activeCode = codeToUse !== null ? codeToUse : (appliedCoupon?.code || null);
       const res = await checkoutService.getPreview(addressId, activeCode);
-      setPreview(res.data || null);
+      const previewData = res.data || null;
+      setPreview(previewData);
 
-      if (res.data?.coupon) {
-        setAppliedCoupon(res.data.coupon);
+      if (previewData?.coupon || previewData?.appliedCoupon) {
+        setAppliedCoupon(previewData.coupon || previewData.appliedCoupon);
+      } else if (codeToUse === '') {
+        setAppliedCoupon(null);
       }
     } catch (err) {
       const msg = err.response?.data?.message || 'Failed to generate checkout preview.';
@@ -108,7 +111,7 @@ export const CheckoutPage = () => {
       setAppliedCoupon(res.coupon);
       showSuccess(res.message || `Coupon "${code}" applied!`);
 
-      // Refresh preview with new coupon
+      // Refresh server preview with new coupon
       await fetchPreview(selectedAddressId, code);
 
       // Refresh available coupons eligibility
@@ -148,6 +151,14 @@ export const CheckoutPage = () => {
       setCreatingOrder(false);
     }
   };
+
+  const deliveryFee = preview?.deliveryCharge !== undefined 
+    ? preview.deliveryCharge 
+    : (preview?.delivery?.deliveryCharge || 0);
+
+  const netPayable = preview?.totalPayableAmount !== undefined 
+    ? preview.totalPayableAmount 
+    : (preview?.totalAmount || 0);
 
   if (loadingAddresses) {
     return (
@@ -223,7 +234,7 @@ export const CheckoutPage = () => {
                   <CheckCircle size={16} /> Coupon "{appliedCoupon.code}" Applied 🎉
                 </div>
                 <div style={{ fontSize: '0.8rem', color: '#2C3E50', marginTop: '2px' }}>
-                  {appliedCoupon.description} • <strong>Saved {formatCurrency(preview?.discountAmount || appliedCoupon.discountValue)}</strong>
+                  {appliedCoupon.description || 'Store Discount Coupon'} • <strong>Saved {formatCurrency(preview?.discountAmount || appliedCoupon.discountValue || 0)}</strong>
                 </div>
               </div>
               <Button variant="danger" size="sm" onClick={handleRemoveCoupon}>
@@ -275,7 +286,7 @@ export const CheckoutPage = () => {
                           padding: '10px 12px',
                           display: 'flex',
                           flexDirection: 'column',
-                          justify: 'space-between',
+                          justifyContent: 'space-between',
                           gap: '6px',
                           opacity: cpn.isEligible ? 1 : 0.75
                         }}
@@ -348,10 +359,10 @@ export const CheckoutPage = () => {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Truck size={16} color="var(--color-primary)" />
-                  <span>Delivery Charge ({preview.delivery.distanceKm} KM)</span>
+                  <span>Delivery Charge ({preview.delivery?.distanceKm || 0} KM)</span>
                 </div>
-                <span style={{ fontWeight: 700, color: preview.delivery.deliveryCharge === 0 ? 'var(--color-success)' : 'var(--color-text-primary)' }}>
-                  {preview.delivery.deliveryCharge === 0 ? 'FREE (≤ 1 KM)' : formatCurrency(preview.delivery.deliveryCharge)}
+                <span style={{ fontWeight: 700, color: deliveryFee === 0 ? 'var(--color-success)' : 'var(--color-text-primary)' }}>
+                  {deliveryFee === 0 ? 'FREE (≤ 1 KM)' : formatCurrency(deliveryFee)}
                 </span>
               </div>
 
@@ -369,7 +380,7 @@ export const CheckoutPage = () => {
               <div style={{ borderTop: '1.5px dashed var(--color-primary)', paddingTop: '12px', marginTop: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '1.1rem', fontWeight: 800 }}>Total Payable Amount</span>
                 <span style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--color-primary-dark)' }}>
-                  {formatCurrency(preview.totalAmount)}
+                  {formatCurrency(netPayable)}
                 </span>
               </div>
             </div>
@@ -387,7 +398,7 @@ export const CheckoutPage = () => {
                   icon={ShoppingBag}
                   onClick={handleProceedToPayment}
                 >
-                  Proceed to Payment ({formatCurrency(preview.totalAmount)})
+                  Proceed to Payment ({formatCurrency(netPayable)})
                 </Button>
               )}
             </div>

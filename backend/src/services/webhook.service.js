@@ -36,7 +36,7 @@ const processRazorpayWebhook = async (rawBody, signature, payload) => {
       }]);
     } catch {}
 
-    // 4. Process Payment Events
+    // 4. Process Payment Events (payment.captured or order.paid)
     if (eventType === 'payment.captured' || eventType === 'order.paid') {
       const razorpayOrderId = paymentEntity?.order_id || orderEntity?.id;
       const razorpayPaymentId = paymentEntity?.id;
@@ -44,19 +44,37 @@ const processRazorpayWebhook = async (rawBody, signature, payload) => {
       if (razorpayOrderId && razorpayPaymentId) {
         const { data: payment } = await supabase.from('payments')
           .select('order_id, orders ( user_id )')
-          .eq('razorpay_order_id', razorpayOrderId)
+          .or(`razorpay_order_id.eq.${razorpayOrderId},provider_order_id.eq.${razorpayOrderId}`)
           .maybeSingle();
 
-        if (payment && payment.orders?.user_id) {
-          await paymentService.verifyPayment(
-            payment.orders.user_id,
-            {
-              orderId: payment.order_id,
-              razorpayOrderId,
-              razorpayPaymentId,
-              razorpaySignature: 'webhook_verified'
-            }
-          );
+        if (payment) {
+          const nowIso = new Date().toISOString();
+          await supabase.from('payments').update({
+            razorpay_payment_id: razorpayPaymentId,
+            provider_payment_id: razorpayPaymentId,
+            status: 'PAID',
+            payment_status: 'PAID',
+            paid_at: nowIso,
+            payment_verified_at: nowIso
+          }).eq('order_id', payment.order_id);
+
+          await supabase.from('orders').update({
+            razorpay_payment_id: razorpayPaymentId
+          }).eq('id', payment.order_id);
+
+          if (payment.orders?.user_id) {
+            try {
+              await paymentService.verifyPayment(
+                payment.orders.user_id,
+                {
+                  orderId: payment.order_id,
+                  razorpayOrderId,
+                  razorpayPaymentId,
+                  razorpaySignature: 'webhook_verified'
+                }
+              );
+            } catch (err) {}
+          }
         }
       }
     }

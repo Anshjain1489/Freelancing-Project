@@ -20,7 +20,7 @@ const getAdminOrders = async (queryParams = {}) => {
 
   if (supabase) {
     let query = supabase.from('orders')
-      .select('*, order_items (*), users ( full_name, phone ), payments ( status )', { count: 'exact' });
+      .select('*, order_items (*), users ( full_name, phone ), payments ( status, payment_status, razorpay_payment_id, provider_payment_id )', { count: 'exact' });
 
     if (queryParams.status) {
       query = query.eq('status', queryParams.status);
@@ -35,24 +35,30 @@ const getAdminOrders = async (queryParams = {}) => {
 
     if (error) throw new AppError('Failed to fetch admin orders', HTTP_STATUS.INTERNAL_SERVER_ERROR);
 
-    const formatted = data.map(o => ({
-      id: o.id,
-      orderNumber: o.order_number,
-      customerName: o.users?.full_name || 'Customer',
-      customerPhone: o.users?.phone || '',
-      status: o.status,
-      paymentStatus: o.payments?.[0]?.status || 'PAID',
-      subtotal: parseFloat(o.subtotal),
-      deliveryCharge: parseFloat(o.delivery_charge),
-      totalAmount: parseFloat(o.total_amount),
-      itemCount: o.order_items?.length || 0,
-      acceptedBy: o.accepted_by,
-      acceptedAt: o.accepted_at,
-      rejectedBy: o.rejected_by,
-      rejectedAt: o.rejected_at,
-      rejectionReason: o.rejection_reason,
-      createdAt: o.created_at
-    }));
+    const formatted = data.map(o => {
+      const activePay = (o.payments || []).find(p => p.status === 'PAID' || p.payment_status === 'PAID') || o.payments?.[0] || {};
+      return {
+        id: o.id,
+        orderNumber: o.order_number,
+        customerName: o.users?.full_name || 'Customer',
+        customerPhone: o.users?.phone || '',
+        status: o.status,
+        paymentStatus: activePay.status || activePay.payment_status || 'PAID',
+        subtotal: parseFloat(o.subtotal),
+        deliveryCharge: parseFloat(o.delivery_charge),
+        couponCode: o.coupon_code,
+        discountAmount: parseFloat(o.discount_amount || 0),
+        totalPayableAmount: parseFloat(o.total_amount),
+        totalAmount: parseFloat(o.total_amount),
+        itemCount: o.order_items?.length || 0,
+        acceptedBy: o.accepted_by,
+        acceptedAt: o.accepted_at,
+        rejectedBy: o.rejected_by,
+        rejectedAt: o.rejected_at,
+        rejectionReason: o.rejection_reason,
+        createdAt: o.created_at
+      };
+    });
 
     return formatPaginatedResponse(formatted, page, limit, count || 0);
   }
@@ -63,25 +69,31 @@ const getAdminOrders = async (queryParams = {}) => {
 const getUnresolvedOrders = async () => {
   if (supabase) {
     const { data, error } = await supabase.from('orders')
-      .select('*, order_items (*), users ( full_name, phone ), payments ( status )')
+      .select('*, order_items (*), users ( full_name, phone ), payments ( status, payment_status )')
       .eq('status', ORDER_STATUS.CONFIRMED)
       .order('created_at', { ascending: false });
 
     if (error || !data) return [];
 
-    return data.map(o => ({
-      id: o.id,
-      orderNumber: o.order_number,
-      customerName: o.users?.full_name || 'Customer',
-      customerPhone: o.users?.phone || '',
-      status: o.status,
-      paymentStatus: o.payments?.[0]?.status || 'PAID',
-      subtotal: parseFloat(o.subtotal),
-      deliveryCharge: parseFloat(o.delivery_charge),
-      totalAmount: parseFloat(o.total_amount),
-      itemCount: o.order_items?.length || 0,
-      createdAt: o.created_at
-    }));
+    return data.map(o => {
+      const activePay = (o.payments || []).find(p => p.status === 'PAID' || p.payment_status === 'PAID') || o.payments?.[0] || {};
+      return {
+        id: o.id,
+        orderNumber: o.order_number,
+        customerName: o.users?.full_name || 'Customer',
+        customerPhone: o.users?.phone || '',
+        status: o.status,
+        paymentStatus: activePay.status || activePay.payment_status || 'PAID',
+        subtotal: parseFloat(o.subtotal),
+        deliveryCharge: parseFloat(o.delivery_charge),
+        couponCode: o.coupon_code,
+        discountAmount: parseFloat(o.discount_amount || 0),
+        totalPayableAmount: parseFloat(o.total_amount),
+        totalAmount: parseFloat(o.total_amount),
+        itemCount: o.order_items?.length || 0,
+        createdAt: o.created_at
+      };
+    });
   }
 
   return mockList.filter(o => o.status === 'CONFIRMED');
@@ -186,7 +198,7 @@ const rejectOrder = async (adminId, orderId, { reason }, req = null) => {
   if (supabase) {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(orderId));
     let query = supabase.from('orders')
-      .select('*, payments ( status )');
+      .select('*, payments ( * )');
     
     if (isUuid) {
       query = query.eq('id', orderId);
@@ -232,7 +244,7 @@ const rejectOrder = async (adminId, orderId, { reason }, req = null) => {
       error = fallbackRes.error;
     }
 
-const inventoryService = require('../inventory.service');
+    const inventoryService = require('../inventory.service');
 
     if (error || !updated) {
       throw new AppError('This order has already been processed by another administrator.', HTTP_STATUS.CONFLICT);
@@ -241,11 +253,18 @@ const inventoryService = require('../inventory.service');
     // Release stock reservation immediately & atomically upon rejection (Decoupled from refund)
     await inventoryService.releaseStock(null, existing.id, sanitizedReason);
 
-    // Fetch payment record for verified refund calculation
-    const { data: paymentRecord } = await supabase.from('payments')
+    // Fetch verified payment record
+    let paymentRecord = null;
+    const { data: payRecords } = await supabase.from('payments')
       .select('*')
       .eq('order_id', existing.id)
-      .maybeSingle();
+      .order('created_at', { ascending: false });
+
+    if (payRecords && payRecords.length > 0) {
+      paymentRecord = payRecords.find(p => (p.status === 'PAID' || p.payment_status === 'PAID') && (p.razorpay_payment_id || p.provider_payment_id))
+        || payRecords.find(p => p.razorpay_payment_id || p.provider_payment_id)
+        || payRecords[0];
+    }
 
     // Trigger Crash-Safe Automated Refund Process
     const refundResult = await refundService.processOrderRefund({
@@ -260,7 +279,7 @@ const inventoryService = require('../inventory.service');
       orderId: existing.id,
       orderNumber: existing.order_number,
       status: ORDER_STATUS.REJECTED,
-      paymentStatus: paymentRecord?.payment_status || 'PAID',
+      paymentStatus: paymentRecord?.status || paymentRecord?.payment_status || 'PAID',
       refundStatus: refundResult.status,
       refundAmount: refundResult.amount,
       razorpayRefundId: refundResult.refundId,
@@ -277,6 +296,7 @@ const inventoryService = require('../inventory.service');
     mockOrder.status = ORDER_STATUS.REJECTED;
   }
 
+  const inventoryService = require('../inventory.service');
   await inventoryService.releaseStock(null, orderId, sanitizedReason);
 
   eventBus.emit(EVENT_TYPES.ORDER_REJECTED, { adminId, orderId, orderNumber: orderId, rejectionReason: sanitizedReason });
