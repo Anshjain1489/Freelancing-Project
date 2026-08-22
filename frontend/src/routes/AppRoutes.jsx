@@ -62,6 +62,7 @@ const MyReplacementsPage = lazy(() => import('../pages/customer/MyReplacementsPa
 const AdminCancellationsPage = lazy(() => import('../pages/admin/AdminCancellationsPage').then(m => ({ default: m.AdminCancellationsPage })));
 const AdminReturnsPage = lazy(() => import('../pages/admin/AdminReturnsPage').then(m => ({ default: m.AdminReturnsPage })));
 const AdminReplacementsPage = lazy(() => import('../pages/admin/AdminReplacementsPage').then(m => ({ default: m.AdminReplacementsPage })));
+const ActivityPage = lazy(() => import('../pages/admin/ActivityPage').then(m => ({ default: m.ActivityPage })));
 
 // Protected Route Guards
 import { useAuth } from '../hooks/useAuth';
