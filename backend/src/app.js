@@ -26,8 +26,13 @@ app.use(morgan(':method :clean-url :status :response-time ms - :res[content-leng
 // Rate Limiting for General Requests
 app.use('/api', generalLimiter);
 
-// JSON and URL-Encoded Body Parsers
-app.use(express.json({ limit: '10mb' }));
+// JSON and URL-Encoded Body Parsers (Capture rawBody for webhook HMAC verification)
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Base API Routes V1

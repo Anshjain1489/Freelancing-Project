@@ -82,20 +82,43 @@ const processOrderRefund = async ({ order, paymentRecord, adminId, reason = 'Ord
 
   const amountInPaise = Math.round(verifiedAmount * 100);
 
-  // 4. Create Initial Refund Record (State: PROCESSING)
+  // 4. Create Initial Refund Record (State: PROCESSING) - DB First Transaction Sequence
   let refundRecordId = null;
   if (supabase) {
     try {
-      const { data: createdRefund } = await supabase.from('refunds').insert([{
+      let requestedBy = adminId;
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(adminId));
+      if (!isUuid) requestedBy = null;
+
+      const { data: createdRefund, error: insertErr } = await supabase.from('refunds').insert([{
         order_id: orderId,
         payment_id: paymentRecord?.id || null,
         amount: verifiedAmount,
         currency: 'INR',
         status: REFUND_STATUS.PROCESSING,
         reason,
-        requested_by: adminId,
+        requested_by: requestedBy,
         requested_at: new Date().toISOString()
       }]).select().maybeSingle();
+
+      if (insertErr) console.log('Refund insert error:', insertErr);
+
+      if (insertErr && (insertErr.code === '23505' || insertErr.message?.includes('unique'))) {
+        // Unique constraint violation: Order refund record already exists!
+        const { data: existingRefund } = await supabase.from('refunds')
+          .select('*')
+          .eq('order_id', orderId)
+          .maybeSingle();
+
+        if (existingRefund && [REFUND_STATUS.PROCESSING, REFUND_STATUS.COMPLETED].includes(existingRefund.status)) {
+          return {
+            status: existingRefund.status,
+            refundId: existingRefund.razorpay_refund_id,
+            amount: parseFloat(existingRefund.amount),
+            message: `Refund already ${existingRefund.status.toLowerCase()}`
+          };
+        }
+      }
 
       if (createdRefund) refundRecordId = createdRefund.id;
 
@@ -106,7 +129,7 @@ const processOrderRefund = async ({ order, paymentRecord, adminId, reason = 'Ord
     } catch {}
   }
 
-  // 5. Invoke Backend Razorpay Refund API
+  // 5. Invoke External Gateway API (Only AFTER DB State Reservation)
   try {
     const razorpayRefund = await razorpayService.initiateRazorpayRefund(
       razorpayPaymentId,
@@ -181,8 +204,38 @@ const processOrderRefund = async ({ order, paymentRecord, adminId, reason = 'Ord
     };
   } catch (err) {
     const errorMsg = err.message || 'Razorpay refund API call failed';
+    const isAmbiguousTimeout = /timeout|etimedout|econnreset|502|504|network|socket/i.test(errorMsg);
 
-    // Handle Refund Failure: Order remains REJECTED, refund_status becomes FAILED
+    if (isAmbiguousTimeout) {
+      // Ambiguous Failure Handling: Gateway call timed out or network disconnected.
+      // Do NOT revert to FAILED or allow immediate duplicate refund. Mark PROCESSING for webhook reconciliation.
+      const ambiguousMsg = `TIMED_OUT_AWAITING_RECONCILIATION: ${errorMsg}`;
+
+      if (supabase) {
+        if (refundRecordId) {
+          await supabase.from('refunds').update({
+            status: REFUND_STATUS.PROCESSING,
+            failure_reason: ambiguousMsg,
+            updated_at: new Date().toISOString()
+          }).eq('id', refundRecordId);
+        }
+        await supabase.from('orders').update({ refund_status: REFUND_STATUS.PROCESSING }).eq('id', orderId);
+      }
+
+      await logAdminActivity(adminId, 'RAZORPAY_REFUND_INITIATED', 'order', orderId, {
+        orderNumber: order.order_number,
+        failureReason: ambiguousMsg,
+        status: REFUND_STATUS.PROCESSING
+      }, req);
+
+      return {
+        status: REFUND_STATUS.PROCESSING,
+        amount: verifiedAmount,
+        message: 'Refund submitted to payment gateway. Gateway response timed out; awaiting webhook reconciliation.'
+      };
+    }
+
+    // Definitive Failure (e.g. invalid credentials or bad request): Mark FAILED
     if (supabase) {
       if (refundRecordId) {
         await supabase.from('refunds').update({
@@ -241,6 +294,16 @@ const retryFailedRefund = async (adminId, orderId, req = null) => {
 
     if (order.refund_status === REFUND_STATUS.COMPLETED) {
       throw new AppError('Refund is already completed for this order.', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    // Check existing refund record for ambiguous state
+    const { data: existingRefund } = await supabase.from('refunds')
+      .select('*')
+      .eq('order_id', order.id)
+      .maybeSingle();
+
+    if (existingRefund && existingRefund.status === REFUND_STATUS.PROCESSING && existingRefund.razorpay_refund_id) {
+      throw new AppError('Refund is currently processing at payment gateway. Awaiting webhook reconciliation.', HTTP_STATUS.BAD_REQUEST);
     }
 
     let paymentRecord = null;

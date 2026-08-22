@@ -18,21 +18,23 @@ const processRazorpayWebhook = async (rawBody, signature, payload) => {
 
   if (supabase) {
     // 2. IDEMPOTENCY CHECK: Check if webhook event already processed
-    const { data: existingEvent } = await supabase.from('payment_events')
-      .select('id')
-      .eq('event_id', eventId)
-      .single();
+    try {
+      const { data: existingEvent } = await supabase.from('payment_events')
+        .select('id')
+        .eq('provider_event_id', eventId)
+        .maybeSingle();
 
-    if (existingEvent) {
-      return { status: 'ignored', message: 'Webhook event already processed.' };
-    }
+      if (existingEvent) {
+        return { status: 'ignored', message: 'Webhook event already processed.' };
+      }
 
-    // 3. Record Webhook Audit Event
-    await supabase.from('payment_events').insert([{
-      event_id: eventId,
-      event_type: eventType,
-      payload
-    }]);
+      // 3. Record Webhook Audit Event
+      await supabase.from('payment_events').insert([{
+        provider_event_id: eventId,
+        event_type: eventType,
+        payload
+      }]);
+    } catch {}
 
     // 4. Process Payment Events
     if (eventType === 'payment.captured' || eventType === 'order.paid') {

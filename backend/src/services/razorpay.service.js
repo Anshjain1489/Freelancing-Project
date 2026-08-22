@@ -76,23 +76,35 @@ const verifyRazorpaySignature = (razorpayOrderId, razorpayPaymentId, razorpaySig
 };
 
 const verifyWebhookSignature = (rawBody, signature) => {
-  if (signature === 'mock_webhook_sig' || signature === 'webhook_verified') {
-    return true;
+  if (!signature) {
+    return false;
   }
 
   const webhookSecret = config.razorpay.webhookSecret;
-  if (!webhookSecret) return true;
+  if (!webhookSecret) {
+    // In production mode without a configured webhook secret, reject for security
+    if (config.env === 'production') return false;
+    return true;
+  }
 
   try {
+    const bodyString = Buffer.isBuffer(rawBody)
+      ? rawBody.toString('utf8')
+      : (typeof rawBody === 'string' ? rawBody : JSON.stringify(rawBody));
+
     const expectedSignature = crypto
       .createHmac('sha256', webhookSecret)
-      .update(rawBody)
+      .update(bodyString)
       .digest('hex');
 
-    return crypto.timingSafeEqual(
-      Buffer.from(expectedSignature),
-      Buffer.from(signature)
-    );
+    const expectedBuffer = Buffer.from(expectedSignature, 'utf8');
+    const signatureBuffer = Buffer.from(signature, 'utf8');
+
+    if (expectedBuffer.length !== signatureBuffer.length) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(expectedBuffer, signatureBuffer);
   } catch {
     return false;
   }
