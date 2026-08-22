@@ -1,5 +1,7 @@
 const express = require('express');
 const healthRoutes = require('./health.routes');
+const webhookRoutes = require('./webhook.routes');
+const whatsappWebhookRoutes = require('./whatsappWebhook.routes');
 const authRoutes = require('./auth.routes');
 const userRoutes = require('./user.routes');
 const categoryRoutes = require('./category.routes');
@@ -10,9 +12,7 @@ const addressRoutes = require('./address.routes');
 const checkoutRoutes = require('./checkout.routes');
 const orderRoutes = require('./order.routes');
 const paymentRoutes = require('./payment.routes');
-const webhookRoutes = require('./webhook.routes');
 const notificationRoutes = require('./notification.routes');
-const whatsappWebhookRoutes = require('./whatsappWebhook.routes');
 const couponRoutes = require('./coupon.routes');
 const deliveryPartnerRoutes = require('./deliveryPartner.routes');
 const cancellationRoutes = require('./cancellation.routes');
@@ -24,10 +24,17 @@ const { getSitemapXML } = require('../controllers/sitemap.controller');
 
 const router = express.Router();
 
-// Public Sitemap XML Endpoint
+// 1. Public Sitemap XML Endpoint
 router.get('/sitemap.xml', getSitemapXML);
 
+// 2. Public Health & Diagnostic Endpoint
 router.use('/health', healthRoutes);
+
+// 3. Public Webhooks (Signature verified internally inside controllers, NO JWT authentication required)
+router.use('/webhooks', webhookRoutes);
+router.use('/webhooks', whatsappWebhookRoutes);
+
+// 4. Feature Routes
 router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
 router.use('/categories', categoryRoutes);
@@ -43,8 +50,6 @@ router.use('/', returnRoutes);
 router.use('/', replacementRoutes);
 router.use('/delivery', deliveryPartnerRoutes);
 router.use('/payments', paymentRoutes);
-router.use('/webhooks', webhookRoutes);
-router.use('/webhooks', whatsappWebhookRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/notification-preferences', notificationRoutes);
 router.use('/admin', adminRoutes);

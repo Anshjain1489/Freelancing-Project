@@ -1,83 +1,134 @@
 const supabase = require('../config/supabase');
-const checkoutService = require('./checkout.service');
 const razorpayService = require('./razorpay.service');
-const { ORDER_STATUS, PAYMENT_STATUS, validateOrderStatusTransition } = require('./orderStatus.service');
+const cartService = require('./cart.service');
+const inventoryService = require('./inventory.service');
+const deliveryService = require('./delivery.service');
+const couponService = require('./coupon.service');
+const eventBus = require('../events/eventBus');
+const EVENT_TYPES = require('../events/eventTypes');
 const AppError = require('../utils/AppError');
-const { HTTP_STATUS } = require('../constants/statusCodes');
+const { HTTP_STATUS, ERROR_CODES } = require('../constants/statusCodes');
+const { ORDER_STATUS, PAYMENT_STATUS } = require('./orderStatus.service');
+const config = require('../config/environment');
 const { getPaginationParams, formatPaginatedResponse } = require('../utils/pagination');
 
-const inventoryService = require('./inventory.service');
-
-// Fallback in-memory order store
+// Local in-memory mock fallback
 const mockOrders = [];
 
-const generateOrderNumber = () => {
-  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const random = Math.floor(1000 + Math.random() * 9000);
-  return `CKS-${dateStr}-${random}`;
+const parsePaymentInfo = (payments) => {
+  const payList = Array.isArray(payments) ? payments : (payments ? [payments] : []);
+  return payList.find(p => p.status === 'PAID' || p.payment_status === 'PAID') || payList[0] || {};
 };
 
 const createOrder = async (userId, addressId, couponCode = null) => {
-  // 1. Get backend checkout preview (validates cart, prices, stock, delivery charge, and optional coupon)
-  const preview = await checkoutService.getCheckoutPreview(userId, addressId, couponCode);
+  // 1. Fetch user's active cart
+  const cart = await cartService.getUserCart(userId);
+  if (!cart.items || cart.items.length === 0) {
+    throw new AppError('Your cart is empty. Please add items before checkout.', HTTP_STATUS.BAD_REQUEST, ERROR_CODES.BAD_REQUEST);
+  }
 
-  const orderNumber = generateOrderNumber();
-  const netPayable = preview.totalPayableAmount !== undefined ? preview.totalPayableAmount : preview.totalAmount;
-  const amountInPaise = Math.round(netPayable * 100);
+  // 2. Minimum Order Value Check (Phase 16)
+  if (cart.subtotal < config.store.minOrderValue) {
+    const shortage = config.store.minOrderValue - cart.subtotal;
+    throw new AppError(`Minimum order value for delivery is ₹${config.store.minOrderValue}. Please add ₹${shortage} more items to your cart.`, HTTP_STATUS.BAD_REQUEST, ERROR_CODES.BAD_REQUEST);
+  }
 
-  // 2. ATOMIC STOCK RESERVATION (Crash-Safe)
-  const reservationResult = await inventoryService.reserveStock(preview.items, null);
+  // 3. Calculate Delivery Charge (Phase 16 & 16.1)
+  let deliveryCharge = 0;
+  if (supabase && addressId) {
+    const { data: address } = await supabase.from('addresses').select('*').eq('id', addressId).single();
+    if (address) {
+      const deliveryInfo = deliveryService.getDeliveryDetailsForAddress(address);
+      if (!deliveryInfo.isDeliverable) {
+        throw new AppError(deliveryInfo.reason || `Address is outside maximum delivery radius.`, HTTP_STATUS.BAD_REQUEST, ERROR_CODES.BAD_REQUEST);
+      }
+      deliveryCharge = deliveryInfo.deliveryCharge || 0;
+    }
+  }
 
+  // 4. Validate and Apply Coupon Discount (Phase 15 & 19.2)
+  let coupon = null;
+  let discountAmount = 0;
+  if (couponCode && String(couponCode).trim().length > 0) {
+    const couponRes = await couponService.validateCoupon(userId, couponCode, addressId);
+    coupon = couponRes.coupon || null;
+    discountAmount = couponRes.discountAmount || 0;
+  }
+
+  // Single Canonical Formula (Phase 19.2)
+  const totalPayableAmount = Math.max(0, cart.subtotal + deliveryCharge - discountAmount);
+
+  // 5. Reserve Inventory Stock (Phase 17)
+  const itemsToReserve = cart.items.map(i => ({ productId: i.productId, quantity: i.quantity }));
+  let reservationSuccessful = false;
   try {
-    if (supabase) {
-      // 3. Insert main order
-      const { data: newOrder, error: orderErr } = await supabase.from('orders').insert([{
-        user_id: userId,
-        order_number: orderNumber,
-        status: ORDER_STATUS.PENDING_PAYMENT,
-        subtotal: preview.subtotal,
-        delivery_charge: preview.delivery.deliveryCharge,
-        delivery_distance_km: preview.delivery.distanceKm,
-        coupon_id: preview.coupon?.id || null,
-        coupon_code: preview.coupon?.code || null,
-        discount_amount: preview.discountAmount || 0,
-        total_amount: netPayable
-      }]).select().single();
+    await inventoryService.reserveStock(itemsToReserve);
+    reservationSuccessful = true;
+  } catch (err) {
+    throw new AppError(err.message || 'Failed to reserve product stock for checkout.', HTTP_STATUS.BAD_REQUEST, ERROR_CODES.BAD_REQUEST);
+  }
 
-      if (orderErr || !newOrder) {
-        throw new AppError('Failed to create order: ' + (orderErr?.message || ''), HTTP_STATUS.INTERNAL_SERVER_ERROR);
+  // 6. Create Order Database Record
+  const orderNumber = `CKS-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+  if (supabase) {
+    try {
+      const { data: newOrder, error: createErr } = await supabase.from('orders').insert([{
+        user_id: userId,
+        address_id: addressId,
+        order_number: orderNumber,
+        subtotal: cart.subtotal,
+        delivery_charge: deliveryCharge,
+        coupon_id: coupon ? coupon.id : null,
+        coupon_code: coupon ? coupon.code : null,
+        discount_amount: discountAmount,
+        total_amount: totalPayableAmount,
+        status: ORDER_STATUS.CONFIRMED,
+        payment_status: PAYMENT_STATUS.PENDING,
+        payment_method: 'RAZORPAY'
+      }]).select('*').single();
+
+      if (createErr || !newOrder) {
+        if (reservationSuccessful) {
+          await inventoryService.releaseStock(itemsToReserve, null, 'ORDER_CREATION_FAILED');
+        }
+        throw new AppError('Failed to initialize order record: ' + (createErr?.message || 'Database error'), HTTP_STATUS.INTERNAL_SERVER_ERROR);
       }
 
-      // 4. Create immutable order address snapshot
-      await supabase.from('order_addresses').insert([{
-        order_id: newOrder.id,
-        recipient_name: preview.address.recipientName,
-        phone: preview.address.phone,
-        address_line1: preview.address.addressLine1,
-        address_line2: preview.address.addressLine2 || null,
-        landmark: preview.address.landmark || null,
-        city: preview.address.city,
-        state: preview.address.state,
-        postal_code: preview.address.postalCode
-      }]);
-
-      // 5. Create order items snapshot
-      const itemRecords = preview.items.map(item => ({
+      // Insert order items
+      const orderItemRows = cart.items.map(item => ({
         order_id: newOrder.id,
         product_id: item.productId,
-        product_name: item.name,
-        unit: item.unit,
-        unit_value: item.unitValue,
-        unit_price: item.sellingPrice,
         quantity: item.quantity,
-        total_price: item.itemTotal
+        unit_price: item.sellingPrice,
+        total_price: item.itemSubtotal
       }));
-      await supabase.from('order_items').insert(itemRecords);
+      await supabase.from('cart_items');
+      await supabase.from('order_items').insert(orderItemRows);
 
-      // 6. Create Razorpay Payment Order using Net Discounted Total Amount
-      const razorpayOrder = await razorpayService.createRazorpayOrder(amountInPaise, 'INR', newOrder.order_number);
+      // Snapshot delivery address
+      if (addressId) {
+        const { data: addr } = await supabase.from('addresses').select('*').eq('id', addressId).single();
+        if (addr) {
+          await supabase.from('order_addresses').insert([{
+            order_id: newOrder.id,
+            recipient_name: addr.recipient_name,
+            phone: addr.phone,
+            address_line1: addr.address_line1,
+            city: addr.city,
+            state: addr.state,
+            postal_code: addr.postal_code,
+            latitude: addr.latitude,
+            longitude: addr.longitude
+          }]);
+        }
+      }
 
-      // 7. Create Payment Record
+      // 7. Create Razorpay Payment Gateway Order with discounted total (Phase 19.2)
+      const amountInPaise = Math.round(totalPayableAmount * 100);
+      const razorpayOrder = await razorpayService.createRazorpayOrder(amountInPaise, 'INR', orderNumber);
+
+      // 8. Create Initial Payment Record
       await supabase.from('payments').insert([{
         order_id: newOrder.id,
         payment_method: 'RAZORPAY',
@@ -86,66 +137,62 @@ const createOrder = async (userId, addressId, couponCode = null) => {
         payment_status: PAYMENT_STATUS.PENDING,
         razorpay_order_id: razorpayOrder.id,
         provider_order_id: razorpayOrder.id,
-        amount: netPayable,
+        amount: totalPayableAmount,
         currency: 'INR'
       }]);
 
       return {
         orderId: newOrder.id,
         orderNumber: newOrder.order_number,
-        couponCode: preview.coupon?.code || null,
-        discountAmount: preview.discountAmount || 0,
-        subtotal: preview.subtotal,
-        deliveryCharge: preview.delivery.deliveryCharge,
-        totalPayableAmount: netPayable,
-        totalAmount: netPayable,
-        currency: 'INR',
-        razorpayOrderId: razorpayOrder.id,
+        subtotal: cart.subtotal,
+        deliveryCharge,
+        couponCode: coupon ? coupon.code : null,
+        discountAmount,
+        totalPayableAmount,
         amountInPaise,
-        items: preview.items,
-        address: preview.address
+        razorpayOrderId: razorpayOrder.id,
+        currency: razorpayOrder.currency,
+        keyId: config.razorpay.keyId
       };
+    } catch (err) {
+      if (reservationSuccessful) {
+        await inventoryService.releaseStock(itemsToReserve, null, 'ORDER_CREATION_EXCEPTION');
+      }
+      throw err;
     }
-
-    // Mock Fallback
-    const mockNew = {
-      id: `ord-${Date.now()}`,
-      orderNumber,
-      userId,
-      status: ORDER_STATUS.PENDING_PAYMENT,
-      paymentStatus: PAYMENT_STATUS.PENDING,
-      subtotal: preview.subtotal,
-      deliveryCharge: preview.delivery.deliveryCharge,
-      couponCode: preview.coupon?.code || null,
-      discountAmount: preview.discountAmount || 0,
-      totalPayableAmount: netPayable,
-      totalAmount: netPayable,
-      items: preview.items,
-      address: preview.address,
-      createdAt: new Date().toISOString()
-    };
-    mockOrders.push(mockNew);
-
-    return {
-      orderId: mockNew.id,
-      orderNumber: mockNew.orderNumber,
-      couponCode: mockNew.couponCode,
-      discountAmount: mockNew.discountAmount,
-      subtotal: preview.subtotal,
-      deliveryCharge: preview.delivery.deliveryCharge,
-      totalPayableAmount: netPayable,
-      totalAmount: netPayable,
-      currency: 'INR',
-      razorpayOrderId: `rzp_order_mock_${Date.now()}`,
-      amountInPaise,
-      items: preview.items,
-      address: preview.address
-    };
-  } catch (err) {
-    // CRASH-SAFE ROLLBACK: Release stock reservation if order creation or Razorpay fails
-    await inventoryService.releaseStock(preview.items, null, 'ORDER_CREATION_FAILED');
-    throw err;
   }
+
+  // Local Mock Fallback
+  const amountInPaise = Math.round(totalPayableAmount * 100);
+  const mockOrder = {
+    id: `ord_${Date.now()}`,
+    userId,
+    orderNumber,
+    subtotal: cart.subtotal,
+    deliveryCharge,
+    couponCode: coupon ? coupon.code : null,
+    discountAmount,
+    totalPayableAmount,
+    status: ORDER_STATUS.CONFIRMED,
+    paymentStatus: PAYMENT_STATUS.PENDING,
+    items: cart.items,
+    createdAt: new Date().toISOString()
+  };
+  mockOrders.push(mockOrder);
+
+  return {
+    orderId: mockOrder.id,
+    orderNumber,
+    subtotal: cart.subtotal,
+    deliveryCharge,
+    couponCode: coupon ? coupon.code : null,
+    discountAmount,
+    totalPayableAmount,
+    amountInPaise,
+    razorpayOrderId: `rzp_order_mock_${Date.now()}`,
+    currency: 'INR',
+    keyId: config.razorpay.keyId || 'mock_key'
+  };
 };
 
 const getUserOrders = async (userId, queryParams = {}) => {
@@ -153,29 +200,32 @@ const getUserOrders = async (userId, queryParams = {}) => {
 
   if (supabase) {
     const { data, count, error } = await supabase.from('orders')
-      .select('*, order_items (*), payments ( status, razorpay_order_id, razorpay_payment_id )', { count: 'exact' })
+      .select('*, order_items (*), payments ( status, razorpay_order_id, razorpay_payment_id, provider_payment_id )', { count: 'exact' })
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
     if (error) throw new AppError('Failed to fetch orders', HTTP_STATUS.INTERNAL_SERVER_ERROR);
 
-    const formatted = data.map(o => ({
-      id: o.id,
-      orderNumber: o.order_number,
-      status: o.status,
-      paymentStatus: o.payments?.[0]?.status || PAYMENT_STATUS.PENDING,
-      razorpayOrderId: o.payments?.[0]?.razorpay_order_id,
-      razorpayPaymentId: o.payments?.[0]?.razorpay_payment_id || o.razorpay_payment_id,
-      subtotal: parseFloat(o.subtotal),
-      deliveryCharge: parseFloat(o.delivery_charge),
-      couponCode: o.coupon_code,
-      discountAmount: parseFloat(o.discount_amount || 0),
-      totalPayableAmount: parseFloat(o.total_amount),
-      totalAmount: parseFloat(o.total_amount),
-      itemCount: o.order_items?.length || 0,
-      createdAt: o.created_at
-    }));
+    const formatted = data.map(o => {
+      const pay = parsePaymentInfo(o.payments);
+      return {
+        id: o.id,
+        orderNumber: o.order_number,
+        status: o.status,
+        paymentStatus: pay.status || o.payment_status || PAYMENT_STATUS.PENDING,
+        razorpayOrderId: pay.razorpay_order_id,
+        razorpayPaymentId: pay.razorpay_payment_id || pay.provider_payment_id || o.razorpay_payment_id,
+        subtotal: parseFloat(o.subtotal),
+        deliveryCharge: parseFloat(o.delivery_charge),
+        couponCode: o.coupon_code,
+        discountAmount: parseFloat(o.discount_amount || 0),
+        totalPayableAmount: parseFloat(o.total_amount),
+        totalAmount: parseFloat(o.total_amount),
+        itemCount: o.order_items?.length || 0,
+        createdAt: o.created_at
+      };
+    });
 
     return formatPaginatedResponse(formatted, page, limit, count || 0);
   }
@@ -194,7 +244,7 @@ const getOrderById = async (userId, orderId) => {
 
     if (error || !order) throw new AppError('Order not found', HTTP_STATUS.NOT_FOUND);
 
-    const pay = order.payments?.[0] || {};
+    const pay = parsePaymentInfo(order.payments);
     return {
       id: order.id,
       orderNumber: order.order_number,
@@ -214,59 +264,13 @@ const getOrderById = async (userId, orderId) => {
     };
   }
 
-  const found = mockOrders.find(o => (o.id === orderId || o.orderNumber === orderId) && o.userId === userId);
-  if (!found) throw new AppError('Order not found', HTTP_STATUS.NOT_FOUND);
-  return found;
-};
-
-const cancelOrder = async (userId, orderId, reason = '') => {
-  const order = await getOrderById(userId, orderId);
-  validateOrderStatusTransition(order.status, ORDER_STATUS.CANCELLED);
-
-  if (supabase) {
-    await supabase.from('orders').update({
-      status: ORDER_STATUS.CANCELLED
-    }).eq('id', order.id).eq('user_id', userId);
-  } else {
-    order.status = ORDER_STATUS.CANCELLED;
-  }
-
-  return { message: 'Order cancelled successfully' };
-};
-
-const retryOrderPayment = async (userId, orderId) => {
-  const order = await getOrderById(userId, orderId);
-  if (order.paymentStatus === PAYMENT_STATUS.PAID || order.status === ORDER_STATUS.CONFIRMED) {
-    throw new AppError('This order has already been paid and confirmed.', HTTP_STATUS.BAD_REQUEST);
-  }
-
-  const amountInPaise = Math.round(order.totalPayableAmount * 100);
-  const razorpayOrder = await razorpayService.createRazorpayOrder(amountInPaise, 'INR', order.orderNumber);
-
-  if (supabase) {
-    await supabase.from('payments').update({
-      razorpay_order_id: razorpayOrder.id,
-      provider_order_id: razorpayOrder.id,
-      status: PAYMENT_STATUS.PENDING,
-      payment_status: PAYMENT_STATUS.PENDING
-    }).eq('order_id', order.id);
-  }
-
-  return {
-    orderId: order.id,
-    orderNumber: order.orderNumber,
-    totalPayableAmount: order.totalPayableAmount,
-    totalAmount: order.totalPayableAmount,
-    currency: 'INR',
-    razorpayOrderId: razorpayOrder.id,
-    amountInPaise
-  };
+  const order = mockOrders.find(o => (o.id === orderId || o.orderNumber === orderId) && o.userId === userId);
+  if (!order) throw new AppError('Order not found', HTTP_STATUS.NOT_FOUND);
+  return order;
 };
 
 module.exports = {
   createOrder,
   getUserOrders,
-  getOrderById,
-  cancelOrder,
-  retryOrderPayment
+  getOrderById
 };

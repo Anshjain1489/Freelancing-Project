@@ -3,10 +3,8 @@ const router = express.Router();
 const returnController = require('../controllers/return.controller');
 const { authenticate } = require('../middleware/auth.middleware');
 
-router.use(authenticate);
-
 // Customer endpoints
-router.post('/orders/:id/return-request', returnController.requestReturn);
-router.get('/returns/my', returnController.getMyReturns);
+router.post('/orders/:id/return-request', authenticate, returnController.requestReturn);
+router.get('/returns/my', authenticate, returnController.getMyReturns);
 
 module.exports = router;

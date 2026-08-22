@@ -15,6 +15,11 @@ const mockList = [
   { id: 'ord-2', orderNumber: 'CKS-20260821-0002', customerName: 'Priya Gupta', customerPhone: '9123456789', status: 'OUT_FOR_DELIVERY', paymentStatus: 'PAID', totalAmount: 1120, itemCount: 5, createdAt: new Date().toISOString() }
 ];
 
+const getActivePayment = (payments) => {
+  const payList = Array.isArray(payments) ? payments : (payments ? [payments] : []);
+  return payList.find(p => p.status === 'PAID' || p.payment_status === 'PAID') || payList[0] || {};
+};
+
 const getAdminOrders = async (queryParams = {}) => {
   const { page, limit, offset } = getPaginationParams(queryParams.page, queryParams.limit);
 
@@ -36,7 +41,7 @@ const getAdminOrders = async (queryParams = {}) => {
     if (error) throw new AppError('Failed to fetch admin orders', HTTP_STATUS.INTERNAL_SERVER_ERROR);
 
     const formatted = data.map(o => {
-      const activePay = (o.payments || []).find(p => p.status === 'PAID' || p.payment_status === 'PAID') || o.payments?.[0] || {};
+      const activePay = getActivePayment(o.payments);
       return {
         id: o.id,
         orderNumber: o.order_number,
@@ -76,7 +81,7 @@ const getUnresolvedOrders = async () => {
     if (error || !data) return [];
 
     return data.map(o => {
-      const activePay = (o.payments || []).find(p => p.status === 'PAID' || p.payment_status === 'PAID') || o.payments?.[0] || {};
+      const activePay = getActivePayment(o.payments);
       return {
         id: o.id,
         orderNumber: o.order_number,
