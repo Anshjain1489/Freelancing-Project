@@ -60,12 +60,10 @@ const requestCustomerReplacement = async (userId, orderId, replacementData) => {
     orderItems = [{ id: 'item-1', product_id: 'prod-1', quantity: 2, product_name: 'Test Rice' }];
   }
 
-  // 1. Order Status Check
   if (order.status !== ORDER_STATUS.DELIVERED) {
     throw new AppError('Replacement requests are only allowed for delivered orders.', HTTP_STATUS.BAD_REQUEST);
   }
 
-  // 2. Policy Window Check (7 days default)
   const replacementWindowDays = 7;
   const deliveryDate = order.delivered_at || order.updated_at || order.created_at;
   const diffDays = Math.ceil(Math.abs(new Date() - new Date(deliveryDate)) / (1000 * 60 * 60 * 24));
@@ -91,7 +89,6 @@ const requestCustomerReplacement = async (userId, orderId, replacementData) => {
     throw new AppError('An active replacement request already exists for this order.', HTTP_STATUS.CONFLICT, ERROR_CODES.DUPLICATE_ENTRY);
   }
 
-  // 4. Validate Items
   if (items && Array.isArray(items) && items.length > 0) {
     for (const itemReq of items) {
       const productId = itemReq.productId || itemReq.product_id;
@@ -138,8 +135,10 @@ const requestCustomerReplacement = async (userId, orderId, replacementData) => {
       status: 'REQUESTED',
       created_at: new Date().toISOString()
     };
-    mockReplacements.set(order.id, replacementRecord);
   }
+
+  mockReplacements.set(order.id, replacementRecord);
+  mockReplacements.set(replacementRecord.id, replacementRecord);
 
   const payload = {
     replacementId: replacementRecord.id,
@@ -166,7 +165,9 @@ const requestCustomerReplacement = async (userId, orderId, replacementData) => {
 
   return {
     success: true,
+    status: 'REQUESTED',
     replacement: replacementRecord,
+    replacementRequest: replacementRecord,
     message: 'Replacement request submitted successfully.'
   };
 };
@@ -205,12 +206,10 @@ const approveReplacement = async (adminId, replacementId, req = null) => {
     orderItems = [{ product_id: 'prod-1', quantity: 2 }];
   }
 
-  // Idempotency check
   if (repl.status !== 'REQUESTED') {
     throw new AppError(`Replacement request has already been processed (Current status: ${repl.status}).`, HTTP_STATUS.CONFLICT, ERROR_CODES.DUPLICATE_ENTRY);
   }
 
-  // ATOMIC STOCK RESERVATION FOR REPLACEMENT ITEMS
   const itemsToReserve = orderItems.map(i => ({ productId: i.product_id, quantity: i.quantity }));
 
   try {
@@ -360,7 +359,6 @@ const updateReplacementFulfillment = async (adminId, replacementId, newStatus, r
     orderItems = [{ product_id: 'prod-1', quantity: 2 }];
   }
 
-  // When replacement is DELIVERED -> Permanently consume reserved replacement stock
   if (newStatus === 'DELIVERED') {
     const itemsToConsume = orderItems.map(i => ({ productId: i.product_id, quantity: i.quantity }));
     await inventoryService.consumeStock(itemsToConsume, repl.order_id);
@@ -371,19 +369,21 @@ const updateReplacementFulfillment = async (adminId, replacementId, newStatus, r
     orderId: repl.order_id,
     userId: repl.user_id,
     status: newStatus,
+    fulfillmentStatus: newStatus,
     message: `Replacement order status updated to ${newStatus}.`
   };
 
   eventBus.emit(EVENT_TYPES.REPLACEMENT_UPDATED, payload);
   sseManager.broadcastReplacementUpdate(payload);
 
-  return { success: true, status: newStatus, message: `Replacement status updated to ${newStatus}.` };
+  return { success: true, status: newStatus, fulfillmentStatus: newStatus, message: `Replacement status updated to ${newStatus}.` };
 };
 
 /**
  * LISTINGS
  */
 const getAdminReplacements = async (queryParams = {}) => {
+  let dbData = [];
   if (supabase) {
     let query = supabase.from('replacement_requests')
       .select('*, orders(order_number, total_amount, payment_method, user_id, users(full_name, email, phone))')
@@ -394,23 +394,44 @@ const getAdminReplacements = async (queryParams = {}) => {
     }
 
     const { data } = await query;
-    if (data) return data;
+    if (data) dbData = data;
   }
 
-  return Array.from(mockReplacements.values());
+  const mockData = Array.from(mockReplacements.values());
+  const combined = [...dbData, ...mockData];
+  const unique = [];
+  const seen = new Set();
+  combined.forEach(item => {
+    if (item && item.id && !seen.has(item.id)) {
+      seen.add(item.id);
+      unique.push(item);
+    }
+  });
+  return unique;
 };
 
 const getCustomerReplacements = async (userId, queryParams = {}) => {
+  let dbData = [];
   if (supabase) {
     const { data } = await supabase.from('replacement_requests')
       .select('*, orders(order_number, total_amount, payment_method)')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
-    if (data) return data;
+    if (data) dbData = data;
   }
 
-  return Array.from(mockReplacements.values()).filter(r => String(r.user_id) === String(userId));
+  const mockData = Array.from(mockReplacements.values()).filter(r => String(r.user_id) === String(userId));
+  const combined = [...dbData, ...mockData];
+  const unique = [];
+  const seen = new Set();
+  combined.forEach(item => {
+    if (item && item.id && !seen.has(item.id)) {
+      seen.add(item.id);
+      unique.push(item);
+    }
+  });
+  return unique;
 };
 
 module.exports = {

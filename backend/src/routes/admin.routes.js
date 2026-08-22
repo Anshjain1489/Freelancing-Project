@@ -71,9 +71,11 @@ router.post('/replacements/:id/reject', replacementAdminController.rejectReplace
 router.patch('/replacements/:id/fulfillment', replacementAdminController.updateFulfillment);
 
 // Delivery Management
+router.get('/delivery/dashboard', deliveryAdminController.getAdminDeliveryDashboard);
 router.get('/delivery-partners', deliveryAdminController.getDeliveryPartners);
 router.post('/delivery-partners', deliveryAdminController.createDeliveryPartner);
 router.get('/delivery/orders/unassigned', deliveryAdminController.getUnassignedOrders);
+router.get('/delivery/orders/assigned', deliveryAdminController.getAssignedDeliveries);
 router.post('/orders/:orderId/assign-delivery', deliveryAdminController.assignDeliveryPartner);
 router.post('/orders/:orderId/reassign-delivery', deliveryAdminController.reassignDeliveryPartner);
 

@@ -44,6 +44,11 @@ export const deliveryPartnerService = {
   },
 
   // Admin Delivery Management Methods
+  getAdminDeliveryDashboard: async () => {
+    const response = await apiClient.get(ENDPOINTS.ADMIN.DELIVERY_DASHBOARD);
+    return response.data;
+  },
+
   getDeliveryPartners: async () => {
     const response = await apiClient.get(ENDPOINTS.ADMIN.DELIVERY_PARTNERS);
     return response.data;
@@ -59,8 +64,13 @@ export const deliveryPartnerService = {
     return response.data;
   },
 
-  assignDeliveryPartner: async (orderId, deliveryPartnerId, estimatedMinutes = 30) => {
-    const response = await apiClient.post(ENDPOINTS.ADMIN.ASSIGN_DELIVERY(orderId), { deliveryPartnerId, estimatedMinutes });
+  getAssignedDeliveries: async () => {
+    const response = await apiClient.get(ENDPOINTS.ADMIN.ASSIGNED_DELIVERY_ORDERS);
+    return response.data;
+  },
+
+  assignDeliveryPartner: async (orderId, deliveryPartnerId, estimatedMinutes = 30, deliveryNotes = '') => {
+    const response = await apiClient.post(ENDPOINTS.ADMIN.ASSIGN_DELIVERY(orderId), { deliveryPartnerId, estimatedMinutes, deliveryNotes });
     return response.data;
   },
 

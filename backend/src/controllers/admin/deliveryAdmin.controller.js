@@ -13,19 +13,30 @@ const createDeliveryPartner = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, HTTP_STATUS.CREATED, 'Delivery Partner created successfully', partner);
 });
 
+const getAdminDeliveryDashboard = asyncHandler(async (req, res) => {
+  const dashboard = await deliveryService.getAdminDeliveryDashboard();
+  return ApiResponse.success(res, HTTP_STATUS.OK, 'Admin delivery summary dashboard retrieved', dashboard);
+});
+
 const getUnassignedOrders = asyncHandler(async (req, res) => {
   const orders = await deliveryService.getUnassignedOrders();
   return ApiResponse.success(res, HTTP_STATUS.OK, 'Unassigned delivery orders retrieved', { items: orders });
 });
 
+const getAssignedDeliveries = asyncHandler(async (req, res) => {
+  const assignments = await deliveryService.getAssignedDeliveries();
+  return ApiResponse.success(res, HTTP_STATUS.OK, 'Assigned delivery orders retrieved', { items: assignments });
+});
+
 const assignDeliveryPartner = asyncHandler(async (req, res) => {
-  const { deliveryPartnerId, estimatedMinutes } = req.body;
+  const { deliveryPartnerId, estimatedMinutes, deliveryNotes } = req.body;
   const result = await deliveryService.assignDeliveryPartner(
     req.user.id,
     req.params.orderId || req.body.orderId,
     deliveryPartnerId,
     estimatedMinutes,
-    req
+    req,
+    deliveryNotes
   );
   return ApiResponse.success(res, HTTP_STATUS.OK, result.message, result);
 });
@@ -44,7 +55,9 @@ const reassignDeliveryPartner = asyncHandler(async (req, res) => {
 module.exports = {
   getDeliveryPartners,
   createDeliveryPartner,
+  getAdminDeliveryDashboard,
   getUnassignedOrders,
+  getAssignedDeliveries,
   assignDeliveryPartner,
   reassignDeliveryPartner
 };

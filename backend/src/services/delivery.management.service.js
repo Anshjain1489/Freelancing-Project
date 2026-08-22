@@ -2,13 +2,13 @@ const supabase = require('../config/supabase');
 const bcrypt = require('bcryptjs');
 const AppError = require('../utils/AppError');
 const { HTTP_STATUS } = require('../constants/statusCodes');
-const { ORDER_STATUS, validateOrderStatusTransition } = require('./orderStatus.service');
+const { ORDER_STATUS } = require('./orderStatus.service');
 const { logAdminActivity } = require('./adminLog.service');
 const eventBus = require('../events/eventBus');
 const EVENT_TYPES = require('../events/eventTypes');
 const sseManager = require('../notifications/sse.manager');
 
-// Mock memory store for fallbacks
+// Memory fallbacks
 const mockDeliveryAssignments = [];
 const mockPartners = [
   { id: 'partner-1', full_name: 'Rahul Sharma', phone: '9876543210', email: 'rahul.delivery@chaudhary.com', is_active: true, role: 'DELIVERY_PARTNER' },
@@ -17,7 +17,65 @@ const mockPartners = [
 ];
 
 /**
- * 1. Admin: Get all Delivery Partners with active workload metrics
+ * Address Parsing Helper
+ */
+const parseDeliveryAddress = (addr) => {
+  if (!addr) return null;
+  const houseNumber = addr.address_line1 || '';
+  const street = addr.address_line2 || '';
+  const landmark = addr.landmark || '';
+  const city = addr.city || '';
+  const state = addr.state || '';
+  const pincode = addr.postal_code || '';
+
+  const parts = [houseNumber, street, landmark, city, state, pincode].filter(Boolean);
+  const fullAddressLine = parts.join(', ');
+
+  return {
+    houseNumber,
+    street,
+    locality: street || landmark || city || 'Mahruni',
+    landmark,
+    city,
+    state,
+    pincode,
+    fullAddressLine
+  };
+};
+
+/**
+ * Default Address Fallback
+ */
+const defaultDeliveryAddress = {
+  houseNumber: '123 MG Road',
+  street: 'Main Market Road',
+  locality: 'Central Market',
+  landmark: 'Near Store',
+  city: 'Mahruni',
+  state: 'Uttar Pradesh',
+  pincode: '272001',
+  fullAddressLine: '123 MG Road, Main Market Road, Mahruni, Uttar Pradesh - 272001'
+};
+
+/**
+ * Google Maps URL Generator
+ */
+const generateGoogleMapsUrl = (addressObj) => {
+  const target = addressObj || defaultDeliveryAddress;
+  const queryStr = target.fullAddressLine || [target.houseNumber, target.street, target.city, target.state, target.pincode].filter(Boolean).join(', ');
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(queryStr)}`;
+};
+
+/**
+ * Clickable Phone Call URL Generator
+ */
+const generateCallUrl = (phone) => {
+  const clean = String(phone || '9876543210').replace(/[^0-9+]/g, '');
+  return clean.startsWith('+') ? `tel:${clean}` : `tel:+91${clean.replace(/^0+/, '')}`;
+};
+
+/**
+ * 1. Admin: Get all Delivery Partners with active workload & completed metrics
  */
 const getDeliveryPartners = async () => {
   if (supabase) {
@@ -26,25 +84,34 @@ const getDeliveryPartners = async () => {
       .eq('role', 'DELIVERY_PARTNER');
 
     if (!error && partners) {
-      // Calculate active workload per partner
       const partnerIds = partners.map(p => p.id);
-      const { data: activeAssignments } = await supabase.from('delivery_assignments')
-        .select('delivery_partner_id, status')
-        .in('delivery_partner_id', partnerIds.length ? partnerIds : ['none'])
-        .in('status', ['ASSIGNED', 'ACCEPTED', 'PICKED_UP', 'OUT_FOR_DELIVERY']);
+      const today = new Date().toISOString().split('T')[0];
 
-      const counts = {};
+      const { data: activeAssignments } = await supabase.from('delivery_assignments')
+        .select('delivery_partner_id, status, delivered_at')
+        .in('delivery_partner_id', partnerIds.length ? partnerIds : ['none']);
+
+      const activeCounts = {};
+      const completedTodayCounts = {};
+
       (activeAssignments || []).forEach(a => {
-        counts[a.delivery_partner_id] = (counts[a.delivery_partner_id] || 0) + 1;
+        if (['ASSIGNED', 'ACCEPTED', 'PICKED_UP', 'OUT_FOR_DELIVERY'].includes(a.status)) {
+          activeCounts[a.delivery_partner_id] = (activeCounts[a.delivery_partner_id] || 0) + 1;
+        }
+        if (a.status === 'DELIVERED' && a.delivered_at && a.delivered_at.startsWith(today)) {
+          completedTodayCounts[a.delivery_partner_id] = (completedTodayCounts[a.delivery_partner_id] || 0) + 1;
+        }
       });
 
       return partners.map(p => ({
         id: p.id,
         fullName: p.full_name,
+        name: p.full_name,
         phone: p.phone,
         email: p.email,
         isActive: p.is_active,
-        activeDeliveriesCount: counts[p.id] || 0,
+        activeDeliveriesCount: activeCounts[p.id] || 0,
+        completedTodayCount: completedTodayCounts[p.id] || 0,
         createdAt: p.created_at
       }));
     }
@@ -53,10 +120,12 @@ const getDeliveryPartners = async () => {
   return mockPartners.map(p => ({
     id: p.id,
     fullName: p.full_name,
+    name: p.full_name,
     phone: p.phone,
     email: p.email,
     isActive: p.is_active,
     activeDeliveriesCount: mockDeliveryAssignments.filter(a => a.delivery_partner_id === p.id && ['ASSIGNED', 'ACCEPTED', 'PICKED_UP', 'OUT_FOR_DELIVERY'].includes(a.status)).length,
+    completedTodayCount: mockDeliveryAssignments.filter(a => a.delivery_partner_id === p.id && a.status === 'DELIVERED').length,
     createdAt: new Date().toISOString()
   }));
 };
@@ -103,28 +172,84 @@ const createDeliveryPartner = async (adminId, partnerData, req = null) => {
 };
 
 /**
- * 3. Admin: Get Orders Waiting for Delivery Assignment
+ * 3. Admin: Get Delivery Dashboard Overview Metrics
+ */
+const getAdminDeliveryDashboard = async () => {
+  if (supabase) {
+    const today = new Date().toISOString().split('T')[0];
+
+    const { data: orders } = await supabase.from('orders')
+      .select('id, status, delivery_assignments(*)')
+      .in('status', [ORDER_STATUS.CONFIRMED, ORDER_STATUS.PROCESSING, ORDER_STATUS.READY_FOR_DELIVERY, ORDER_STATUS.OUT_FOR_DELIVERY, ORDER_STATUS.DELIVERED]);
+
+    const { data: assignments } = await supabase.from('delivery_assignments').select('*');
+
+    const listOrders = orders || [];
+    const listAssignments = assignments || [];
+
+    const unassignedCount = listOrders.filter(o => !o.delivery_assignments || o.delivery_assignments.length === 0 || o.delivery_assignments[0].status === 'CANCELLED').length;
+    const assignedCount = listAssignments.filter(a => ['ASSIGNED', 'ACCEPTED'].includes(a.status)).length;
+    const outForDeliveryCount = listAssignments.filter(a => ['PICKED_UP', 'OUT_FOR_DELIVERY'].includes(a.status)).length;
+    const deliveredTodayCount = listAssignments.filter(a => a.status === 'DELIVERED' && a.delivered_at && a.delivered_at.startsWith(today)).length;
+    const failedDeliveriesCount = listAssignments.filter(a => a.status === 'FAILED_DELIVERY').length;
+
+    return {
+      unassignedOrders: unassignedCount,
+      assignedOrders: assignedCount,
+      outForDelivery: outForDeliveryCount,
+      deliveredToday: deliveredTodayCount,
+      failedDeliveries: failedDeliveriesCount
+    };
+  }
+
+  return {
+    unassignedOrders: 0,
+    assignedOrders: 0,
+    outForDelivery: 0,
+    deliveredToday: 0,
+    failedDeliveries: 0
+  };
+};
+
+/**
+ * 4. Admin: Get Orders Waiting for Delivery Assignment (With Customer Details)
  */
 const getUnassignedOrders = async () => {
   if (supabase) {
     const { data: orders, error } = await supabase.from('orders')
-      .select('*, users!orders_user_id_fkey(full_name, phone), order_addresses(*), delivery_assignments(*)')
+      .select('*, users!orders_user_id_fkey(id, full_name, phone, email), order_addresses(*), order_items(*), delivery_assignments(*)')
       .in('status', [ORDER_STATUS.CONFIRMED, ORDER_STATUS.PROCESSING, ORDER_STATUS.READY_FOR_DELIVERY])
       .order('created_at', { ascending: false });
 
     if (!error && orders) {
       const unassigned = orders.filter(o => !o.delivery_assignments || o.delivery_assignments.length === 0 || o.delivery_assignments[0].status === 'CANCELLED');
-      return unassigned.map(o => ({
-        orderId: o.id,
-        orderNumber: o.order_number,
-        customerName: o.users?.full_name || 'Valued Customer',
-        customerPhone: o.users?.phone || '',
-        subtotal: parseFloat(o.subtotal),
-        totalAmount: parseFloat(o.total_amount),
-        orderStatus: o.status,
-        address: o.order_addresses?.[0] || null,
-        createdAt: o.created_at
-      }));
+      return unassigned.map(o => {
+        const rawAddr = o.order_addresses?.[0] || null;
+        const deliveryAddress = parseDeliveryAddress(rawAddr) || defaultDeliveryAddress;
+
+        return {
+          orderId: o.id,
+          orderNumber: o.order_number,
+          orderStatus: o.status,
+          totalAmount: parseFloat(o.total_amount),
+          subtotal: parseFloat(o.subtotal),
+          paymentStatus: o.payment_status || 'PAID',
+          paymentMethod: o.payment_method || 'RAZORPAY',
+          createdAt: o.created_at,
+          customer: {
+            id: o.users?.id || o.user_id,
+            name: o.users?.full_name || 'Valued Customer',
+            phone: o.users?.phone || '9876543210',
+            email: o.users?.email || 'customer@example.com'
+          },
+          customerName: o.users?.full_name || 'Valued Customer',
+          customerPhone: o.users?.phone || '9876543210',
+          deliveryAddress,
+          address: rawAddr,
+          itemCount: o.order_items?.length || 0,
+          items: (o.order_items || []).map(i => ({ name: i.product_name, quantity: i.quantity, price: parseFloat(i.unit_price) }))
+        };
+      });
     }
   }
 
@@ -132,9 +257,71 @@ const getUnassignedOrders = async () => {
 };
 
 /**
- * 4. Admin: Assign Delivery Partner (Atomic Concurrency Protection)
+ * 5. Admin: Get Assigned Delivery Orders
  */
-const assignDeliveryPartner = async (adminId, orderId, partnerId, estimatedMinutes = 30, req = null) => {
+const getAssignedDeliveries = async () => {
+  if (supabase) {
+    const { data: assignments, error } = await supabase.from('delivery_assignments')
+      .select('*, orders(*, order_items(*), order_addresses(*), users!orders_user_id_fkey(id, full_name, phone, email)), partner:users!delivery_assignments_delivery_partner_id_fkey(id, full_name, phone, email)')
+      .order('updated_at', { ascending: false });
+
+    if (!error && assignments) {
+      return assignments
+        .filter(a => a.status !== 'CANCELLED')
+        .map(a => {
+          const rawAddr = a.orders?.order_addresses?.[0] || null;
+          const deliveryAddress = parseDeliveryAddress(rawAddr) || defaultDeliveryAddress;
+
+          return {
+            assignmentId: a.id,
+            orderId: a.orders?.id,
+            orderNumber: a.orders?.order_number,
+            orderStatus: a.orders?.status,
+            deliveryStatus: a.status,
+            totalAmount: parseFloat(a.orders?.total_amount || 0),
+            paymentStatus: a.orders?.payment_status || 'PAID',
+            customer: {
+              id: a.orders?.users?.id,
+              name: a.orders?.users?.full_name || 'Customer',
+              phone: a.orders?.users?.phone || '9876543210',
+              email: a.orders?.users?.email || 'customer@example.com'
+            },
+            deliveryAddress,
+            deliveryPartner: {
+              id: a.partner?.id || a.delivery_partner_id,
+              name: a.partner?.full_name || 'Partner',
+              phone: a.partner?.phone || '9876543210',
+              email: a.partner?.email || 'partner@example.com'
+            },
+            assignedAt: a.assigned_at,
+            estimatedDeliveryAt: a.estimated_delivery_at,
+            notes: a.notes || null,
+            acceptedAt: a.accepted_at,
+            pickedUpAt: a.picked_up_at,
+            deliveredAt: a.delivered_at,
+            failedAt: a.failed_at,
+            failureReason: a.failure_reason
+          };
+        });
+    }
+  }
+
+  return mockDeliveryAssignments.map(a => ({
+    assignmentId: a.id,
+    orderId: a.order_id,
+    orderNumber: `CKS-DEL-${a.order_id}`,
+    deliveryStatus: a.status,
+    customer: { name: 'Valued Customer', phone: '9876543210', email: 'customer@example.com' },
+    deliveryAddress: defaultDeliveryAddress,
+    deliveryPartner: { name: 'Rahul Sharma', phone: '9876543210' },
+    assignedAt: a.assigned_at
+  }));
+};
+
+/**
+ * 6. Admin: Assign Delivery Partner
+ */
+const assignDeliveryPartner = async (adminId, orderId, partnerId, estimatedMinutes = 30, req = null, deliveryNotes = null) => {
   if (!orderId || !partnerId) {
     throw new AppError('Order ID and Delivery Partner ID are required', HTTP_STATUS.BAD_REQUEST);
   }
@@ -143,7 +330,6 @@ const assignDeliveryPartner = async (adminId, orderId, partnerId, estimatedMinut
   const estimatedDeliveryAt = new Date(Date.now() + (parseInt(estimatedMinutes) || 30) * 60000).toISOString();
 
   if (supabase) {
-    // Check order exists
     const { data: order } = await supabase.from('orders')
       .select('*, users!orders_user_id_fkey(full_name, phone)')
       .eq('id', orderId)
@@ -151,7 +337,6 @@ const assignDeliveryPartner = async (adminId, orderId, partnerId, estimatedMinut
 
     if (!order) throw new AppError('Order not found', HTTP_STATUS.NOT_FOUND);
 
-    // Atomic Check: Unique delivery assignment constraint check
     const { data: existingAssignment } = await supabase.from('delivery_assignments')
       .select('*')
       .eq('order_id', orderId)
@@ -161,7 +346,6 @@ const assignDeliveryPartner = async (adminId, orderId, partnerId, estimatedMinut
       throw new AppError('This delivery assignment has already been modified by another administrator.', HTTP_STATUS.CONFLICT);
     }
 
-    // Insert atomic delivery assignment
     const insertPayload = {
       order_id: orderId,
       delivery_partner_id: partnerId,
@@ -177,7 +361,6 @@ const assignDeliveryPartner = async (adminId, orderId, partnerId, estimatedMinut
       .maybeSingle();
 
     if (!assignErr && assignment) {
-      // Update order status to READY_FOR_DELIVERY if currently CONFIRMED or PROCESSING
       if ([ORDER_STATUS.CONFIRMED, ORDER_STATUS.PROCESSING].includes(order.status)) {
         await supabase.from('orders')
           .update({ status: ORDER_STATUS.READY_FOR_DELIVERY, updated_at: new Date().toISOString() })
@@ -196,7 +379,7 @@ const assignDeliveryPartner = async (adminId, orderId, partnerId, estimatedMinut
         updatedAt: new Date().toISOString()
       };
 
-      await logAdminActivity(adminId, 'ADMIN_DELIVERY_ASSIGNED', 'order', orderId, { partnerId, estimatedMinutes }, req);
+      await logAdminActivity(adminId, 'ADMIN_DELIVERY_ASSIGNED', 'order', orderId, { partnerId, estimatedMinutes, deliveryNotes }, req);
 
       eventBus.emit(EVENT_TYPES.DELIVERY_ASSIGNED, payload);
       sseManager.broadcastDeliveryUpdate(payload);
@@ -209,7 +392,6 @@ const assignDeliveryPartner = async (adminId, orderId, partnerId, estimatedMinut
     }
   }
 
-  // Memory Fallback for mock/schema cache
   const existingMock = mockDeliveryAssignments.find(a => String(a.order_id) === String(orderId) && a.status !== 'CANCELLED');
   if (existingMock) {
     throw new AppError('This delivery assignment has already been created or modified by another administrator.', HTTP_STATUS.CONFLICT);
@@ -242,7 +424,7 @@ const assignDeliveryPartner = async (adminId, orderId, partnerId, estimatedMinut
 };
 
 /**
- * 5. Admin: Reassign Delivery Partner
+ * 7. Admin: Reassign Delivery Partner
  */
 const reassignDeliveryPartner = async (adminId, orderId, newPartnerId, req = null) => {
   if (supabase) {
@@ -311,7 +493,7 @@ const reassignDeliveryPartner = async (adminId, orderId, newPartnerId, req = nul
 };
 
 /**
- * 6. Delivery Partner: Dashboard Overview Stats
+ * 8. Delivery Partner: Dashboard Overview Stats
  */
 const getPartnerDashboard = async (partnerId) => {
   if (supabase) {
@@ -341,39 +523,55 @@ const getPartnerDashboard = async (partnerId) => {
 };
 
 /**
- * 7. Delivery Partner: Get Assigned Orders (Strict Ownership Isolation)
+ * 9. Delivery Partner: Get Assigned Orders (Strict Ownership Isolation & Call/Maps URLs)
  */
 const getPartnerOrders = async (partnerId, queryParams = {}) => {
   if (supabase) {
     const { data: assignments, error } = await supabase.from('delivery_assignments')
-      .select('*, orders(*, order_items(*), order_addresses(*), users!orders_user_id_fkey(full_name, phone))')
+      .select('*, orders(*, order_items(*), order_addresses(*), users!orders_user_id_fkey(id, full_name, phone, email))')
       .eq('delivery_partner_id', partnerId)
       .order('updated_at', { ascending: false });
 
     if (!error && assignments) {
-      return assignments.map(a => ({
-        assignmentId: a.id,
-        orderId: a.orders?.id,
-        orderNumber: a.orders?.order_number,
-        orderStatus: a.orders?.status,
-        deliveryStatus: a.status,
-        customerName: a.orders?.users?.full_name || 'Customer',
-        customerPhone: a.orders?.users?.phone || '',
-        address: a.orders?.order_addresses?.[0] || null,
-        itemCount: a.orders?.order_items?.length || 0,
-        items: (a.orders?.order_items || []).map(i => ({ name: i.product_name, quantity: i.quantity, price: parseFloat(i.unit_price) })),
-        subtotal: parseFloat(a.orders?.subtotal || 0),
-        totalAmount: parseFloat(a.orders?.total_amount || 0),
-        paymentMethod: a.orders?.payment_method || 'RAZORPAY',
-        paymentStatus: a.orders?.payment_status || 'PAID',
-        estimatedDeliveryAt: a.estimated_delivery_at,
-        assignedAt: a.assigned_at,
-        acceptedAt: a.accepted_at,
-        pickedUpAt: a.picked_up_at,
-        deliveredAt: a.delivered_at,
-        failedAt: a.failed_at,
-        failureReason: a.failure_reason
-      }));
+      return assignments.map(a => {
+        const rawAddr = a.orders?.order_addresses?.[0] || null;
+        const deliveryAddress = parseDeliveryAddress(rawAddr) || defaultDeliveryAddress;
+        const customerPhone = a.orders?.users?.phone || '9876543210';
+
+        return {
+          assignmentId: a.id,
+          orderId: a.orders?.id,
+          orderNumber: a.orders?.order_number,
+          orderStatus: a.orders?.status,
+          deliveryStatus: a.status,
+          customer: {
+            id: a.orders?.users?.id,
+            name: a.orders?.users?.full_name || 'Customer',
+            phone: customerPhone,
+            email: a.orders?.users?.email || 'customer@example.com'
+          },
+          customerName: a.orders?.users?.full_name || 'Customer',
+          customerPhone,
+          customerEmail: a.orders?.users?.email || '',
+          callUrl: generateCallUrl(customerPhone),
+          googleMapsUrl: generateGoogleMapsUrl(deliveryAddress),
+          deliveryAddress,
+          address: rawAddr,
+          itemCount: a.orders?.order_items?.length || 0,
+          items: (a.orders?.order_items || []).map(i => ({ name: i.product_name, quantity: i.quantity, price: parseFloat(i.unit_price) })),
+          subtotal: parseFloat(a.orders?.subtotal || 0),
+          totalAmount: parseFloat(a.orders?.total_amount || 0),
+          paymentMethod: a.orders?.payment_method || 'RAZORPAY',
+          paymentStatus: a.orders?.payment_status || 'PAID',
+          estimatedDeliveryAt: a.estimated_delivery_at,
+          assignedAt: a.assigned_at,
+          acceptedAt: a.accepted_at,
+          pickedUpAt: a.picked_up_at,
+          deliveredAt: a.delivered_at,
+          failedAt: a.failed_at,
+          failureReason: a.failure_reason
+        };
+      });
     }
   }
 
@@ -385,8 +583,12 @@ const getPartnerOrders = async (partnerId, queryParams = {}) => {
       orderNumber: `CKS-DEL-${a.order_id}`,
       orderStatus: a.status === 'DELIVERED' ? 'DELIVERED' : a.status === 'PICKED_UP' ? 'OUT_FOR_DELIVERY' : 'READY_FOR_DELIVERY',
       deliveryStatus: a.status,
+      customer: { name: 'Valued Customer', phone: '9876543210', email: 'customer@example.com' },
       customerName: 'Valued Customer',
       customerPhone: '9876543210',
+      callUrl: 'tel:+919876543210',
+      googleMapsUrl: 'https://www.google.com/maps/search/?api=1&query=Mahruni',
+      deliveryAddress: defaultDeliveryAddress,
       items: [{ name: 'Grocery Item', quantity: 2, price: 250 }],
       totalAmount: 500,
       paymentStatus: 'PAID',
@@ -396,13 +598,13 @@ const getPartnerOrders = async (partnerId, queryParams = {}) => {
 };
 
 /**
- * 8. Delivery Partner: Get Specific Order Details (Strict Ownership Check: 403 Forbidden)
+ * 10. Delivery Partner: Get Specific Order Details (Strict Ownership Check: 403 Forbidden)
  */
 const getPartnerOrderById = async (partnerId, orderId) => {
   if (supabase) {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(orderId));
     let query = supabase.from('delivery_assignments')
-      .select('*, orders(*, order_items(*), order_addresses(*), users!orders_user_id_fkey(full_name, phone))');
+      .select('*, orders(*, order_items(*), order_addresses(*), users!orders_user_id_fkey(id, full_name, phone, email))');
 
     if (isUuid) {
       query = query.eq('order_id', orderId);
@@ -413,10 +615,13 @@ const getPartnerOrderById = async (partnerId, orderId) => {
     const { data: assignment, error } = await query.maybeSingle();
 
     if (!error && assignment) {
-      // Strict Ownership Security Verification
       if (String(assignment.delivery_partner_id) !== String(partnerId)) {
         throw new AppError('Forbidden: You are not authorized to view this delivery assignment', HTTP_STATUS.FORBIDDEN);
       }
+
+      const rawAddr = assignment.orders?.order_addresses?.[0] || null;
+      const deliveryAddress = parseDeliveryAddress(rawAddr) || defaultDeliveryAddress;
+      const customerPhone = assignment.orders?.users?.phone || '9876543210';
 
       return {
         assignmentId: assignment.id,
@@ -424,14 +629,30 @@ const getPartnerOrderById = async (partnerId, orderId) => {
         orderNumber: assignment.orders?.order_number,
         orderStatus: assignment.orders?.status,
         deliveryStatus: assignment.status,
+        customer: {
+          id: assignment.orders?.users?.id,
+          name: assignment.orders?.users?.full_name || 'Customer',
+          phone: customerPhone,
+          email: assignment.orders?.users?.email || 'customer@example.com'
+        },
         customerName: assignment.orders?.users?.full_name || 'Customer',
-        customerPhone: assignment.orders?.users?.phone || '',
-        address: assignment.orders?.order_addresses?.[0] || null,
-        items: assignment.orders?.order_items || [],
+        customerPhone,
+        customerEmail: assignment.orders?.users?.email || '',
+        callUrl: generateCallUrl(customerPhone),
+        googleMapsUrl: generateGoogleMapsUrl(deliveryAddress),
+        deliveryAddress,
+        address: rawAddr,
+        items: (assignment.orders?.order_items || []).map(i => ({ name: i.product_name, quantity: i.quantity, price: parseFloat(i.unit_price) })),
         subtotal: parseFloat(assignment.orders?.subtotal || 0),
         totalAmount: parseFloat(assignment.orders?.total_amount || 0),
         paymentStatus: assignment.orders?.payment_status || 'PAID',
+        paymentMethod: assignment.orders?.payment_method || 'RAZORPAY',
         estimatedDeliveryAt: assignment.estimated_delivery_at,
+        assignedAt: assignment.assigned_at,
+        acceptedAt: assignment.accepted_at,
+        pickedUpAt: assignment.picked_up_at,
+        deliveredAt: assignment.delivered_at,
+        failedAt: assignment.failed_at,
         failureReason: assignment.failure_reason
       };
     }
@@ -448,7 +669,10 @@ const getPartnerOrderById = async (partnerId, orderId) => {
       orderNumber: `CKS-DEL-${foundMock.order_id}`,
       deliveryStatus: foundMock.status,
       customerName: 'Valued Customer',
-      customerPhone: '9876543210'
+      customerPhone: '9876543210',
+      callUrl: 'tel:+919876543210',
+      googleMapsUrl: 'https://www.google.com/maps/search/?api=1&query=Mahruni',
+      deliveryAddress: defaultDeliveryAddress
     };
   }
 
@@ -456,7 +680,7 @@ const getPartnerOrderById = async (partnerId, orderId) => {
 };
 
 /**
- * 9. Delivery Partner: Accept Assigned Delivery (Atomic Concurrency Protection)
+ * 11. Delivery Partner: Accept Assigned Delivery
  */
 const acceptDelivery = async (partnerId, orderId) => {
   if (supabase) {
@@ -514,7 +738,7 @@ const acceptDelivery = async (partnerId, orderId) => {
 };
 
 /**
- * 10. Delivery Partner: Mark Order Picked Up (Atomic Concurrency Protection)
+ * 12. Delivery Partner: Mark Order Picked Up
  */
 const pickupDelivery = async (partnerId, orderId) => {
   if (supabase) {
@@ -574,7 +798,7 @@ const pickupDelivery = async (partnerId, orderId) => {
 };
 
 /**
- * 11. Delivery Partner: Mark Order Delivered (Atomic Concurrency Protection)
+ * 13. Delivery Partner: Mark Order Delivered
  */
 const inventoryService = require('./inventory.service');
 
@@ -597,7 +821,6 @@ const deliverOrder = async (partnerId, orderId) => {
         .update({ status: ORDER_STATUS.DELIVERED, updated_at: new Date().toISOString() })
         .eq('id', orderId);
 
-      // Atomically convert reserved stock to consumed SALE stock upon delivery
       await inventoryService.consumeStock(null, orderId);
 
       const payload = {
@@ -647,7 +870,7 @@ const deliverOrder = async (partnerId, orderId) => {
 };
 
 /**
- * 12. Delivery Partner: Mark Delivery Failed (Requires Reason, NO Auto-Refund)
+ * 14. Delivery Partner: Mark Delivery Failed
  */
 const failDelivery = async (partnerId, orderId, failureReason) => {
   if (!failureReason || !String(failureReason).trim()) {
@@ -710,7 +933,9 @@ const failDelivery = async (partnerId, orderId, failureReason) => {
 module.exports = {
   getDeliveryPartners,
   createDeliveryPartner,
+  getAdminDeliveryDashboard,
   getUnassignedOrders,
+  getAssignedDeliveries,
   assignDeliveryPartner,
   reassignDeliveryPartner,
   getPartnerDashboard,

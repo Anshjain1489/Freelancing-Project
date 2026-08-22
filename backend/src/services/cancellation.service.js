@@ -102,11 +102,7 @@ const requestCustomerCancellation = async (userId, orderId, reason) => {
     throw new AppError('A cancellation request is already pending approval for this order.', HTTP_STATUS.CONFLICT, ERROR_CODES.DUPLICATE_ENTRY);
   }
 
-  // Cancellation State Machine Decision:
-  // CONFIRMED or PENDING_PAYMENT or PROCESSING -> Auto-approve cancellation
-  // READY_FOR_DELIVERY -> Move to REQUESTED (awaiting Admin approval)
   const isAutoApprovable = [ORDER_STATUS.CONFIRMED, ORDER_STATUS.PENDING_PAYMENT, ORDER_STATUS.PROCESSING].includes(order.status);
-
   let cancellationRecord = null;
   const initialStatus = isAutoApprovable ? 'APPROVED' : 'REQUESTED';
 
@@ -143,7 +139,6 @@ const requestCustomerCancellation = async (userId, orderId, reason) => {
   mockCancellations.set(order.id, cancellationRecord);
   mockCancellations.set(cancellationRecord.id, cancellationRecord);
 
-  // If Auto-Approvable: Cancel Order, Release Stock & Process Refund
   if (isAutoApprovable) {
     if (supabase) {
       await supabase.from('orders').update({
@@ -154,14 +149,12 @@ const requestCustomerCancellation = async (userId, orderId, reason) => {
       order.status = ORDER_STATUS.CANCELLED;
     }
 
-    // Release stock reservation
     await inventoryService.releaseStock(
       orderItems.map(i => ({ productId: i.product_id, quantity: i.quantity })),
       order.id,
       'CUSTOMER_CANCELLED'
     );
 
-    // Process Refund if Prepaid
     let refundRes = { status: 'NOT_REQUIRED' };
     if (order.payment_method !== 'COD') {
       refundRes = await refundService.processOrderRefund({
@@ -195,7 +188,6 @@ const requestCustomerCancellation = async (userId, orderId, reason) => {
     };
   }
 
-  // Requires Admin Approval (e.g. READY_FOR_DELIVERY)
   const payload = {
     cancellationId: cancellationRecord.id,
     orderId: order.id,
@@ -276,12 +268,10 @@ const approveCancellation = async (adminId, requestId, req = null) => {
     };
   }
 
-  // Idempotency check: Cannot re-approve or approve non-requested
   if (request.status !== 'REQUESTED') {
     throw new AppError(`Cancellation request has already been processed (Current status: ${request.status}).`, HTTP_STATUS.CONFLICT, ERROR_CODES.DUPLICATE_ENTRY);
   }
 
-  // Update cancellation request & order
   if (supabase) {
     await supabase.from('cancellation_requests').update({
       status: 'APPROVED',
@@ -301,14 +291,12 @@ const approveCancellation = async (adminId, requestId, req = null) => {
   mockCancellations.set(order.id, request);
   mockCancellations.set(request.id, request);
 
-  // Release stock reservation
   await inventoryService.releaseStock(
     orderItems.map(i => ({ productId: i.product_id, quantity: i.quantity })),
     order.id,
     'ADMIN_APPROVED_CANCELLATION'
   );
 
-  // Process Razorpay refund if prepaid
   let refundRes = { status: 'NOT_REQUIRED' };
   if (order.payment_method !== 'COD') {
     refundRes = await refundService.processOrderRefund({
@@ -432,6 +420,7 @@ const rejectCancellation = async (adminId, requestId, reason = 'Store policy', r
  * GET ADMIN CANCELLATIONS LISTING
  */
 const getAdminCancellations = async (queryParams = {}) => {
+  let dbData = [];
   if (supabase) {
     let query = supabase.from('cancellation_requests')
       .select('*, orders(order_number, total_amount, payment_method, status, user_id, users(full_name, email, phone))')
@@ -442,26 +431,47 @@ const getAdminCancellations = async (queryParams = {}) => {
     }
 
     const { data, error } = await query;
-    if (!error && data) return data;
+    if (!error && data) dbData = data;
   }
 
-  return Array.from(mockCancellations.values());
+  const mockData = Array.from(mockCancellations.values());
+  const combined = [...dbData, ...mockData];
+  const unique = [];
+  const seen = new Set();
+  combined.forEach(item => {
+    if (item && item.id && !seen.has(item.id)) {
+      seen.add(item.id);
+      unique.push(item);
+    }
+  });
+  return unique;
 };
 
 /**
  * GET CUSTOMER CANCELLATIONS LISTING
  */
 const getCustomerCancellations = async (userId, queryParams = {}) => {
+  let dbData = [];
   if (supabase) {
     const { data } = await supabase.from('cancellation_requests')
       .select('*, orders(order_number, total_amount, payment_method, status)')
       .eq('requested_by', userId)
       .order('created_at', { ascending: false });
 
-    if (data) return data;
+    if (data) dbData = data;
   }
 
-  return Array.from(mockCancellations.values()).filter(r => String(r.requested_by) === String(userId));
+  const mockData = Array.from(mockCancellations.values()).filter(r => String(r.requested_by) === String(userId));
+  const combined = [...dbData, ...mockData];
+  const unique = [];
+  const seen = new Set();
+  combined.forEach(item => {
+    if (item && item.id && !seen.has(item.id)) {
+      seen.add(item.id);
+      unique.push(item);
+    }
+  });
+  return unique;
 };
 
 module.exports = {

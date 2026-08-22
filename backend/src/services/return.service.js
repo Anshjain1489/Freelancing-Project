@@ -10,7 +10,7 @@ const sseManager = require('../notifications/sse.manager');
 const notificationService = require('../notifications/notification.service');
 const { ORDER_STATUS } = require('./orderStatus.service');
 
-// Memory fallback store for unit testing & offline mode
+// Memory fallback store for unit tests / offline mode
 const mockReturns = new Map();
 const mockReturnItems = [];
 const mockRestockedReturns = new Set();
@@ -83,12 +83,10 @@ const requestCustomerReturn = async (userId, orderId, returnData) => {
     ];
   }
 
-  // 1. Order Status Check: Returns only allowed for DELIVERED orders
   if (order.status !== ORDER_STATUS.DELIVERED) {
     throw new AppError('Return requests are only allowed for delivered orders.', HTTP_STATUS.BAD_REQUEST);
   }
 
-  // 2. Policy Window Check (Server-Side 7-day default policy)
   const returnWindowDays = 7;
   const deliveryDate = order.delivered_at || order.updated_at || order.created_at;
   const diffTime = Math.abs(new Date() - new Date(deliveryDate));
@@ -115,7 +113,6 @@ const requestCustomerReturn = async (userId, orderId, returnData) => {
     throw new AppError('An active return request already exists for this order.', HTTP_STATUS.CONFLICT, ERROR_CODES.DUPLICATE_ENTRY);
   }
 
-  // 4. Validate Returned Items & Calculate Partial Refund Server-Side
   let calculatedRefundTotal = 0;
   const validatedReturnItems = [];
 
@@ -139,7 +136,6 @@ const requestCustomerReturn = async (userId, orderId, returnData) => {
       );
     }
 
-    // Proportional Coupon Discount Refund Allocation Algorithm
     const itemGross = parseFloat(orderItem.unit_price || (orderItem.total_price / orderItem.quantity)) * requestedQty;
     const orderSubtotal = parseFloat(order.subtotal || order.total_amount);
     const orderDiscount = parseFloat(order.discount_amount || 0);
@@ -164,9 +160,7 @@ const requestCustomerReturn = async (userId, orderId, returnData) => {
     });
   }
 
-  // Cap refund amount at captured order total
   calculatedRefundTotal = Math.min(parseFloat(order.total_amount), parseFloat(calculatedRefundTotal.toFixed(2)));
-
   const returnNumber = generateReturnNumber();
 
   let returnRecord = null;
@@ -239,7 +233,9 @@ const requestCustomerReturn = async (userId, orderId, returnData) => {
 
   return {
     success: true,
+    status: 'REQUESTED',
     return: returnRecord,
+    returnRequest: returnRecord,
     estimatedRefundAmount: calculatedRefundTotal,
     items: validatedReturnItems,
     message: 'Return request submitted successfully.'
@@ -271,7 +267,6 @@ const approveReturn = async (adminId, returnId, req = null) => {
     }
   }
 
-  // Idempotency check
   if (ret.status !== 'REQUESTED') {
     throw new AppError(`Return request has already been processed (Current status: ${ret.status}).`, HTTP_STATUS.CONFLICT, ERROR_CODES.DUPLICATE_ENTRY);
   }
@@ -483,8 +478,6 @@ const markPickupPickedUp = async (partnerId, returnId, req = null) => {
   mockReturns.set(ret.id, ret);
   mockReturns.set(ret.order_id, ret);
 
-  // NOTE: In-transit returns DO NOT restore inventory yet. Inventory restored on RETURN RECEIVED.
-
   const payload = {
     returnId: ret.id,
     returnNumber: ret.return_number,
@@ -563,7 +556,7 @@ const markPickupFailed = async (partnerId, returnId, failureReason, req = null) 
 };
 
 /**
- * 7. ADMIN CONFIRM RETURN RECEIVED (INVENTORY RESTORATION & REFUND INTEGRATION)
+ * 7. ADMIN CONFIRM RETURN RECEIVED
  */
 const confirmReturnReceived = async (adminId, returnId, itemsCondition = [], req = null) => {
   let ret = null;
@@ -615,7 +608,6 @@ const confirmReturnReceived = async (adminId, returnId, itemsCondition = [], req
     status: 'CAPTURED'
   };
 
-  // Idempotency check: Cannot re-confirm received return
   if (ret.status === 'RECEIVED' || ret.status === 'REFUNDED') {
     throw new AppError('Return has already been confirmed as received.', HTTP_STATUS.CONFLICT, ERROR_CODES.DUPLICATE_ENTRY);
   }
@@ -626,7 +618,6 @@ const confirmReturnReceived = async (adminId, returnId, itemsCondition = [], req
 
   let totalRefundCalculated = 0;
 
-  // Process Each Item: Restockable vs Damaged Inventory Restoration Rules
   for (const item of returnItemsList) {
     const condObj = itemsCondition.find(c => String(c.productId) === String(item.product_id)) || {};
     const condition = condObj.conditionStatus || item.condition_status || 'RESTOCKABLE';
@@ -635,10 +626,8 @@ const confirmReturnReceived = async (adminId, returnId, itemsCondition = [], req
     totalRefundCalculated += parseFloat(item.refund_amount || 0);
 
     if (condition === 'RESTOCKABLE') {
-      // RESTOCKABLE: Increment stock_quantity += receivedQty & Record movement RETURNED
       await inventoryService.addStock(adminId, item.product_id, receivedQty, `Returned item restocked (Return #${ret.return_number || ret.id})`, req);
     } else {
-      // DAMAGED: DO NOT increase available stock! Record DAMAGED_RETURN movement.
       if (supabase) {
         try {
           const { data: prod } = await supabase.from('products').select('stock_quantity, reserved_quantity').eq('id', item.product_id).single();
@@ -672,7 +661,6 @@ const confirmReturnReceived = async (adminId, returnId, itemsCondition = [], req
     }
   }
 
-  // Update Return Record Status
   if (supabase) {
     await supabase.from('returns').update({
       status: 'RECEIVED',
@@ -688,7 +676,6 @@ const confirmReturnReceived = async (adminId, returnId, itemsCondition = [], req
 
   mockRestockedReturns.add(String(ret.id));
 
-  // Process Refund if Prepaid
   let refundRes = { status: 'NOT_REQUIRED' };
   if (order.payment_method !== 'COD') {
     refundRes = await refundService.processOrderRefund({
@@ -736,6 +723,7 @@ const confirmReturnReceived = async (adminId, returnId, itemsCondition = [], req
  * LISTINGS
  */
 const getAdminReturns = async (queryParams = {}) => {
+  let dbData = [];
   if (supabase) {
     let query = supabase.from('returns')
       .select('*, return_items(*), orders(order_number, total_amount, payment_method, user_id, users(full_name, email, phone))')
@@ -746,34 +734,58 @@ const getAdminReturns = async (queryParams = {}) => {
     }
 
     const { data } = await query;
-    if (data) return data;
+    if (data) dbData = data;
   }
 
-  return Array.from(mockReturns.values()).map(r => ({
+  const mockData = Array.from(mockReturns.values()).map(r => ({
     ...r,
     return_items: mockReturnItems.filter(i => String(i.return_id) === String(r.id))
   }));
+
+  const combined = [...dbData, ...mockData];
+  const unique = [];
+  const seen = new Set();
+  combined.forEach(item => {
+    if (item && item.id && !seen.has(item.id)) {
+      seen.add(item.id);
+      unique.push(item);
+    }
+  });
+  return unique;
 };
 
 const getCustomerReturns = async (userId, queryParams = {}) => {
+  let dbData = [];
   if (supabase) {
     const { data } = await supabase.from('returns')
       .select('*, return_items(*), orders(order_number, total_amount, payment_method)')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
-    if (data) return data;
+    if (data) dbData = data;
   }
 
-  return Array.from(mockReturns.values())
+  const mockData = Array.from(mockReturns.values())
     .filter(r => String(r.user_id) === String(userId))
     .map(r => ({
       ...r,
       return_items: mockReturnItems.filter(i => String(i.return_id) === String(r.id))
     }));
+
+  const combined = [...dbData, ...mockData];
+  const unique = [];
+  const seen = new Set();
+  combined.forEach(item => {
+    if (item && item.id && !seen.has(item.id)) {
+      seen.add(item.id);
+      unique.push(item);
+    }
+  });
+  return unique;
 };
 
 const getDeliveryPartnerPickups = async (partnerId, queryParams = {}) => {
+  let dbData = [];
   if (supabase) {
     let query = supabase.from('returns')
       .select('*, return_items(*, products(name, sku)), orders(order_number, user_id, order_addresses(*), users(full_name, phone))')
@@ -785,15 +797,26 @@ const getDeliveryPartnerPickups = async (partnerId, queryParams = {}) => {
     }
 
     const { data } = await query;
-    if (data) return data;
+    if (data) dbData = data;
   }
 
-  return Array.from(mockReturns.values())
+  const mockData = Array.from(mockReturns.values())
     .filter(r => String(r.pickup_delivery_partner_id) === String(partnerId))
     .map(r => ({
       ...r,
       return_items: mockReturnItems.filter(i => String(i.return_id) === String(r.id))
     }));
+
+  const combined = [...dbData, ...mockData];
+  const unique = [];
+  const seen = new Set();
+  combined.forEach(item => {
+    if (item && item.id && !seen.has(item.id)) {
+      seen.add(item.id);
+      unique.push(item);
+    }
+  });
+  return unique;
 };
 
 module.exports = {
