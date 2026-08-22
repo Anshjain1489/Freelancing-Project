@@ -4,12 +4,18 @@ const AppError = require('../utils/AppError');
 const { HTTP_STATUS, ERROR_CODES } = require('../constants/statusCodes');
 
 const authenticate = (req, res, next) => {
+  let token = null;
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1];
+  } else if (req.query && req.query.token) {
+    token = req.query.token;
+  }
+
+  if (!token) {
     return next(new AppError('Access denied: Authentication token required', HTTP_STATUS.UNAUTHORIZED, ERROR_CODES.UNAUTHORIZED));
   }
 
-  const token = authHeader.split(' ')[1];
   try {
     const decoded = jwt.verify(token, config.jwt.accessSecret);
     req.user = decoded;

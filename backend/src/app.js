@@ -15,8 +15,13 @@ app.use(helmet());
 // Cross-Origin Resource Sharing
 app.use(cors(corsOptions));
 
-// HTTP Request Logging
-app.use(morgan('dev'));
+// HTTP Request Logging (Sanitize sensitive tokens in query params)
+morgan.token('clean-url', (req) => {
+  const url = req.originalUrl || req.url || '';
+  return url.replace(/([?&]token=)[^&]+/, '$1[REDACTED]');
+});
+
+app.use(morgan(':method :clean-url :status :response-time ms - :res[content-length]'));
 
 // Rate Limiting for General Requests
 app.use('/api', generalLimiter);

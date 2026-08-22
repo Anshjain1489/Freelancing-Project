@@ -2,6 +2,7 @@ const supabase = require('../config/supabase');
 const eventBus = require('../events/eventBus');
 const EVENT_TYPES = require('../events/eventTypes');
 const { dispatchNotificationChannels } = require('./notification.dispatcher');
+const sseManager = require('./sse.manager');
 const AppError = require('../utils/AppError');
 const { HTTP_STATUS } = require('../constants/statusCodes');
 const { getPaginationParams, formatPaginatedResponse } = require('../utils/pagination');
@@ -10,8 +11,44 @@ const logger = require('../utils/logger');
 // In-memory fallback notification store
 const mockNotifications = [];
 
+/**
+ * Get all user IDs that have the ADMIN role
+ */
+const getAdminUserIds = async () => {
+  if (supabase) {
+    try {
+      const { data: adminUsers } = await supabase.from('users')
+        .select(`
+          id,
+          user_roles (
+            roles ( name )
+          )
+        `);
+
+      if (adminUsers && adminUsers.length > 0) {
+        const filtered = adminUsers.filter(u =>
+          u.user_roles?.some(ur => ur.roles?.name === 'ADMIN')
+        ).map(u => u.id);
+        if (filtered.length > 0) return filtered;
+      }
+
+      const { data: directAdmins } = await supabase.from('users')
+        .select('id')
+        .or('email.eq.admin@chaudhary.com,phone.eq.7897837095');
+
+      if (directAdmins && directAdmins.length > 0) {
+        return directAdmins.map(u => u.id);
+      }
+    } catch (err) {
+      logger.error('[GET_ADMIN_USERS_ERR]', err);
+    }
+  }
+  return ['admin-1'];
+};
+
 const createNotification = async ({ userId, type = 'ORDER', title, message, eventType, referenceType, referenceId, metadata = {}, recipientPhone = '' }) => {
   let notificationId = `notif-${Date.now()}`;
+  let notificationRecord = null;
 
   if (supabase) {
     // 1. Insert in-app notification record
@@ -29,9 +66,24 @@ const createNotification = async ({ userId, type = 'ORDER', title, message, even
 
     if (!error && newNotif) {
       notificationId = newNotif.id;
+      notificationRecord = {
+        id: newNotif.id,
+        userId: newNotif.user_id,
+        type: newNotif.type,
+        title: newNotif.title,
+        message: newNotif.message,
+        eventType: newNotif.event_type,
+        referenceType: newNotif.reference_type,
+        referenceId: newNotif.reference_id,
+        metadata: newNotif.metadata,
+        isRead: newNotif.is_read,
+        createdAt: newNotif.created_at
+      };
     }
-  } else {
-    mockNotifications.unshift({
+  }
+
+  if (!notificationRecord) {
+    notificationRecord = {
       id: notificationId,
       userId,
       type,
@@ -43,10 +95,14 @@ const createNotification = async ({ userId, type = 'ORDER', title, message, even
       metadata,
       isRead: false,
       createdAt: new Date().toISOString()
-    });
+    };
+    mockNotifications.unshift(notificationRecord);
   }
 
-  // 2. Async Channel Dispatch (WhatsApp, SMS, etc.)
+  // 2. Real-time SSE Broadcast
+  sseManager.broadcastNotification(notificationRecord);
+
+  // 3. Async Channel Dispatch (WhatsApp, SMS, etc.)
   dispatchNotificationChannels({
     notificationId,
     userId,
@@ -66,6 +122,7 @@ const createNotification = async ({ userId, type = 'ORDER', title, message, even
 
 // Listen to System Events
 eventBus.on(EVENT_TYPES.ORDER_CONFIRMED, async (payload) => {
+  // 1. Customer Notification
   await createNotification({
     userId: payload.userId,
     type: 'ORDER',
@@ -77,6 +134,22 @@ eventBus.on(EVENT_TYPES.ORDER_CONFIRMED, async (payload) => {
     metadata: payload,
     recipientPhone: payload.customerPhone
   });
+
+  // 2. Target notifications for Admin user(s)
+  const adminIds = await getAdminUserIds();
+  for (const adminId of adminIds) {
+    await createNotification({
+      userId: adminId,
+      type: 'ORDER',
+      title: `🛒 New Order #${payload.orderNumber}`,
+      message: `New order received from ${payload.customerName || 'Customer'} for ₹${payload.totalAmount}.`,
+      eventType: 'ADMIN_NEW_ORDER',
+      referenceType: 'ORDER',
+      referenceId: payload.orderNumber,
+      metadata: payload,
+      recipientPhone: ''
+    });
+  }
 });
 
 eventBus.on(EVENT_TYPES.ORDER_OUT_FOR_DELIVERY, async (payload) => {
@@ -108,26 +181,29 @@ eventBus.on(EVENT_TYPES.ORDER_DELIVERED, async (payload) => {
 });
 
 eventBus.on(EVENT_TYPES.LOW_STOCK, async (payload) => {
-  await createNotification({
-    userId: null,
-    type: 'INVENTORY',
-    title: '⚠️ Low Stock Alert',
-    message: `Product "${payload.productName}" inventory is low (${payload.currentStock} remaining).`,
-    eventType: EVENT_TYPES.LOW_STOCK,
-    referenceType: 'PRODUCT',
-    referenceId: payload.productId,
-    metadata: payload
-  });
+  const adminIds = await getAdminUserIds();
+  for (const adminId of adminIds) {
+    await createNotification({
+      userId: adminId,
+      type: 'INVENTORY',
+      title: '⚠️ Low Stock Alert',
+      message: `Product "${payload.productName}" inventory is low (${payload.currentStock} remaining).`,
+      eventType: EVENT_TYPES.LOW_STOCK,
+      referenceType: 'PRODUCT',
+      referenceId: payload.productId,
+      metadata: payload
+    });
+  }
 });
 
-// Customer API Services
+// Customer & Admin API Services
 const getUserNotifications = async (userId, queryParams = {}) => {
   const { page, limit, offset } = getPaginationParams(queryParams.page, queryParams.limit);
 
   if (supabase) {
     const { data, count, error } = await supabase.from('notifications')
       .select('*', { count: 'exact' })
-      .or(`user_id.eq.${userId},user_id.is.null`)
+      .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -149,7 +225,7 @@ const getUserNotifications = async (userId, queryParams = {}) => {
     return formatPaginatedResponse(formatted, page, limit, count || 0);
   }
 
-  const filtered = mockNotifications.filter(n => !n.userId || n.userId === userId);
+  const filtered = mockNotifications.filter(n => n.userId === userId);
   return formatPaginatedResponse(filtered, page, limit, filtered.length);
 };
 
@@ -157,13 +233,13 @@ const getUnreadCount = async (userId) => {
   if (supabase) {
     const { count, error } = await supabase.from('notifications')
       .select('id', { count: 'exact', head: true })
-      .or(`user_id.eq.${userId},user_id.is.null`)
+      .eq('user_id', userId)
       .eq('is_read', false);
 
     return { unreadCount: count || 0 };
   }
 
-  const count = mockNotifications.filter(n => (!n.userId || n.userId === userId) && !n.isRead).length;
+  const count = mockNotifications.filter(n => n.userId === userId && !n.isRead).length;
   return { unreadCount: count };
 };
 
@@ -172,9 +248,9 @@ const markAsRead = async (userId, notificationId) => {
     await supabase.from('notifications')
       .update({ is_read: true, read_at: new Date().toISOString() })
       .eq('id', notificationId)
-      .or(`user_id.eq.${userId},user_id.is.null`);
+      .eq('user_id', userId);
   } else {
-    const n = mockNotifications.find(x => x.id === notificationId);
+    const n = mockNotifications.find(x => x.id === notificationId && x.userId === userId);
     if (n) {
       n.isRead = true;
       n.readAt = new Date().toISOString();
@@ -188,11 +264,11 @@ const markAllAsRead = async (userId) => {
   if (supabase) {
     await supabase.from('notifications')
       .update({ is_read: true, read_at: new Date().toISOString() })
-      .or(`user_id.eq.${userId},user_id.is.null`)
+      .eq('user_id', userId)
       .eq('is_read', false);
   } else {
     mockNotifications.forEach(n => {
-      if (!n.userId || n.userId === userId) {
+      if (n.userId === userId) {
         n.isRead = true;
         n.readAt = new Date().toISOString();
       }
@@ -207,5 +283,6 @@ module.exports = {
   getUserNotifications,
   getUnreadCount,
   markAsRead,
-  markAllAsRead
+  markAllAsRead,
+  getAdminUserIds
 };

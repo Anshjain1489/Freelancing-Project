@@ -6,6 +6,7 @@ const router = express.Router();
 
 router.use(authenticate);
 
+router.get('/stream', notificationController.streamNotifications);
 router.get('/', notificationController.getUserNotifications);
 router.get('/unread-count', notificationController.getUnreadCount);
 router.patch('/read-all', notificationController.markAllAsRead);
