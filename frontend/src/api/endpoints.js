@@ -86,6 +86,7 @@ export const ENDPOINTS = {
     UNRESOLVED_ORDERS: '/admin/orders/unresolved',
     ACCEPT_ORDER: (id) => `/admin/orders/${id}/accept`,
     REJECT_ORDER: (id) => `/admin/orders/${id}/reject`,
+    RETRY_REFUND: (id) => `/admin/orders/${id}/refund/retry`,
     UPDATE_ORDER_STATUS: (id) => `/admin/orders/${id}/status`,
     CUSTOMERS: '/admin/customers',
     PAYMENTS: '/admin/payments',

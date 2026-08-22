@@ -34,7 +34,7 @@ const processRazorpayWebhook = async (rawBody, signature, payload) => {
       payload
     }]);
 
-    // 4. Process event
+    // 4. Process Payment Events
     if (eventType === 'payment.captured' || eventType === 'order.paid') {
       const razorpayOrderId = paymentEntity?.order_id || orderEntity?.id;
       const razorpayPaymentId = paymentEntity?.id;
@@ -43,7 +43,7 @@ const processRazorpayWebhook = async (rawBody, signature, payload) => {
         const { data: payment } = await supabase.from('payments')
           .select('order_id, orders ( user_id )')
           .eq('razorpay_order_id', razorpayOrderId)
-          .single();
+          .maybeSingle();
 
         if (payment && payment.orders?.user_id) {
           await paymentService.verifyPayment(
@@ -55,6 +55,97 @@ const processRazorpayWebhook = async (rawBody, signature, payload) => {
               razorpaySignature: 'webhook_verified'
             }
           );
+        }
+      }
+    }
+
+    // 5. Process Refund Events
+    if (eventType === 'refund.processed' || eventType === 'refund.created') {
+      const refundEntity = payload.payload?.refund?.entity;
+      const razorpayRefundId = refundEntity?.id;
+      const razorpayPaymentId = refundEntity?.payment_id;
+
+      if (razorpayRefundId || razorpayPaymentId) {
+        const { data: refundRecord } = await supabase.from('refunds')
+          .select('*, orders ( id, order_number, user_id )')
+          .or(`razorpay_refund_id.eq.${razorpayRefundId},payment_id.eq.${razorpayPaymentId}`)
+          .maybeSingle();
+
+        if (refundRecord) {
+          await supabase.from('refunds').update({
+            status: 'COMPLETED',
+            completed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }).eq('id', refundRecord.id);
+
+          await supabase.from('orders').update({ refund_status: 'COMPLETED' }).eq('id', refundRecord.order_id);
+          await supabase.from('payments').update({ refund_status: 'COMPLETED', payment_status: 'REFUNDED' }).eq('order_id', refundRecord.order_id);
+
+          const eventBus = require('../events/eventBus');
+          const EVENT_TYPES = require('../events/eventTypes');
+          const sseManager = require('../notifications/sse.manager');
+
+          eventBus.emit(EVENT_TYPES.REFUND_COMPLETED, {
+            userId: refundRecord.orders?.user_id,
+            orderId: refundRecord.order_id,
+            orderNumber: refundRecord.orders?.order_number,
+            amount: refundRecord.amount,
+            razorpayRefundId
+          });
+
+          sseManager.broadcastDecision({
+            orderId: refundRecord.order_id,
+            orderNumber: refundRecord.orders?.order_number,
+            status: 'REJECTED',
+            paymentStatus: 'REFUNDED',
+            refundStatus: 'COMPLETED',
+            refundAmount: refundRecord.amount,
+            razorpayRefundId
+          });
+        }
+      }
+    }
+
+    if (eventType === 'refund.failed') {
+      const refundEntity = payload.payload?.refund?.entity;
+      const razorpayRefundId = refundEntity?.id;
+      const failureReason = refundEntity?.error_description || 'Refund failed at gateway';
+
+      if (razorpayRefundId) {
+        const { data: refundRecord } = await supabase.from('refunds')
+          .select('*, orders ( id, order_number, user_id )')
+          .eq('razorpay_refund_id', razorpayRefundId)
+          .maybeSingle();
+
+        if (refundRecord) {
+          await supabase.from('refunds').update({
+            status: 'FAILED',
+            failure_reason: failureReason,
+            updated_at: new Date().toISOString()
+          }).eq('id', refundRecord.id);
+
+          await supabase.from('orders').update({ refund_status: 'FAILED' }).eq('id', refundRecord.order_id);
+          await supabase.from('payments').update({ refund_status: 'FAILED' }).eq('order_id', refundRecord.order_id);
+
+          const eventBus = require('../events/eventBus');
+          const EVENT_TYPES = require('../events/eventTypes');
+          const sseManager = require('../notifications/sse.manager');
+
+          eventBus.emit(EVENT_TYPES.REFUND_FAILED, {
+            userId: refundRecord.orders?.user_id,
+            orderId: refundRecord.order_id,
+            orderNumber: refundRecord.orders?.order_number,
+            failureReason
+          });
+
+          sseManager.broadcastDecision({
+            orderId: refundRecord.order_id,
+            orderNumber: refundRecord.orders?.order_number,
+            status: 'REJECTED',
+            paymentStatus: 'PAID',
+            refundStatus: 'FAILED',
+            failureReason
+          });
         }
       }
     }

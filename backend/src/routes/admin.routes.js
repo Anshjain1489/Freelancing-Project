@@ -38,6 +38,7 @@ router.get('/orders', orderAdminController.getAdminOrders);
 router.get('/orders/unresolved', orderAdminController.getUnresolvedOrders);
 router.post('/orders/:id/accept', orderAdminController.acceptOrder);
 router.post('/orders/:id/reject', orderAdminController.rejectOrder);
+router.post('/orders/:id/refund/retry', orderAdminController.retryRefund);
 router.patch('/orders/:id/status', orderAdminController.updateOrderStatus);
 
 // Customer Management

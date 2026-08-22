@@ -1,6 +1,7 @@
 const supabase = require('../../config/supabase');
 const { ORDER_STATUS, validateOrderStatusTransition } = require('../orderStatus.service');
 const { logAdminActivity } = require('../adminLog.service');
+const refundService = require('../refund.service');
 const eventBus = require('../../events/eventBus');
 const EVENT_TYPES = require('../../events/eventTypes');
 const sseManager = require('../../notifications/sse.manager');
@@ -183,10 +184,17 @@ const rejectOrder = async (adminId, orderId, { reason }, req = null) => {
   const sanitizedReason = reason ? String(reason).trim().slice(0, 500) : 'Store temporarily unable to fulfill item request';
 
   if (supabase) {
-    const { data: existing } = await supabase.from('orders')
-      .select('*, users ( full_name, phone ), payments ( status )')
-      .or(`id.eq.${orderId},order_number.eq.${orderId}`)
-      .maybeSingle();
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(orderId));
+    let query = supabase.from('orders')
+      .select('*, payments ( status )');
+    
+    if (isUuid) {
+      query = query.eq('id', orderId);
+    } else {
+      query = query.eq('order_number', orderId);
+    }
+
+    const { data: existing } = await query.maybeSingle();
 
     if (!existing) {
       throw new AppError('Order not found', HTTP_STATUS.NOT_FOUND);
@@ -228,41 +236,31 @@ const rejectOrder = async (adminId, orderId, { reason }, req = null) => {
       throw new AppError('This order has already been processed by another administrator.', HTTP_STATUS.CONFLICT);
     }
 
-    await logAdminActivity(adminId, 'ADMIN_ORDER_REJECTED', 'order', existing.id, {
-      orderNumber: existing.order_number,
-      previousStatus: existing.status,
-      newStatus: ORDER_STATUS.REJECTED,
-      rejectionReason: sanitizedReason
-    }, req);
+    // Fetch payment record for verified refund calculation
+    const { data: paymentRecord } = await supabase.from('payments')
+      .select('*')
+      .eq('order_id', existing.id)
+      .maybeSingle();
 
-    eventBus.emit(EVENT_TYPES.ORDER_REJECTED, {
+    // Trigger Crash-Safe Automated Refund Process
+    const refundResult = await refundService.processOrderRefund({
+      order: updated,
+      paymentRecord,
       adminId,
-      userId: existing.user_id,
-      orderId: existing.id,
-      orderNumber: existing.order_number,
-      customerName: existing.users?.full_name,
-      customerPhone: existing.users?.phone,
-      rejectionReason: sanitizedReason
-    });
-
-    sseManager.broadcastDecision({
-      orderId: existing.id,
-      orderNumber: existing.order_number,
-      previousStatus: existing.status,
-      status: ORDER_STATUS.REJECTED,
-      action: 'REJECTED',
-      rejectionReason: sanitizedReason,
-      processedBy: adminId
+      reason: sanitizedReason,
+      req
     });
 
     return {
       orderId: existing.id,
       orderNumber: existing.order_number,
       status: ORDER_STATUS.REJECTED,
-      paymentStatus: updated.payments?.[0]?.status || 'PAID',
-      refundStatus: 'NOT_INITIATED',
+      paymentStatus: paymentRecord?.payment_status || 'PAID',
+      refundStatus: refundResult.status,
+      refundAmount: refundResult.amount,
+      razorpayRefundId: refundResult.refundId,
       rejectionReason: sanitizedReason,
-      message: 'Order rejected'
+      message: refundResult.message
     };
   }
 
@@ -323,10 +321,15 @@ const updateOrderStatus = async (userId, orderId, { status }, req = null) => {
   return { orderId, status, message: `Order status updated to ${status}` };
 };
 
+const retryRefund = async (adminId, orderId, req = null) => {
+  return refundService.retryFailedRefund(adminId, orderId, req);
+};
+
 module.exports = {
   getAdminOrders,
   getUnresolvedOrders,
   acceptOrder,
   rejectOrder,
+  retryRefund,
   updateOrderStatus
 };

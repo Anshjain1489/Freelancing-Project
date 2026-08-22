@@ -40,6 +40,7 @@ async function fixSchemaFull() {
     await client.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS rejected_by UUID;');
     await client.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ;');
     await client.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS rejection_reason TEXT;');
+    await client.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_status VARCHAR(50) DEFAULT \'NOT_REQUIRED\';');
 
     // Order addresses table columns
     await client.query('ALTER TABLE order_addresses ADD COLUMN IF NOT EXISTS address_line1 TEXT;');
@@ -56,6 +57,7 @@ async function fixSchemaFull() {
     await client.query('ALTER TABLE payments ADD COLUMN IF NOT EXISTS razorpay_payment_id VARCHAR(100);');
     await client.query('ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_verified_at TIMESTAMPTZ;');
     await client.query('ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_failure_reason TEXT;');
+    await client.query('ALTER TABLE payments ADD COLUMN IF NOT EXISTS refund_status VARCHAR(50) DEFAULT \'NOT_REQUIRED\';');
 
     // Notifications table columns
     await client.query('ALTER TABLE notifications ALTER COLUMN user_id DROP NOT NULL;');
@@ -69,8 +71,31 @@ async function fixSchemaFull() {
     await client.query('ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS whatsapp_orders BOOLEAN DEFAULT TRUE;');
     await client.query('ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS whatsapp_promotions BOOLEAN DEFAULT FALSE;');
 
+    // Refunds table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS refunds (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+        payment_id UUID REFERENCES payments(id) ON DELETE CASCADE,
+        razorpay_refund_id VARCHAR(100) UNIQUE,
+        amount NUMERIC(10, 2) NOT NULL CHECK (amount >= 0),
+        currency VARCHAR(10) NOT NULL DEFAULT 'INR',
+        status VARCHAR(50) NOT NULL DEFAULT 'NOT_INITIATED',
+        reason TEXT,
+        requested_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        requested_at TIMESTAMPTZ DEFAULT NOW(),
+        completed_at TIMESTAMPTZ,
+        failure_reason TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
     // Disable RLS on all operational tables for backend service
+    await client.query('ALTER TABLE orders DISABLE ROW LEVEL SECURITY;');
+    await client.query('ALTER TABLE payments DISABLE ROW LEVEL SECURITY;');
     await client.query('ALTER TABLE order_addresses DISABLE ROW LEVEL SECURITY;');
+    await client.query('ALTER TABLE refunds DISABLE ROW LEVEL SECURITY;');
     await client.query('ALTER TABLE notifications DISABLE ROW LEVEL SECURITY;');
     await client.query('ALTER TABLE notification_deliveries DISABLE ROW LEVEL SECURITY;');
     await client.query('ALTER TABLE notification_preferences DISABLE ROW LEVEL SECURITY;');

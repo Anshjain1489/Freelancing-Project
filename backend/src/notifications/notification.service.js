@@ -180,6 +180,45 @@ eventBus.on(EVENT_TYPES.ORDER_REJECTED, async (payload) => {
   });
 });
 
+eventBus.on(EVENT_TYPES.REFUND_INITIATED, async (payload) => {
+  await createNotification({
+    userId: payload.userId,
+    type: 'PAYMENT',
+    title: '💰 Refund Initiated',
+    message: `Your refund of ₹${payload.amount} for order #${payload.orderNumber} has been initiated and is processing.`,
+    eventType: EVENT_TYPES.REFUND_INITIATED,
+    referenceType: 'ORDER',
+    referenceId: payload.orderNumber,
+    metadata: payload
+  });
+});
+
+eventBus.on(EVENT_TYPES.REFUND_COMPLETED, async (payload) => {
+  await createNotification({
+    userId: payload.userId,
+    type: 'PAYMENT',
+    title: '🎉 Refund Completed',
+    message: `Your refund of ₹${payload.amount} for order #${payload.orderNumber} has been successfully completed!`,
+    eventType: EVENT_TYPES.REFUND_COMPLETED,
+    referenceType: 'ORDER',
+    referenceId: payload.orderNumber,
+    metadata: payload
+  });
+});
+
+eventBus.on(EVENT_TYPES.REFUND_FAILED, async (payload) => {
+  await createNotification({
+    userId: payload.userId,
+    type: 'PAYMENT',
+    title: '⚠️ Refund Notice',
+    message: `Your order #${payload.orderNumber} was rejected. Our store team is processing your refund manually.`,
+    eventType: EVENT_TYPES.REFUND_FAILED,
+    referenceType: 'ORDER',
+    referenceId: payload.orderNumber,
+    metadata: payload
+  });
+});
+
 eventBus.on(EVENT_TYPES.ORDER_OUT_FOR_DELIVERY, async (payload) => {
   await createNotification({
     userId: payload.userId,

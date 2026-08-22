@@ -128,6 +128,24 @@ export const OrderDetailsPage = () => {
                 Reason: {order.rejectionReason}
               </div>
             )}
+
+            {order.refundStatus === 'PROCESSING' && (
+              <div style={{ marginTop: '8px', padding: '8px', background: '#FFFDF5', border: '1px solid #FF6B00', borderRadius: '6px', color: '#B7950B', fontWeight: 700 }}>
+                💰 Refund Processing: Your refund of {formatCurrency(order.totalAmount)} is being processed by your payment provider.
+              </div>
+            )}
+
+            {(order.refundStatus === 'COMPLETED' || order.paymentStatus === 'REFUNDED') && (
+              <div style={{ marginTop: '8px', padding: '8px', background: '#E8F7F0', border: '1px solid #06C167', borderRadius: '6px', color: '#27AE60', fontWeight: 700 }}>
+                🎉 Refund Completed: Your refund of {formatCurrency(order.totalAmount)} has been completed!
+              </div>
+            )}
+
+            {order.refundStatus === 'FAILED' && (
+              <div style={{ marginTop: '8px', padding: '8px', background: '#FFF0F0', border: '1px solid #E74C3C', borderRadius: '6px', color: '#C0392B', fontWeight: 700 }}>
+                ⚠️ Refund Notice: Your refund of {formatCurrency(order.totalAmount)} is pending store resolution. Our support team is processing it.
+              </div>
+            )}
           </div>
         </Card>
       )}

@@ -62,6 +62,11 @@ export const adminService = {
     return response.data;
   },
 
+  retryRefund: async (id) => {
+    const response = await apiClient.post(ENDPOINTS.ADMIN.RETRY_REFUND(id));
+    return response.data;
+  },
+
   updateOrderStatus: async (id, status) => {
     const response = await apiClient.patch(ENDPOINTS.ADMIN.UPDATE_ORDER_STATUS(id), { status });
     return response.data;

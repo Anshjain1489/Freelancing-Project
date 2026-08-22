@@ -23,6 +23,11 @@ const rejectOrder = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, HTTP_STATUS.OK, 'Order rejected', result);
 });
 
+const retryRefund = asyncHandler(async (req, res) => {
+  const result = await orderAdminService.retryRefund(req.user.id, req.params.id, req);
+  return ApiResponse.success(res, HTTP_STATUS.OK, 'Refund retry initiated', result);
+});
+
 const updateOrderStatus = asyncHandler(async (req, res) => {
   const result = await orderAdminService.updateOrderStatus(req.user.id, req.params.id, req.body, req);
   return ApiResponse.success(res, HTTP_STATUS.OK, 'Order status updated', result);
@@ -33,5 +38,6 @@ module.exports = {
   getUnresolvedOrders,
   acceptOrder,
   rejectOrder,
+  retryRefund,
   updateOrderStatus
 };

@@ -91,12 +91,25 @@ export const OrdersPage = () => {
     }
   };
 
+  const handleRetryRefund = async (orderId) => {
+    setProcessingId(orderId);
+    try {
+      const res = await adminService.retryRefund(orderId);
+      showSuccess(res.message || 'Refund retry initiated!');
+      fetchOrders();
+    } catch (err) {
+      showError(err.response?.data?.message || 'Failed to retry refund');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <div>
         <h1 className="text-h1">Store Orders 📋</h1>
         <p style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
-          Process incoming customer orders, review decision requests, and trigger delivery status notifications
+          Process incoming customer orders, review decision requests, initiate automated Razorpay refunds, and trigger delivery status notifications
         </p>
       </div>
 
@@ -243,7 +256,7 @@ export const OrdersPage = () => {
                   <th style={{ padding: '10px' }}>Order Number</th>
                   <th style={{ padding: '10px' }}>Customer</th>
                   <th style={{ padding: '10px' }}>Total Amount</th>
-                  <th style={{ padding: '10px' }}>Payment</th>
+                  <th style={{ padding: '10px' }}>Payment / Refund</th>
                   <th style={{ padding: '10px' }}>Status</th>
                   <th style={{ padding: '10px', textAlign: 'right' }}>Actions / Status</th>
                 </tr>
@@ -254,7 +267,35 @@ export const OrdersPage = () => {
                     <td style={{ padding: '12px 10px', fontWeight: 800 }}>{order.orderNumber}</td>
                     <td style={{ padding: '12px 10px' }}>{order.customerName} ({order.customerPhone})</td>
                     <td style={{ padding: '12px 10px', fontWeight: 800, color: 'var(--color-primary-dark)' }}>{formatCurrency(order.totalAmount)}</td>
-                    <td style={{ padding: '12px 10px' }}><StatusBadge status={order.paymentStatus} /></td>
+                    <td style={{ padding: '12px 10px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <StatusBadge status={order.paymentStatus} />
+                        {order.refundStatus && order.refundStatus !== 'NOT_REQUIRED' && (
+                          <span
+                            style={{
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              display: 'inline-block',
+                              width: 'fit-content',
+                              background:
+                                order.refundStatus === 'COMPLETED' ? '#E8F7F0' :
+                                order.refundStatus === 'FAILED' ? '#FFF5F5' : '#FFFDF5',
+                              color:
+                                order.refundStatus === 'COMPLETED' ? '#06C167' :
+                                order.refundStatus === 'FAILED' ? '#C0392B' : '#FF6B00',
+                              border: `1px solid ${
+                                order.refundStatus === 'COMPLETED' ? '#06C167' :
+                                order.refundStatus === 'FAILED' ? '#E74C3C' : '#FF6B00'
+                              }`
+                            }}
+                          >
+                            Refund: {order.refundStatus}
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td style={{ padding: '12px 10px' }}>
                       <StatusBadge status={order.status} />
                       {order.rejectionReason && (
@@ -270,7 +311,7 @@ export const OrdersPage = () => {
                             onClick={() => setRejectingOrder(order)}
                             style={{ padding: '4px 8px', fontSize: '0.75rem', background: '#FFF5F5', color: '#C0392B', border: '1px solid #E74C3C', borderRadius: '4px', cursor: 'pointer', fontWeight: 700 }}
                           >
-                            Reject
+                            Reject & Refund
                           </button>
                           <button
                             onClick={() => handleAccept(order.id)}
@@ -280,17 +321,28 @@ export const OrdersPage = () => {
                           </button>
                         </div>
                       ) : (
-                        <select
-                          value={order.status}
-                          onChange={(e) => handleStatusChange(order.id, e.target.value)}
-                          style={{ padding: '4px 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', fontSize: '0.8rem' }}
-                        >
-                          <option value="CONFIRMED">CONFIRMED</option>
-                          <option value="PROCESSING">PROCESSING</option>
-                          <option value="REJECTED">REJECTED</option>
-                          <option value="OUT_FOR_DELIVERY">OUT_FOR_DELIVERY</option>
-                          <option value="DELIVERED">DELIVERED</option>
-                        </select>
+                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                          {order.status === 'REJECTED' && order.refundStatus === 'FAILED' && (
+                            <button
+                              onClick={() => handleRetryRefund(order.id)}
+                              disabled={processingId === order.id}
+                              style={{ padding: '4px 8px', fontSize: '0.75rem', background: '#FF6B00', color: '#FFF', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 700 }}
+                            >
+                              🔄 Retry Refund
+                            </button>
+                          )}
+                          <select
+                            value={order.status}
+                            onChange={(e) => handleStatusChange(order.id, e.target.value)}
+                            style={{ padding: '4px 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', fontSize: '0.8rem' }}
+                          >
+                            <option value="CONFIRMED">CONFIRMED</option>
+                            <option value="PROCESSING">PROCESSING</option>
+                            <option value="REJECTED">REJECTED</option>
+                            <option value="OUT_FOR_DELIVERY">OUT_FOR_DELIVERY</option>
+                            <option value="DELIVERED">DELIVERED</option>
+                          </select>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -301,15 +353,25 @@ export const OrdersPage = () => {
         )}
       </Card>
 
-      {/* REJECTION REASON MODAL */}
+      {/* REJECT & REFUND CONFIRMATION MODAL */}
       {rejectingOrder && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <Card padding="24px" style={{ width: '90%', maxWidth: '420px', background: '#FFF' }}>
+          <Card padding="24px" style={{ width: '90%', maxWidth: '440px', background: '#FFF' }}>
             <h3 style={{ margin: '0 0 10px', fontSize: '1.1rem', color: '#C0392B', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <XCircle size={20} /> Reject Order #{rejectingOrder.orderNumber}
             </h3>
-            <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '12px' }}>
-              Please state the reason for rejecting this customer order (e.g. item out of stock, store closed):
+
+            <div style={{ background: '#F8F9FA', padding: '12px', borderRadius: '8px', marginBottom: '14px', fontSize: '0.85rem' }}>
+              <div><strong>Customer:</strong> {rejectingOrder.customerName}</div>
+              <div><strong>Payment Method:</strong> {rejectingOrder.paymentStatus === 'PAID' ? 'PAID ONLINE (Razorpay)' : 'CASH ON DELIVERY (COD)'}</div>
+              <div><strong>Verified Total Paid:</strong> <span style={{ fontWeight: 800, color: '#06C167' }}>{formatCurrency(rejectingOrder.totalAmount)}</span></div>
+              <div style={{ marginTop: '6px', paddingTop: '6px', borderTop: '1px dashed #DDD', fontWeight: 800, color: '#C0392B' }}>
+                Razorpay Refund Amount: {rejectingOrder.paymentStatus === 'PAID' ? formatCurrency(rejectingOrder.totalAmount) : '₹0.00 (COD - No Refund Needed)'}
+              </div>
+            </div>
+
+            <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '8px' }}>
+              State rejection reason for customer notification:
             </p>
             <textarea
               rows={3}
@@ -322,9 +384,10 @@ export const OrdersPage = () => {
               <Button variant="outline" size="sm" onClick={() => setRejectingOrder(null)}>Cancel</Button>
               <button
                 onClick={handleConfirmReject}
+                disabled={processingId === rejectingOrder.id}
                 style={{ padding: '6px 14px', borderRadius: '6px', background: '#E74C3C', color: '#FFF', border: 'none', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem' }}
               >
-                Confirm Rejection
+                {rejectingOrder.paymentStatus === 'PAID' ? `❌ Reject & Refund ${formatCurrency(rejectingOrder.totalAmount)}` : '❌ Reject Order'}
               </button>
             </div>
           </Card>
