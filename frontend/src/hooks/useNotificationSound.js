@@ -223,4 +223,3 @@ export const useNotificationSound = () => {
     processedIds: processedIdsRef.current
   };
 };
-};

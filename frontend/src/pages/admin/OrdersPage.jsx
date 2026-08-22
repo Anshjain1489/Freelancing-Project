@@ -1,16 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { adminService } from '../../services/admin.service';
-import { Card } from '../../components/ui/Card';
-import { Button } from '../../components/ui/Button';
-import { StatusBadge } from '../../components/ui/StatusBadge';
-import { Select } from '../../components/ui/Select';
-import { TableRowSkeleton } from '../../components/ui/Skeleton';
-import { formatCurrency } from '../../utils/formatting';
-import { showSuccess, showError } from '../../utils/toast';
-import { ShoppingBag, Search } from 'lucide-react';
-
-import React, { useEffect, useState } from 'react';
-import { adminService } from '../../services/admin.service';
 import { useNotifications } from '../../context/NotificationContext';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
