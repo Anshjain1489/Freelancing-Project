@@ -1,10 +1,11 @@
 const cartService = require('./cart.service');
 const addressService = require('./address.service');
 const deliveryService = require('./delivery.service');
+const couponService = require('./coupon.service');
 const AppError = require('../utils/AppError');
 const { HTTP_STATUS } = require('../constants/statusCodes');
 
-const getCheckoutPreview = async (userId, addressId) => {
+const getCheckoutPreview = async (userId, addressId, couponCode = null) => {
   if (!addressId) {
     throw new AppError('Delivery address selection is required for checkout preview', HTTP_STATUS.BAD_REQUEST);
   }
@@ -61,8 +62,23 @@ const getCheckoutPreview = async (userId, addressId) => {
     throw new AppError(`Minimum order value for delivery is ₹199. Please add ₹${needed} more items to your cart.`, HTTP_STATUS.BAD_REQUEST);
   }
 
+  // 5. Server-Side Coupon Discount Calculation
+  let discountAmount = 0;
+  let appliedCoupon = null;
+
+  if (couponCode && String(couponCode).trim()) {
+    try {
+      const couponValidation = await couponService.validateCoupon(userId, couponCode, addressId);
+      discountAmount = couponValidation.discountAmount;
+      appliedCoupon = couponValidation.coupon;
+    } catch (couponErr) {
+      // If coupon validation fails during general preview, rethrow or return error
+      throw couponErr;
+    }
+  }
+
   const deliveryCharge = deliveryInfo.deliveryCharge;
-  const totalAmount = subtotal + deliveryCharge;
+  const totalAmount = Math.max(0, subtotal + deliveryCharge - discountAmount);
 
   return {
     address: selectedAddress,
@@ -70,6 +86,8 @@ const getCheckoutPreview = async (userId, addressId) => {
     itemCount: validatedItems.reduce((acc, curr) => acc + curr.quantity, 0),
     subtotal,
     delivery: deliveryInfo,
+    coupon: appliedCoupon,
+    discountAmount,
     totalAmount
   };
 };

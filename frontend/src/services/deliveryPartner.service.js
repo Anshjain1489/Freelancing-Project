@@ -1,0 +1,71 @@
+import apiClient from '../api/client';
+import { ENDPOINTS } from '../api/endpoints';
+
+export const deliveryPartnerService = {
+  // Delivery Partner Methods
+  getDashboard: async () => {
+    const response = await apiClient.get(ENDPOINTS.DELIVERY.DASHBOARD);
+    return response.data;
+  },
+
+  getAssignedOrders: async (params = {}) => {
+    const response = await apiClient.get(ENDPOINTS.DELIVERY.ORDERS, { params });
+    return response.data;
+  },
+
+  getOrderById: async (id) => {
+    const response = await apiClient.get(ENDPOINTS.DELIVERY.BY_ID(id));
+    return response.data;
+  },
+
+  acceptDelivery: async (id) => {
+    const response = await apiClient.post(ENDPOINTS.DELIVERY.ACCEPT(id));
+    return response.data;
+  },
+
+  pickupDelivery: async (id) => {
+    const response = await apiClient.post(ENDPOINTS.DELIVERY.PICKUP(id));
+    return response.data;
+  },
+
+  startDelivery: async (id) => {
+    const response = await apiClient.post(ENDPOINTS.DELIVERY.START(id));
+    return response.data;
+  },
+
+  deliverOrder: async (id) => {
+    const response = await apiClient.post(ENDPOINTS.DELIVERY.DELIVER(id));
+    return response.data;
+  },
+
+  failDelivery: async (id, reason) => {
+    const response = await apiClient.post(ENDPOINTS.DELIVERY.FAILED(id), { reason });
+    return response.data;
+  },
+
+  // Admin Delivery Management Methods
+  getDeliveryPartners: async () => {
+    const response = await apiClient.get(ENDPOINTS.ADMIN.DELIVERY_PARTNERS);
+    return response.data;
+  },
+
+  createDeliveryPartner: async (data) => {
+    const response = await apiClient.post(ENDPOINTS.ADMIN.DELIVERY_PARTNERS, data);
+    return response.data;
+  },
+
+  getUnassignedOrders: async () => {
+    const response = await apiClient.get(ENDPOINTS.ADMIN.UNASSIGNED_DELIVERY_ORDERS);
+    return response.data;
+  },
+
+  assignDeliveryPartner: async (orderId, deliveryPartnerId, estimatedMinutes = 30) => {
+    const response = await apiClient.post(ENDPOINTS.ADMIN.ASSIGN_DELIVERY(orderId), { deliveryPartnerId, estimatedMinutes });
+    return response.data;
+  },
+
+  reassignDeliveryPartner: async (orderId, deliveryPartnerId) => {
+    const response = await apiClient.post(ENDPOINTS.ADMIN.REASSIGN_DELIVERY(orderId), { deliveryPartnerId });
+    return response.data;
+  }
+};

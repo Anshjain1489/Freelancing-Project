@@ -81,13 +81,43 @@ export const OrdersPage = () => {
     }
   };
 
+  // Real-time SSE Order Status Listener
+  useEffect(() => {
+    const handleRealtimeStatus = (e) => {
+      const data = e.detail;
+      if (!data) return;
+      const targetId = String(data.orderId || data.id || '');
+      const newStatus = data.newStatus || data.status;
+      if (!newStatus || !targetId) return;
+
+      setOrders(prev => prev.map(o => {
+        if (String(o.id) === targetId || String(o.orderNumber) === targetId) {
+          return { ...o, status: newStatus };
+        }
+        return o;
+       }));
+    };
+
+    window.addEventListener('cks_order_status_updated', handleRealtimeStatus);
+    return () => window.removeEventListener('cks_order_status_updated', handleRealtimeStatus);
+  }, []);
+
   const handleStatusChange = async (orderId, newStatus) => {
+    // Optimistic UI Update: Update React state immediately
+    const prevOrders = [...orders];
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
+
     try {
       await adminService.updateOrderStatus(orderId, newStatus);
       showSuccess(`Order status updated to ${newStatus}!`);
-      fetchOrders();
     } catch (err) {
-      showError(err.response?.data?.message || 'Invalid status transition');
+      // Revert on error
+      setOrders(prevOrders);
+      if (err.response?.status === 409) {
+        showError(err.response?.data?.message || 'Order status modified by another administrator.');
+      } else {
+        showError(err.response?.data?.message || 'Invalid status transition');
+      }
     }
   };
 

@@ -47,12 +47,28 @@ export const ENDPOINTS = {
     PREVIEW: '/checkout/preview'
   },
 
+  COUPONS: {
+    VALIDATE: '/coupons/validate',
+    AVAILABLE: '/coupons/available'
+  },
+
   ORDERS: {
     CREATE: '/orders',
     LIST: '/orders',
     BY_ID: (id) => `/orders/${id}`,
     CANCEL: (id) => `/orders/${id}/cancel`,
     RETRY_PAYMENT: (id) => `/orders/${id}/payment/retry`
+  },
+
+  DELIVERY: {
+    DASHBOARD: '/delivery/dashboard',
+    ORDERS: '/delivery/orders',
+    BY_ID: (id) => `/delivery/orders/${id}`,
+    ACCEPT: (id) => `/delivery/orders/${id}/accept`,
+    PICKUP: (id) => `/delivery/orders/${id}/pickup`,
+    START: (id) => `/delivery/orders/${id}/start`,
+    DELIVER: (id) => `/delivery/orders/${id}/deliver`,
+    FAILED: (id) => `/delivery/orders/${id}/failed`
   },
 
   PAYMENTS: {
@@ -81,6 +97,10 @@ export const ENDPOINTS = {
     PRODUCT_BY_ID: (id) => `/admin/products/${id}`,
     CATEGORIES: '/admin/categories',
     INVENTORY: '/admin/inventory',
+    ADD_STOCK: (productId) => `/admin/inventory/${productId}/add`,
+    REMOVE_STOCK: (productId) => `/admin/inventory/${productId}/remove`,
+    STOCK_THRESHOLD: (productId) => `/admin/inventory/${productId}/threshold`,
+    STOCK_MOVEMENTS: (productId) => `/admin/inventory/${productId}/movements`,
     ADJUST_INVENTORY: (productId) => `/admin/inventory/${productId}/adjust`,
     ORDERS: '/admin/orders',
     UNRESOLVED_ORDERS: '/admin/orders/unresolved',
@@ -88,6 +108,12 @@ export const ENDPOINTS = {
     REJECT_ORDER: (id) => `/admin/orders/${id}/reject`,
     RETRY_REFUND: (id) => `/admin/orders/${id}/refund/retry`,
     UPDATE_ORDER_STATUS: (id) => `/admin/orders/${id}/status`,
+    DELIVERY_PARTNERS: '/admin/delivery-partners',
+    UNASSIGNED_DELIVERY_ORDERS: '/admin/delivery/orders/unassigned',
+    ASSIGN_DELIVERY: (orderId) => `/admin/orders/${orderId}/assign-delivery`,
+    REASSIGN_DELIVERY: (orderId) => `/admin/orders/${orderId}/reassign-delivery`,
+    COUPONS: '/admin/coupons',
+    COUPON_BY_ID: (id) => `/admin/coupons/${id}`,
     CUSTOMERS: '/admin/customers',
     PAYMENTS: '/admin/payments',
     PROMOTIONS: '/admin/promotions',

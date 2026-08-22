@@ -97,11 +97,104 @@ const broadcastDecision = (decision) => {
   });
 };
 
+/**
+ * Broadcast real-time order status update to all Admins and the targeted order owner Customer
+ */
+const broadcastOrderStatusUpdate = (statusUpdate) => {
+  const targetUserId = statusUpdate.userId || statusUpdate.user_id;
+
+  sseClients.forEach((clientsSet, userId) => {
+    clientsSet.forEach(res => {
+      if (!res.writable || res.destroyed || res.writableEnded) {
+        removeClient(userId, res);
+        return;
+      }
+
+      const isTargetCustomer = targetUserId && String(userId) === String(targetUserId);
+      const isAdmin = res.userRole === 'ADMIN';
+
+      if (isAdmin || isTargetCustomer) {
+        try {
+          res.write(`data: ${JSON.stringify({
+            eventType: 'ORDER_STATUS_UPDATED',
+            type: 'ORDER_STATUS_UPDATED',
+            ...statusUpdate
+          })}\n\n`);
+        } catch (err) {
+          logger.error(`[SSE_STATUS_BROADCAST_ERR] Failed for userId=${userId}`, err);
+          removeClient(userId, res);
+        }
+      }
+    });
+  });
+};
+
+/**
+ * Broadcast real-time delivery update to Admins, the assigned Delivery Partner, and the order owner Customer
+ */
+const broadcastDeliveryUpdate = (deliveryUpdate) => {
+  const customerId = deliveryUpdate.customerId || deliveryUpdate.user_id || deliveryUpdate.userId;
+  const partnerId = deliveryUpdate.deliveryPartnerId || deliveryUpdate.delivery_partner_id;
+
+  sseClients.forEach((clientsSet, userId) => {
+    clientsSet.forEach(res => {
+      if (!res.writable || res.destroyed || res.writableEnded) {
+        removeClient(userId, res);
+        return;
+      }
+
+      const isAdmin = res.userRole === 'ADMIN';
+      const isAssignedPartner = partnerId && String(userId) === String(partnerId);
+      const isTargetCustomer = customerId && String(userId) === String(customerId);
+
+      if (isAdmin || isAssignedPartner || isTargetCustomer) {
+        try {
+          res.write(`data: ${JSON.stringify({
+            eventType: deliveryUpdate.eventType || 'DELIVERY_UPDATED',
+            type: 'DELIVERY_UPDATED',
+            ...deliveryUpdate
+          })}\n\n`);
+        } catch (err) {
+          logger.error(`[SSE_DELIVERY_BROADCAST_ERR] Failed for userId=${userId}`, err);
+          removeClient(userId, res);
+        }
+      }
+    });
+  });
+};
+
+/**
+ * Broadcast real-time inventory updates strictly to connected ADMIN users only
+ */
+const broadcastInventoryUpdate = (inventoryUpdate) => {
+  sseClients.forEach((clientsSet, userId) => {
+    clientsSet.forEach(res => {
+      if (!res.writable || res.destroyed || res.writableEnded) {
+        removeClient(userId, res);
+        return;
+      }
+
+      if (res.userRole === 'ADMIN') {
+        try {
+          res.write(`data: ${JSON.stringify({
+            eventType: inventoryUpdate.eventType || 'INVENTORY_UPDATED',
+            type: 'INVENTORY_UPDATED',
+            ...inventoryUpdate
+          })}\n\n`);
+        } catch (err) {
+          logger.error(`[SSE_INVENTORY_BROADCAST_ERR] Failed for userId=${userId}`, err);
+          removeClient(userId, res);
+        }
+      }
+    });
+  });
+};
+
 // Send keep-alive heartbeat ping every 25 seconds for Render deployment compatibility
 setInterval(() => {
   sseClients.forEach((clientsSet, userId) => {
     clientsSet.forEach(res => {
-      if (!res.writable || res.destroyed || res.writableEnded) {
+      if (!res.writable || res.destroyed || res.destroyed || res.writableEnded) {
         removeClient(userId, res);
         return;
       }
@@ -118,5 +211,8 @@ module.exports = {
   addClient,
   removeClient,
   broadcastNotification,
-  broadcastDecision
+  broadcastDecision,
+  broadcastOrderStatusUpdate,
+  broadcastDeliveryUpdate,
+  broadcastInventoryUpdate
 };

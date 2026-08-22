@@ -44,4 +44,20 @@ const authorizeAdmin = (req, res, next) => {
   next();
 };
 
-module.exports = { authenticate, optionalAuth, authorizeAdmin };
+const authorizeDeliveryPartner = (req, res, next) => {
+  if (!req.user || (req.user.role !== 'DELIVERY_PARTNER' && req.user.role !== 'ADMIN')) {
+    return next(new AppError('Forbidden: Delivery Partner permissions required', HTTP_STATUS.FORBIDDEN, ERROR_CODES.FORBIDDEN));
+  }
+  next();
+};
+
+const authorizeRoles = (...roles) => {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return next(new AppError(`Forbidden: Access denied`, HTTP_STATUS.FORBIDDEN, ERROR_CODES.FORBIDDEN));
+    }
+    next();
+  };
+};
+
+module.exports = { authenticate, optionalAuth, authorizeAdmin, authorizeDeliveryPartner, authorizeRoles };

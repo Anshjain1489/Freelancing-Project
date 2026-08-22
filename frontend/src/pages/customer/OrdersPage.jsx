@@ -29,6 +29,24 @@ export const OrdersPage = () => {
     };
 
     fetchOrders();
+
+    const handleRealtimeStatus = (e) => {
+      const data = e.detail;
+      if (!data) return;
+      const targetId = String(data.orderId || data.id || '');
+      const newStatus = data.newStatus || data.status;
+      if (!newStatus || !targetId) return;
+
+      setOrders(prev => prev.map(o => {
+        if (String(o.id) === targetId || String(o.orderNumber) === targetId) {
+          return { ...o, status: newStatus };
+        }
+        return o;
+      }));
+    };
+
+    window.addEventListener('cks_order_status_updated', handleRealtimeStatus);
+    return () => window.removeEventListener('cks_order_status_updated', handleRealtimeStatus);
   }, []);
 
   return (

@@ -4,7 +4,7 @@ const orderService = require('../services/order.service');
 const { HTTP_STATUS } = require('../constants/statusCodes');
 
 const createOrder = asyncHandler(async (req, res) => {
-  const result = await orderService.createOrder(req.user.id, req.body.addressId);
+  const result = await orderService.createOrder(req.user.id, req.body.addressId, req.body.couponCode);
   return ApiResponse.success(res, HTTP_STATUS.CREATED, 'Order created successfully', result);
 });
 

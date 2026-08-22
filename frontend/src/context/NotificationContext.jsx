@@ -132,7 +132,24 @@ export const NotificationProvider = ({ children }) => {
             setUnresolvedOrders(prev => prev.filter(o => String(o.id) !== String(targetId) && String(o.orderNumber) !== String(targetId)));
             stopIncomingOrderAlert(targetId);
             fetchUnresolvedOrders();
+            window.dispatchEvent(new CustomEvent('cks_order_status_updated', { detail: data }));
             return;
+          }
+
+          // 1b. Real-Time Order Status Update Event Dispatcher
+          if (data.eventType === 'ORDER_STATUS_UPDATED' || data.type === 'ORDER_STATUS_UPDATED') {
+            window.dispatchEvent(new CustomEvent('cks_order_status_updated', { detail: data }));
+          }
+
+          // 1c. Real-Time Delivery Management Event Dispatcher
+          if (data.eventType?.startsWith('DELIVERY_') || data.type === 'DELIVERY_UPDATED') {
+            window.dispatchEvent(new CustomEvent('cks_delivery_updated', { detail: data }));
+            window.dispatchEvent(new CustomEvent('cks_order_status_updated', { detail: data }));
+          }
+
+          // 1d. Real-Time Inventory Event Dispatcher
+          if (data.eventType === 'INVENTORY_UPDATED' || data.type === 'INVENTORY_UPDATED' || data.eventType === 'LOW_STOCK_ALERT' || data.eventType === 'LOW_STOCK') {
+            window.dispatchEvent(new CustomEvent('cks_inventory_updated', { detail: data }));
           }
 
           // 2. Standard Notification Processing

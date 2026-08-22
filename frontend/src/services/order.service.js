@@ -2,8 +2,8 @@ import apiClient from '../api/client';
 import { ENDPOINTS } from '../api/endpoints';
 
 export const orderService = {
-  createOrder: async (addressId) => {
-    const response = await apiClient.post(ENDPOINTS.ORDERS.CREATE, { addressId });
+  createOrder: async (addressId, couponCode = null) => {
+    const response = await apiClient.post(ENDPOINTS.ORDERS.CREATE, { addressId, couponCode });
     return response.data;
   },
 

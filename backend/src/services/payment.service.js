@@ -10,6 +10,8 @@ const { HTTP_STATUS, ERROR_CODES } = require('../constants/statusCodes');
 
 const mockPaymentRecords = {};
 
+const inventoryService = require('./inventory.service');
+
 const verifyPayment = async (userId, { orderId, razorpayOrderId, razorpayPaymentId, razorpaySignature }, req = null) => {
   // 1. Verify Razorpay HMAC Signature
   const isValidSignature = razorpayService.verifyRazorpaySignature(razorpayOrderId, razorpayPaymentId, razorpaySignature);
@@ -42,31 +44,7 @@ const verifyPayment = async (userId, { orderId, razorpayOrderId, razorpayPayment
 
     validateOrderStatusTransition(order.status, ORDER_STATUS.CONFIRMED);
 
-    // 4. Atomically deduct inventory stock & create inventory movements
-    for (const item of order.order_items) {
-      const { data: inv } = await supabase.from('inventory').select('quantity').eq('product_id', item.product_id).single();
-      if (inv) {
-        const newQty = Math.max(0, inv.quantity - item.quantity);
-        await supabase.from('inventory').update({ quantity: newQty }).eq('product_id', item.product_id);
-
-        await supabase.from('inventory_movements').insert([{
-          product_id: item.product_id,
-          quantity_change: -item.quantity,
-          movement_type: 'STOCK_OUT',
-          notes: `Order ${order.order_number} confirmed payment`,
-          created_by: userId
-        }]);
-
-        // Trigger low stock event if stock dropped below threshold
-        if (newQty <= 5) {
-          eventBus.emit(EVENT_TYPES.LOW_STOCK, {
-            productId: item.product_id,
-            productName: item.product_name,
-            currentStock: newQty
-          });
-        }
-      }
-    }
+    // 4. Stock remains reserved during CONFIRMED & PROCESSING (Phase 17 Business Rule)
 
     // 5. Update Payment Record
     await supabase.from('payments').update({
@@ -147,6 +125,9 @@ const handlePaymentFailure = async (userId, { orderId, razorpayOrderId, failureR
       status: ORDER_STATUS.PAYMENT_FAILED
     }).eq('id', orderId);
   }
+
+  // Release reserved stock on payment failure safely (idempotent)
+  await inventoryService.releaseStock(null, orderId, 'PAYMENT_FAILED');
 
   return {
     orderId,

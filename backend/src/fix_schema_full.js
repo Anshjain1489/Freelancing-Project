@@ -91,15 +91,107 @@ async function fixSchemaFull() {
       );
     `);
 
+    // Orders table coupon columns
+    await client.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_id UUID;');
+    await client.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_code VARCHAR(50);');
+    await client.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(10,2) DEFAULT 0.00;');
+
+    // Coupons table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS coupons (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        code VARCHAR(50) UNIQUE NOT NULL,
+        description TEXT,
+        minimum_order_amount NUMERIC(10, 2) NOT NULL DEFAULT 0.00 CHECK (minimum_order_amount >= 0),
+        discount_type VARCHAR(20) NOT NULL DEFAULT 'FIXED',
+        discount_value NUMERIC(10, 2) NOT NULL CHECK (discount_value >= 0),
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    // Seed initial coupon rules
+    await client.query(`
+      INSERT INTO coupons (code, description, minimum_order_amount, discount_type, discount_value, is_active)
+      VALUES 
+        ('SAVE20', '₹20 OFF on orders above ₹1,000', 1000.00, 'FIXED', 20.00, TRUE),
+        ('SAVE50', '₹50 OFF on orders above ₹2,000', 2000.00, 'FIXED', 50.00, TRUE),
+        ('SAVE200', '₹200 OFF on orders above ₹5,000', 5000.00, 'FIXED', 200.00, TRUE),
+        ('SAVE500', '₹500 OFF on orders above ₹10,000', 10000.00, 'FIXED', 500.00, TRUE)
+      ON CONFLICT (code) DO NOTHING;
+    `);
+
+    // Delivery Assignments table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS delivery_assignments (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        order_id UUID NOT NULL UNIQUE REFERENCES orders(id) ON DELETE CASCADE,
+        delivery_partner_id UUID NOT NULL REFERENCES users(id),
+        assigned_by UUID REFERENCES users(id),
+        status VARCHAR(50) NOT NULL DEFAULT 'ASSIGNED',
+        estimated_ready_at TIMESTAMPTZ,
+        estimated_delivery_at TIMESTAMPTZ,
+        assigned_at TIMESTAMPTZ DEFAULT NOW(),
+        accepted_at TIMESTAMPTZ,
+        picked_up_at TIMESTAMPTZ,
+        delivered_at TIMESTAMPTZ,
+        failed_at TIMESTAMPTZ,
+        failure_reason TEXT,
+        delivery_notes TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    // Phase 17: Inventory Management Columns & Tables
+    await client.query('ALTER TABLE products ADD COLUMN IF NOT EXISTS stock_quantity INTEGER NOT NULL DEFAULT 50;');
+    await client.query('ALTER TABLE products ADD COLUMN IF NOT EXISTS reserved_quantity INTEGER NOT NULL DEFAULT 0;');
+    await client.query('ALTER TABLE products ADD COLUMN IF NOT EXISTS low_stock_threshold INTEGER NOT NULL DEFAULT 5;');
+    await client.query('ALTER TABLE products ADD COLUMN IF NOT EXISTS low_stock_alert_active BOOLEAN NOT NULL DEFAULT FALSE;');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS inventory_movements (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
+        movement_type VARCHAR(50) NOT NULL,
+        quantity INTEGER NOT NULL,
+        previous_stock INTEGER,
+        new_stock INTEGER,
+        previous_reserved INTEGER,
+        new_reserved INTEGER,
+        performed_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        notes TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    await client.query('ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS order_id UUID REFERENCES orders(id) ON DELETE SET NULL;');
+    await client.query('ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 0;');
+    await client.query('ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS previous_stock INTEGER;');
+    await client.query('ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS new_stock INTEGER;');
+    await client.query('ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS previous_reserved INTEGER;');
+    await client.query('ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS new_reserved INTEGER;');
+    await client.query('ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS performed_by UUID REFERENCES users(id) ON DELETE SET NULL;');
+
+    await client.query('CREATE INDEX IF NOT EXISTS idx_inventory_movements_product ON inventory_movements(product_id);');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_inventory_movements_order ON inventory_movements(order_id);');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_inventory_movements_created_at ON inventory_movements(created_at DESC);');
+    await client.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_movements_order_product_sale ON inventory_movements(order_id, product_id, movement_type) WHERE movement_type = \'SALE\';');
+
     // Disable RLS on all operational tables for backend service
     await client.query('ALTER TABLE orders DISABLE ROW LEVEL SECURITY;');
     await client.query('ALTER TABLE payments DISABLE ROW LEVEL SECURITY;');
     await client.query('ALTER TABLE order_addresses DISABLE ROW LEVEL SECURITY;');
     await client.query('ALTER TABLE refunds DISABLE ROW LEVEL SECURITY;');
+    await client.query('ALTER TABLE coupons DISABLE ROW LEVEL SECURITY;');
+    await client.query('ALTER TABLE delivery_assignments DISABLE ROW LEVEL SECURITY;');
     await client.query('ALTER TABLE notifications DISABLE ROW LEVEL SECURITY;');
     await client.query('ALTER TABLE notification_deliveries DISABLE ROW LEVEL SECURITY;');
     await client.query('ALTER TABLE notification_preferences DISABLE ROW LEVEL SECURITY;');
     await client.query('ALTER TABLE admin_activity_logs DISABLE ROW LEVEL SECURITY;');
+    await client.query('ALTER TABLE inventory_movements DISABLE ROW LEVEL SECURITY;');
 
     console.log('✅ All table schemas aligned 100%!');
   } catch (err) {

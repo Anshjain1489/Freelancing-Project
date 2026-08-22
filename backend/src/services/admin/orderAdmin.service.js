@@ -232,9 +232,14 @@ const rejectOrder = async (adminId, orderId, { reason }, req = null) => {
       error = fallbackRes.error;
     }
 
+const inventoryService = require('../inventory.service');
+
     if (error || !updated) {
       throw new AppError('This order has already been processed by another administrator.', HTTP_STATUS.CONFLICT);
     }
+
+    // Release stock reservation immediately & atomically upon rejection (Decoupled from refund)
+    await inventoryService.releaseStock(null, existing.id, sanitizedReason);
 
     // Fetch payment record for verified refund calculation
     const { data: paymentRecord } = await supabase.from('payments')
@@ -272,6 +277,8 @@ const rejectOrder = async (adminId, orderId, { reason }, req = null) => {
     mockOrder.status = ORDER_STATUS.REJECTED;
   }
 
+  await inventoryService.releaseStock(null, orderId, sanitizedReason);
+
   eventBus.emit(EVENT_TYPES.ORDER_REJECTED, { adminId, orderId, orderNumber: orderId, rejectionReason: sanitizedReason });
   sseManager.broadcastDecision({ orderId, status: ORDER_STATUS.REJECTED, action: 'REJECTED', processedBy: adminId });
 
@@ -280,24 +287,50 @@ const rejectOrder = async (adminId, orderId, { reason }, req = null) => {
 
 const updateOrderStatus = async (userId, orderId, { status }, req = null) => {
   if (supabase) {
-    const { data: order } = await supabase.from('orders')
-      .select('*, users ( full_name, phone )')
-      .or(`id.eq.${orderId},order_number.eq.${orderId}`)
-      .single();
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(orderId));
+    let query = supabase.from('orders').select('*, users ( full_name, phone )');
+    if (isUuid) {
+      query = query.eq('id', orderId);
+    } else {
+      query = query.eq('order_number', orderId);
+    }
+
+    const { data: order } = await query.maybeSingle();
 
     if (!order) throw new AppError('Order not found', HTTP_STATUS.NOT_FOUND);
 
     validateOrderStatusTransition(order.status, status);
 
-    const { data: updated } = await supabase.from('orders')
+    // Atomic Database Update: WHERE status = order.status (Concurrency Protection)
+    const { data: updated, error } = await supabase.from('orders')
       .update({ status, updated_at: new Date().toISOString() })
       .eq('id', order.id)
+      .eq('status', order.status)
       .select()
-      .single();
+      .maybeSingle();
+
+    if (error || !updated) {
+      throw new AppError('This order status has already been modified by another administrator.', HTTP_STATUS.CONFLICT);
+    }
+
+    const payload = {
+      type: EVENT_TYPES.ORDER_STATUS_UPDATED,
+      orderId: order.id,
+      orderNumber: order.order_number,
+      userId: order.user_id,
+      previousStatus: order.status,
+      newStatus: status,
+      updatedBy: { id: userId },
+      updatedAt: new Date().toISOString(),
+      metadata: { source: 'ADMIN_DASHBOARD' }
+    };
 
     await logAdminActivity(userId, 'ORDER_STATUS_UPDATED', 'order', order.id, { oldStatus: order.status, newStatus: status }, req);
 
-    if (status === 'OUT_FOR_DELIVERY') {
+    eventBus.emit(EVENT_TYPES.ORDER_STATUS_UPDATED, payload);
+    sseManager.broadcastOrderStatusUpdate(payload);
+
+    if (status === ORDER_STATUS.OUT_FOR_DELIVERY) {
       eventBus.emit(EVENT_TYPES.ORDER_OUT_FOR_DELIVERY, {
         userId: order.user_id,
         orderId: order.id,
@@ -305,7 +338,7 @@ const updateOrderStatus = async (userId, orderId, { status }, req = null) => {
         customerName: order.users?.full_name,
         customerPhone: order.users?.phone
       });
-    } else if (status === 'DELIVERED') {
+    } else if (status === ORDER_STATUS.DELIVERED) {
       eventBus.emit(EVENT_TYPES.ORDER_DELIVERED, {
         userId: order.user_id,
         orderId: order.id,
@@ -315,8 +348,22 @@ const updateOrderStatus = async (userId, orderId, { status }, req = null) => {
       });
     }
 
-    return { orderId: order.id, status: updated.status, message: `Order status updated to ${status}` };
+    return {
+      orderId: order.id,
+      orderNumber: order.order_number,
+      previousStatus: order.status,
+      newStatus: updated.status,
+      message: `Order status updated to ${status}`
+    };
   }
+
+  const payload = {
+    type: EVENT_TYPES.ORDER_STATUS_UPDATED,
+    orderId,
+    newStatus: status
+  };
+  eventBus.emit(EVENT_TYPES.ORDER_STATUS_UPDATED, payload);
+  sseManager.broadcastOrderStatusUpdate(payload);
 
   return { orderId, status, message: `Order status updated to ${status}` };
 };

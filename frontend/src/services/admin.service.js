@@ -37,6 +37,27 @@ export const adminService = {
     return response.data;
   },
 
+  addStock: async (productId, quantity, reason = '') => {
+    const response = await apiClient.post(ENDPOINTS.ADMIN.ADD_STOCK(productId), { quantity, reason });
+    return response.data;
+  },
+
+  removeStock: async (productId, quantity, reason = '') => {
+    const response = await apiClient.post(ENDPOINTS.ADMIN.REMOVE_STOCK(productId), { quantity, reason });
+    return response.data;
+  },
+
+  updateThreshold: async (productId, threshold) => {
+    const response = await apiClient.patch(ENDPOINTS.ADMIN.STOCK_THRESHOLD(productId), { threshold });
+    return response.data;
+  },
+
+  getStockMovements: async (productId = null) => {
+    const endpoint = productId ? ENDPOINTS.ADMIN.STOCK_MOVEMENTS(productId) : `${ENDPOINTS.ADMIN.INVENTORY}/movements`;
+    const response = await apiClient.get(endpoint);
+    return response.data;
+  },
+
   adjustStock: async (productId, quantityChange, reason = 'RESTOCK') => {
     const response = await apiClient.post(ENDPOINTS.ADMIN.ADJUST_INVENTORY(productId), { quantityChange, reason });
     return response.data;

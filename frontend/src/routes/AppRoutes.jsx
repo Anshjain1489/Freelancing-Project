@@ -49,7 +49,10 @@ const CustomersPage = lazy(() => import('../pages/admin/CustomersPage').then(m =
 const PaymentsPage = lazy(() => import('../pages/admin/PaymentsPage').then(m => ({ default: m.PaymentsPage })));
 const AnalyticsPage = lazy(() => import('../pages/admin/AnalyticsPage').then(m => ({ default: m.AnalyticsPage })));
 const PromotionsPage = lazy(() => import('../pages/admin/PromotionsPage').then(m => ({ default: m.PromotionsPage })));
-const ActivityPage = lazy(() => import('../pages/admin/ActivityPage').then(m => ({ default: m.ActivityPage })));
+const DeliveryAdminPage = lazy(() => import('../pages/admin/DeliveryAdminPage').then(m => ({ default: m.DeliveryAdminPage })));
+const CouponsAdminPage = lazy(() => import('../pages/admin/CouponsAdminPage').then(m => ({ default: m.CouponsAdminPage })));
+const DeliveryDashboardPage = lazy(() => import('../pages/delivery/DeliveryDashboardPage').then(m => ({ default: m.DeliveryDashboardPage })));
+const DeliveryOrdersPage = lazy(() => import('../pages/delivery/DeliveryOrdersPage').then(m => ({ default: m.DeliveryOrdersPage })));
 
 // Protected Route Guards
 import { useAuth } from '../hooks/useAuth';
@@ -66,6 +69,14 @@ const ProtectedAdminRoute = ({ children }) => {
   if (isLoading) return <div style={{ padding: '40px', textAlign: 'center' }}><Spinner /></div>;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (user?.role !== 'ADMIN') return <Navigate to="/" replace />;
+  return children;
+};
+
+const ProtectedDeliveryRoute = ({ children }) => {
+  const { isAuthenticated, user, isLoading } = useAuth();
+  if (isLoading) return <div style={{ padding: '40px', textAlign: 'center' }}><Spinner /></div>;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (user?.role !== 'DELIVERY_PARTNER' && user?.role !== 'ADMIN') return <Navigate to="/" replace />;
   return children;
 };
 
@@ -135,6 +146,18 @@ export const AppRoutes = () => {
               <NotificationsPage />
             </ProtectedCustomerRoute>
           } />
+
+          {/* Delivery Partner Protected Routes */}
+          <Route path="/delivery/dashboard" element={
+            <ProtectedDeliveryRoute>
+              <DeliveryDashboardPage />
+            </ProtectedDeliveryRoute>
+          } />
+          <Route path="/delivery/orders" element={
+            <ProtectedDeliveryRoute>
+              <DeliveryOrdersPage />
+            </ProtectedDeliveryRoute>
+          } />
         </Route>
 
         {/* Protected Admin Dashboard & Management Routes */}
@@ -151,6 +174,8 @@ export const AppRoutes = () => {
           <Route path="/admin/categories" element={<CategoriesPage />} />
           <Route path="/admin/inventory" element={<InventoryPage />} />
           <Route path="/admin/orders" element={<AdminOrdersPage />} />
+          <Route path="/admin/delivery" element={<DeliveryAdminPage />} />
+          <Route path="/admin/coupons" element={<CouponsAdminPage />} />
           <Route path="/admin/customers" element={<CustomersPage />} />
           <Route path="/admin/payments" element={<PaymentsPage />} />
           <Route path="/admin/analytics" element={<AnalyticsPage />} />

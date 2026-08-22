@@ -36,6 +36,25 @@ export const OrderDetailsPage = () => {
 
   useEffect(() => {
     fetchOrder();
+
+    const handleRealtimeStatus = (e) => {
+      const data = e.detail;
+      if (!data) return;
+      const targetId = String(data.orderId || data.id || '');
+      const newStatus = data.newStatus || data.status;
+      if (!newStatus || !targetId) return;
+
+      setOrder(prev => {
+        if (!prev) return prev;
+        if (String(prev.id) === targetId || String(prev.orderNumber) === targetId) {
+          return { ...prev, status: newStatus };
+        }
+        return prev;
+      });
+    };
+
+    window.addEventListener('cks_order_status_updated', handleRealtimeStatus);
+    return () => window.removeEventListener('cks_order_status_updated', handleRealtimeStatus);
   }, [orderId]);
 
   const handleCancelOrder = async () => {
@@ -93,11 +112,73 @@ export const OrderDetailsPage = () => {
         </div>
       </div>
 
-      {/* Customer Order Decision Status Message Banner */}
+      {/* VISUAL ORDER DELIVERY TIMELINE */}
+      {order.status !== 'REJECTED' && order.status !== 'CANCELLED' && (
+        <Card padding="20px">
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Truck size={18} color="var(--color-primary)" /> Delivery Timeline & Real-Time Tracking 🚚
+          </h3>
+
+          {/* Timeline Bar */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '4px', marginBottom: '16px', textAlign: 'center', fontSize: '0.75rem' }}>
+            {[
+              { id: 'CONFIRMED', label: 'Confirmed', icon: '✓' },
+              { id: 'PROCESSING', label: 'Preparing', icon: '🧑‍🍳' },
+              { id: 'READY_FOR_DELIVERY', label: 'Ready', icon: '📦' },
+              { id: 'OUT_FOR_DELIVERY', label: 'On The Way', icon: '🚚' },
+              { id: 'DELIVERED', label: 'Delivered', icon: '🎉' }
+            ].map((step, idx) => {
+              const statusOrder = ['CONFIRMED', 'PROCESSING', 'READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERED'];
+              const currentIdx = statusOrder.indexOf(order.status);
+              const stepIdx = statusOrder.indexOf(step.id);
+              const isCompleted = stepIdx <= currentIdx;
+              const isCurrent = stepIdx === currentIdx;
+
+              return (
+                <div key={step.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                  <div
+                    style={{
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '50%',
+                      background: isCompleted ? '#06C167' : '#E0E0E0',
+                      color: '#FFF',
+                      fontWeight: 800,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '0.8rem',
+                      border: isCurrent ? '3px solid #27AE60' : 'none',
+                      boxShadow: isCurrent ? '0 0 8px rgba(6,193,103,0.5)' : 'none'
+                    }}
+                  >
+                    {isCompleted ? step.icon : idx + 1}
+                  </div>
+                  <span style={{ fontWeight: isCurrent ? 800 : 600, color: isCompleted ? '#2C3E50' : '#888' }}>
+                    {step.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Estimated Delivery Time */}
+          <div style={{ background: '#FAF9FE', border: '1px solid #E2D9F3', borderRadius: '8px', padding: '12px', fontSize: '0.85rem', color: '#5A32A3', fontWeight: 700 }}>
+            {order.status === 'DELIVERED' ? (
+              <span>🎉 Delivered successfully! Thank you for shopping with Chaudhary Kirana Store.</span>
+            ) : order.status === 'OUT_FOR_DELIVERY' ? (
+              <span>🚚 Your order is on the way! Estimated Delivery: Today, 30–45 Mins</span>
+            ) : (
+              <span>⏱️ Estimated Delivery: Today, within 45 Minutes</span>
+            )}
+          </div>
+        </Card>
+      )}
+
       {order.status === 'CONFIRMED' && (
-        <Card padding="16px" style={{ background: '#E8F7F0', border: '1px solid #06C167', borderRadius: 'var(--radius-md)' }}>
-          <div style={{ fontWeight: 700, color: '#06C167', fontSize: '0.9rem' }}>
-            ⏳ Order Awaiting Confirmation
+        <Card padding="16px" style={{ background: '#FFFDF5', border: '1px solid #FF6B00', borderRadius: 'var(--radius-md)' }}>
+          <div style={{ fontWeight: 700, color: '#B7950B', fontSize: '0.9rem' }}>
+            ⌛ Awaiting Admin Acceptance
           </div>
           <div style={{ fontSize: '0.85rem', color: '#2C3E50', marginTop: '2px' }}>
             Your order has been received and is awaiting store confirmation.
@@ -201,6 +282,12 @@ export const OrderDetailsPage = () => {
             <span>Delivery Charge</span>
             <span>{order.deliveryCharge === 0 ? 'FREE' : formatCurrency(order.deliveryCharge)}</span>
           </div>
+          {order.discountAmount > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#06C167', fontWeight: 700 }}>
+              <span>Coupon Discount ({order.couponCode || 'APPLIED'})</span>
+              <span>-{formatCurrency(order.discountAmount)}</span>
+            </div>
+          )}
           <div style={{ borderTop: '1.5px dashed var(--color-primary)', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', fontSize: '1.2rem', fontWeight: 800, color: 'var(--color-primary-dark)' }}>
             <span>Total Amount</span>
             <span>{formatCurrency(order.totalAmount)}</span>

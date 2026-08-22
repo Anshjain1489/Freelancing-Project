@@ -9,6 +9,8 @@ const orderAdminController = require('../controllers/admin/orderAdmin.controller
 const customerAdminController = require('../controllers/admin/customerAdmin.controller');
 const paymentAdminController = require('../controllers/admin/paymentAdmin.controller');
 const promotionAdminController = require('../controllers/admin/promotionAdmin.controller');
+const couponAdminController = require('../controllers/admin/couponAdmin.controller');
+const deliveryAdminController = require('../controllers/admin/deliveryAdmin.controller');
 const activityAdminController = require('../controllers/admin/activityAdmin.controller');
 
 const router = express.Router();
@@ -31,6 +33,11 @@ router.patch('/products/:id', productAdminController.updateProduct);
 
 // Inventory Management
 router.get('/inventory', inventoryAdminController.getInventoryOverview);
+router.post('/inventory/:productId/add', inventoryAdminController.addStock);
+router.post('/inventory/:productId/remove', inventoryAdminController.removeStock);
+router.patch('/inventory/:productId/threshold', inventoryAdminController.updateThreshold);
+router.get('/inventory/:productId/movements', inventoryAdminController.getStockMovements);
+router.get('/inventory/movements', inventoryAdminController.getStockMovements);
 router.post('/inventory/:productId/adjust', inventoryAdminController.adjustStock);
 
 // Order Management
@@ -40,6 +47,19 @@ router.post('/orders/:id/accept', orderAdminController.acceptOrder);
 router.post('/orders/:id/reject', orderAdminController.rejectOrder);
 router.post('/orders/:id/refund/retry', orderAdminController.retryRefund);
 router.patch('/orders/:id/status', orderAdminController.updateOrderStatus);
+
+// Delivery Management
+router.get('/delivery-partners', deliveryAdminController.getDeliveryPartners);
+router.post('/delivery-partners', deliveryAdminController.createDeliveryPartner);
+router.get('/delivery/orders/unassigned', deliveryAdminController.getUnassignedOrders);
+router.post('/orders/:orderId/assign-delivery', deliveryAdminController.assignDeliveryPartner);
+router.post('/orders/:orderId/reassign-delivery', deliveryAdminController.reassignDeliveryPartner);
+
+// Coupon Management
+router.get('/coupons', couponAdminController.getAdminCoupons);
+router.post('/coupons', couponAdminController.createCoupon);
+router.patch('/coupons/:id', couponAdminController.updateCoupon);
+router.delete('/coupons/:id', couponAdminController.deleteCoupon);
 
 // Customer Management
 router.get('/customers', customerAdminController.getAdminCustomers);
