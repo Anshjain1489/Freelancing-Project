@@ -44,14 +44,17 @@ export const CheckoutPage = () => {
         ]);
 
         if (addrRes.status === 'fulfilled') {
-          const list = addrRes.value.data?.addresses || [];
+          const rawAddr = addrRes.value;
+          const list = rawAddr.data?.addresses || rawAddr.addresses || [];
           setAddresses(list);
           const defaultAddr = list.find(a => a.isDefault) || list[0];
           if (defaultAddr) setSelectedAddressId(defaultAddr.id);
         }
 
         if (cpnRes.status === 'fulfilled') {
-          setAvailableCoupons(cpnRes.value.data?.coupons || []);
+          const rawCpn = cpnRes.value;
+          const couponsList = rawCpn.data?.coupons || rawCpn.coupons || [];
+          setAvailableCoupons(couponsList);
         }
       } catch (err) {
         setError('Failed to load initial checkout details');
@@ -69,21 +72,24 @@ export const CheckoutPage = () => {
     setLoadingPreview(true);
     setError(null);
     try {
-      const activeCode = codeToUse !== null ? codeToUse : (appliedCoupon?.code || null);
+      const activeCode = codeToUse !== null 
+        ? codeToUse 
+        : (appliedCoupon?.code || couponInput.trim() || null);
+
       const res = await checkoutService.getPreview(addressId, activeCode);
-      const previewData = res.data || null;
+      const previewData = res.data?.subtotal !== undefined ? res.data : (res.subtotal !== undefined ? res : res.data || res);
       setPreview(previewData);
 
-      if (previewData?.coupon || previewData?.appliedCoupon) {
-        setAppliedCoupon(previewData.coupon || previewData.appliedCoupon);
+      const serverCoupon = previewData?.coupon || previewData?.appliedCoupon;
+      if (serverCoupon) {
+        setAppliedCoupon(serverCoupon);
       } else if (codeToUse === '') {
         setAppliedCoupon(null);
       }
     } catch (err) {
-      const msg = err.response?.data?.message || 'Failed to generate checkout preview.';
+      const msg = err.response?.data?.message || err.message || 'Failed to generate checkout preview.';
       setError(msg);
-      // If coupon became invalid, clear it
-      if (appliedCoupon && msg.includes('coupon')) {
+      if (appliedCoupon && msg.toLowerCase().includes('coupon')) {
         setAppliedCoupon(null);
       }
     } finally {
@@ -108,17 +114,22 @@ export const CheckoutPage = () => {
     setCouponLoading(true);
     try {
       const res = await couponService.validateCoupon(code, selectedAddressId);
-      setAppliedCoupon(res.coupon);
-      showSuccess(res.message || `Coupon "${code}" applied!`);
+      const couponObj = res.data?.coupon || res.coupon || { code };
+      setAppliedCoupon(couponObj);
+      setCouponInput(code);
+
+      const msg = res.message || res.data?.message || `Coupon "${code}" applied!`;
+      showSuccess(msg);
 
       // Refresh server preview with new coupon
       await fetchPreview(selectedAddressId, code);
 
       // Refresh available coupons eligibility
       const availRes = await couponService.getAvailableCoupons();
-      setAvailableCoupons(availRes.data?.coupons || []);
+      const list = availRes.data?.coupons || availRes.coupons || [];
+      setAvailableCoupons(list);
     } catch (err) {
-      showError(err.response?.data?.message || `Coupon "${code}" is invalid or minimum order amount not met.`);
+      showError(err.response?.data?.message || err.message || `Coupon "${code}" is invalid or minimum order amount not met.`);
     } finally {
       setCouponLoading(false);
     }
@@ -142,11 +153,14 @@ export const CheckoutPage = () => {
     setCreatingOrder(true);
     setError(null);
     try {
-      const res = await orderService.createOrder(selectedAddressId, appliedCoupon?.code || null);
-      setOrderDetails(res.data);
+      const codeToSend = appliedCoupon?.code || preview?.coupon?.code || preview?.appliedCoupon?.code || (couponInput.trim() ? couponInput.trim().toUpperCase() : null);
+      const res = await orderService.createOrder(selectedAddressId, codeToSend);
+      const orderData = res.data?.orderId ? res.data : (res.orderId ? res : res.data || res);
+      
+      setOrderDetails(orderData);
       showSuccess('Order created! Opening secure payment portal...');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to create order. Please check stock or cart.');
+      setError(err.response?.data?.message || err.message || 'Failed to create order. Please check stock or cart.');
     } finally {
       setCreatingOrder(false);
     }
@@ -371,7 +385,7 @@ export const CheckoutPage = () => {
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#06C167', fontWeight: 700 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Tag size={16} />
-                    <span>Coupon Discount ({preview.coupon?.code || appliedCoupon?.code})</span>
+                    <span>Coupon Discount ({preview.coupon?.code || appliedCoupon?.code || preview.couponCode})</span>
                   </div>
                   <span>-{formatCurrency(preview.discountAmount)}</span>
                 </div>
