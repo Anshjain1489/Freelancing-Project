@@ -122,6 +122,7 @@ const loginUser = async ({ identifier, password }) => {
         email,
         phone,
         password_hash,
+        role,
         is_active,
         user_roles (
           roles ( name )
@@ -165,7 +166,7 @@ const loginUser = async ({ identifier, password }) => {
 
   const userRole = (user.email === 'admin@chaudhary.com' || user.phone === '7897837095')
     ? ROLES.ADMIN
-    : (user.user_roles?.[0]?.roles?.name || user.role || ROLES.CUSTOMER);
+    : (user.role || user.user_roles?.[0]?.roles?.name || ROLES.CUSTOMER);
 
   const safeUser = {
     id: user.id,

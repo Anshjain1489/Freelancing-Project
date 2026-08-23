@@ -25,7 +25,11 @@ async function fixSchemaFull() {
   };
 
   try {
-    // Users table columns for Google OAuth
+    // Users table columns for Google OAuth & Role RBAC
+    await exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT \'CUSTOMER\';', 'users.role');
+    await exec('UPDATE users SET role = \'CUSTOMER\' WHERE role IS NULL;', 'users.role default backfill');
+    await exec('UPDATE users SET role = \'ADMIN\' WHERE phone = \'7897837095\' OR email = \'admin@chaudhary.com\';', 'users.role admin backfill');
+    await exec("INSERT INTO roles (name, description) VALUES ('ADMIN', 'Store Administrator'), ('CUSTOMER', 'Retail Customer'), ('DELIVERY_PARTNER', 'Delivery Fleet Partner') ON CONFLICT (name) DO NOTHING;", 'seed roles table');
     await exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR(255);', 'users.google_id');
     await exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;', 'users.avatar_url');
     await exec('ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;', 'users.password_hash nullable');

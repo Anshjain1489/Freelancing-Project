@@ -134,39 +134,87 @@ const getDeliveryPartners = async () => {
  * 2. Admin: Register / Create new Delivery Partner Account
  */
 const createDeliveryPartner = async (adminId, partnerData, req = null) => {
-  const { fullName, phone, email, password } = partnerData;
-  if (!fullName || !phone || !password) {
-    throw new AppError('Full name, phone, and password are required', HTTP_STATUS.BAD_REQUEST);
+  const { fullName, phone, email, password } = partnerData || {};
+  if (!fullName || !String(fullName).trim()) {
+    throw new AppError('Full name is required', HTTP_STATUS.BAD_REQUEST);
+  }
+  if (!phone || !String(phone).trim()) {
+    throw new AppError('Phone number is required', HTTP_STATUS.BAD_REQUEST);
+  }
+  if (!password || String(password).length < 4) {
+    throw new AppError('Password must be at least 4 characters', HTTP_STATUS.BAD_REQUEST);
   }
 
+  const cleanPhone = String(phone).trim();
+  const cleanEmail = email && String(email).trim() ? String(email).trim().toLowerCase() : `partner_${cleanPhone}@chaudhary.com`;
+
   const hashedPassword = await bcrypt.hash(password, 10);
-  const cleanEmail = email ? email.trim().toLowerCase() : `partner_${phone}@chaudhary.com`;
 
   if (supabase) {
-    const { data: newUser, error } = await supabase.from('users').insert([{
-      full_name: fullName,
-      phone,
+    // 1. Check for existing account with same phone or email
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('id, phone, email')
+      .or(`phone.eq.${cleanPhone}${cleanEmail ? `,email.eq.${cleanEmail}` : ''}`)
+      .maybeSingle();
+
+    if (existingUser) {
+      throw new AppError('An account with this phone number or email already exists.', HTTP_STATUS.CONFLICT);
+    }
+
+    // 2. Insert into users table
+    const { data: newUser, error: insertErr } = await supabase.from('users').insert([{
+      full_name: fullName.trim(),
+      phone: cleanPhone,
       email: cleanEmail,
       password_hash: hashedPassword,
       role: 'DELIVERY_PARTNER',
       is_active: true
-    }]).select().single();
+    }]).select().maybeSingle();
 
-    if (error || !newUser) {
-      throw new AppError('Failed to create Delivery Partner account: ' + (error?.message || ''), HTTP_STATUS.BAD_REQUEST);
+    if (insertErr || !newUser) {
+      console.error('[DELIVERY_PARTNER_REGISTRATION_ERROR]', insertErr);
+      if (insertErr?.code === '23505' || insertErr?.message?.includes('unique') || insertErr?.message?.includes('already exists')) {
+        throw new AppError('An account with this phone number or email already exists.', HTTP_STATUS.CONFLICT);
+      }
+      throw new AppError('Unable to create Delivery Partner account. Please try again.', HTTP_STATUS.INTERNAL_SERVER_ERROR);
     }
 
-    await logAdminActivity(adminId, 'ADMIN_DELIVERY_PARTNER_CREATED', 'user', newUser.id, { fullName, phone }, req);
+    // 3. Dual sync to user_roles table if present
+    try {
+      const { data: partnerRole } = await supabase
+        .from('roles')
+        .select('id')
+        .eq('name', 'DELIVERY_PARTNER')
+        .maybeSingle();
+
+      if (partnerRole) {
+        await supabase.from('user_roles').insert([{
+          user_id: newUser.id,
+          role_id: partnerRole.id
+        }]);
+      }
+    } catch (syncErr) {
+      console.warn('[USER_ROLES_SYNC_NOTICE]', syncErr.message);
+    }
+
+    await logAdminActivity(adminId, 'ADMIN_DELIVERY_PARTNER_CREATED', 'user', newUser.id, { fullName: fullName.trim(), phone: cleanPhone }, req);
+
     return {
       id: newUser.id,
       fullName: newUser.full_name,
       phone: newUser.phone,
       email: newUser.email,
-      role: newUser.role
+      role: newUser.role || 'DELIVERY_PARTNER'
     };
   }
 
-  const mockNew = { id: `partner-${Date.now()}`, full_name: fullName, phone, email: cleanEmail, is_active: true, role: 'DELIVERY_PARTNER' };
+  const existingMock = mockPartners.find(p => p.phone === cleanPhone || p.email === cleanEmail);
+  if (existingMock) {
+    throw new AppError('An account with this phone number or email already exists.', HTTP_STATUS.CONFLICT);
+  }
+
+  const mockNew = { id: `partner-${Date.now()}`, full_name: fullName.trim(), phone: cleanPhone, email: cleanEmail, is_active: true, role: 'DELIVERY_PARTNER' };
   mockPartners.push(mockNew);
   return mockNew;
 };
