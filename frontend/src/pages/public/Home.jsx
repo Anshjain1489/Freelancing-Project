@@ -9,7 +9,7 @@ import { ProductQuickView } from '../../components/product/ProductQuickView';
 import { CategorySkeleton } from '../../components/ui/Skeleton';
 import { categoryService } from '../../services/category.service';
 import { productService } from '../../services/product.service';
-import { ShoppingBag, Phone, MapPin, Truck, ShieldCheck, ArrowRight } from 'lucide-react';
+import { ShoppingBag, Phone, MapPin, Truck, ShieldCheck, ArrowRight, X } from 'lucide-react';
 
 export const Home = () => {
   const navigate = useNavigate();
@@ -18,6 +18,7 @@ export const Home = () => {
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [quickViewProduct, setQuickViewProduct] = useState(null);
+  const [selectedStoreImage, setSelectedStoreImage] = useState(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -161,7 +162,190 @@ export const Home = () => {
         />
       </section>
 
-      {/* 5. Store Trust & Information Section */}
+      {/* 5. Real Store Photo Showcase (Right After Featured Products) */}
+      <section style={{
+        backgroundColor: 'var(--color-surface)',
+        borderRadius: 'var(--radius-xl)',
+        padding: '28px 24px',
+        border: '1px solid var(--color-border)',
+        boxShadow: 'var(--shadow-sm)'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+          <div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', fontWeight: 800, color: 'var(--color-primary-dark)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
+              <MapPin size={16} /> Authentic Local Kirana Store
+            </div>
+            <h2 className="text-h2" style={{ margin: 0 }}>Visit Chaudhary Kirana Store Mahruni 🏬</h2>
+            <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.9rem', margin: '4px 0 0 0' }}>
+              Take a look inside our physical store! Fresh daily groceries, wide variety of pulses, dry fruits, spices & household personal care.
+            </p>
+          </div>
+          <a
+            href="https://maps.google.com/?q=Chaudhary+Kirana+Store+Mahruni"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              padding: '10px 18px',
+              backgroundColor: 'var(--color-mint)',
+              color: 'var(--color-primary-dark)',
+              fontWeight: 800,
+              borderRadius: 'var(--radius-md)',
+              fontSize: '0.85rem',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              textDecoration: 'none',
+              border: '1px solid var(--color-primary-light)'
+            }}
+          >
+            🗺️ Open Store on Maps
+          </a>
+        </div>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+          gap: '16px'
+        }}>
+          {/* Card 1: Store Front & Grain Bins */}
+          <div
+            style={{
+              borderRadius: 'var(--radius-lg)',
+              overflow: 'hidden',
+              border: '1px solid var(--color-border)',
+              backgroundColor: '#fff',
+              display: 'flex',
+              flexDirection: 'column',
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
+            }}
+            onClick={() => setSelectedStoreImage('/images/store/store-front.jpg')}
+          >
+            <div style={{ position: 'relative', height: '220px', overflow: 'hidden' }}>
+              <img
+                src="/images/store/store-front.jpg"
+                alt="Chaudhary Kirana Store Front with Fresh Pulses and Grains"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+              <span style={{ position: 'absolute', top: '10px', left: '10px', background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '0.75rem', fontWeight: 800, padding: '4px 10px', borderRadius: '12px', backdropFilter: 'blur(4px)' }}>
+                🌾 Fresh Grain Containers
+              </span>
+            </div>
+            <div style={{ padding: '14px' }}>
+              <h4 style={{ fontSize: '0.95rem', fontWeight: 800, margin: '0 0 4px 0', color: 'var(--color-text-primary)' }}>
+                Fresh Grains & Pulses Counter
+              </h4>
+              <p style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', margin: 0, lineHeight: '1.4' }}>
+                Neatly stored fresh pulses, grains & fryums ready for daily weighing and home delivery.
+              </p>
+            </div>
+          </div>
+
+          {/* Card 2: Shelves & Packed Items */}
+          <div
+            style={{
+              borderRadius: 'var(--radius-lg)',
+              overflow: 'hidden',
+              border: '1px solid var(--color-border)',
+              backgroundColor: '#fff',
+              display: 'flex',
+              flexDirection: 'column',
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
+            }}
+            onClick={() => setSelectedStoreImage('/images/store/store-shelves-spices.jpg')}
+          >
+            <div style={{ position: 'relative', height: '220px', overflow: 'hidden' }}>
+              <img
+                src="/images/store/store-shelves-spices.jpg"
+                alt="Kirana Store Shelves stocked with spices and food packets"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+              <span style={{ position: 'absolute', top: '10px', left: '10px', background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '0.75rem', fontWeight: 800, padding: '4px 10px', borderRadius: '12px', backdropFilter: 'blur(4px)' }}>
+                🌶️ Packed Spices & Ration
+              </span>
+            </div>
+            <div style={{ padding: '14px' }}>
+              <h4 style={{ fontSize: '0.95rem', fontWeight: 800, margin: '0 0 4px 0', color: 'var(--color-text-primary)' }}>
+                Full Stock of Spices & Rations
+              </h4>
+              <p style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', margin: 0, lineHeight: '1.4' }}>
+                Complete inventory of branded packaged spices, snacks, flour, and daily essential grocery packets.
+              </p>
+            </div>
+          </div>
+
+          {/* Card 3: Cosmetics Showcase */}
+          <div
+            style={{
+              borderRadius: 'var(--radius-lg)',
+              overflow: 'hidden',
+              border: '1px solid var(--color-border)',
+              backgroundColor: '#fff',
+              display: 'flex',
+              flexDirection: 'column',
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
+            }}
+            onClick={() => setSelectedStoreImage('/images/store/store-shelves-cosmetics.jpg')}
+          >
+            <div style={{ position: 'relative', height: '220px', overflow: 'hidden' }}>
+              <img
+                src="/images/store/store-shelves-cosmetics.jpg"
+                alt="Glass Display Cabinet with Cosmetics, Soaps and Hair Oils"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+              <span style={{ position: 'absolute', top: '10px', left: '10px', background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '0.75rem', fontWeight: 800, padding: '4px 10px', borderRadius: '12px', backdropFilter: 'blur(4px)' }}>
+                🧴 Personal Care & Cosmetics
+              </span>
+            </div>
+            <div style={{ padding: '14px' }}>
+              <h4 style={{ fontSize: '0.95rem', fontWeight: 800, margin: '0 0 4px 0', color: 'var(--color-text-primary)' }}>
+                Personal Care & Household Showcase
+              </h4>
+              <p style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', margin: 0, lineHeight: '1.4' }}>
+                Original soaps, shampoos, hair oils, body sprays & cleaning essentials from top trusted brands.
+              </p>
+            </div>
+          </div>
+
+          {/* Card 4: Store Owner & Billing Counter */}
+          <div
+            style={{
+              borderRadius: 'var(--radius-lg)',
+              overflow: 'hidden',
+              border: '1px solid var(--color-border)',
+              backgroundColor: '#fff',
+              display: 'flex',
+              flexDirection: 'column',
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
+            }}
+            onClick={() => setSelectedStoreImage('/images/store/store-counter-owner.jpg')}
+          >
+            <div style={{ position: 'relative', height: '220px', overflow: 'hidden' }}>
+              <img
+                src="/images/store/store-counter-owner.jpg"
+                alt="Chaudhary Kirana Store Billing Counter and Shop Owner"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+              <span style={{ position: 'absolute', top: '10px', left: '10px', background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '0.75rem', fontWeight: 800, padding: '4px 10px', borderRadius: '12px', backdropFilter: 'blur(4px)' }}>
+                🤝 Friendly Customer Billing
+              </span>
+            </div>
+            <div style={{ padding: '14px' }}>
+              <h4 style={{ fontSize: '0.95rem', fontWeight: 800, margin: '0 0 4px 0', color: 'var(--color-text-primary)' }}>
+                Trusted Service & Billing Counter
+              </h4>
+              <p style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', margin: 0, lineHeight: '1.4' }}>
+                Quick billing, accurate weight, and friendly local service right here in Mahruni.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 6. Store Trust & Information Section */}
       <section style={{
         backgroundColor: 'var(--color-surface)',
         borderRadius: 'var(--radius-xl)',
@@ -213,6 +397,55 @@ export const Home = () => {
           </div>
         </div>
       </section>
+
+      {/* Store Photo Lightbox Preview Modal */}
+      {selectedStoreImage && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.85)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000,
+            padding: '20px'
+          }}
+          onClick={() => setSelectedStoreImage(null)}
+        >
+          <div
+            style={{ position: 'relative', maxWidth: '900px', width: '100%', maxHeight: '90vh' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setSelectedStoreImage(null)}
+              style={{
+                position: 'absolute',
+                top: '-40px',
+                right: '0',
+                background: 'none',
+                border: 'none',
+                color: '#fff',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontWeight: 700
+              }}
+            >
+              <X size={24} /> Close
+            </button>
+            <img
+              src={selectedStoreImage}
+              alt="Chaudhary Kirana Store Photo"
+              style={{ width: '100%', height: 'auto', maxHeight: '80vh', objectFit: 'contain', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}
+            />
+          </div>
+        </div>
+      )}
 
       <ProductQuickView
         product={quickViewProduct}
