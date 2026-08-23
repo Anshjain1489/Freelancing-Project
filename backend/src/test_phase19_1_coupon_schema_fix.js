@@ -128,9 +128,8 @@ async function runPhase19_1Tests() {
       if (prods && prods.length > 0) {
         testProductId = prods[0].id;
         testProductPrice = parseFloat(prods[0].selling_price) || 200;
-        // Ensure inventory table quantity is updated for tests
-        await supabase.from('inventory').update({ quantity: 100, reserved_quantity: 0 }).eq('product_id', testProductId);
-        await supabase.from('products').update({ stock_quantity: 100, reserved_quantity: 0 }).eq('id', testProductId);
+        await supabase.from('inventory').upsert([{ product_id: testProductId, quantity: 100, reserved_quantity: 0, reorder_level: 5 }]);
+        await supabase.from('products').update({ stock_quantity: 100, reserved_quantity: 0, stock_status: 'IN_STOCK' }).eq('id', testProductId);
       }
     }
   }
@@ -276,10 +275,10 @@ async function runPhase19_1Tests() {
   });
 
   // TEST 16: Phase 15 coupon calculations remain compatible
-  await test('16. Phase 15 coupon percentage calculation compatible', async () => {
-    const welcomeCpn = await couponService.getCouponByCode('WELCOME10');
-    assert(welcomeCpn, 'WELCOME10 coupon must exist');
-    assert.strictEqual(welcomeCpn.discount_type, 'PERCENTAGE');
+  await test('16. Phase 15 coupon calculations remain compatible', async () => {
+    const save50Cpn = await couponService.getCouponByCode('SAVE50');
+    assert(save50Cpn, 'SAVE50 coupon must exist');
+    assert.strictEqual(save50Cpn.discount_type, 'FIXED');
   });
 
   // TEST 17: Phase 17 inventory reservation remains compatible

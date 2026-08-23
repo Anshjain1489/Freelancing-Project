@@ -2,7 +2,7 @@ import React from 'react';
 import { Tag, Copy } from 'lucide-react';
 import { showSuccess } from '../../utils/toast';
 
-export const CouponCard = ({ code = 'MAHRUNI50', description = 'Flat ₹50 OFF on orders above ₹999' }) => {
+export const CouponCard = ({ code = 'SAVE50', description = 'Flat ₹50 OFF on orders above ₹2,000' }) => {
   const handleCopy = () => {
     navigator.clipboard?.writeText(code);
     showSuccess(`Coupon code ${code} copied!`);

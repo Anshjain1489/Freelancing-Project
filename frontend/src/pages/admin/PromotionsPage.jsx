@@ -53,7 +53,7 @@ export const PromotionsPage = () => {
                 {promotions.map((p, idx) => (
                   <tr key={idx} style={{ borderBottom: '1px solid var(--color-border)' }}>
                     <td style={{ padding: '12px 10px', fontWeight: 800 }}>{p.title}</td>
-                    <td style={{ padding: '12px 10px', fontFamily: 'monospace', fontWeight: 700, color: 'var(--color-secondary)' }}>{p.code || 'MAHRUNI50'}</td>
+                    <td style={{ padding: '12px 10px', fontFamily: 'monospace', fontWeight: 700, color: 'var(--color-secondary)' }}>{p.code || 'SAVE50'}</td>
                     <td style={{ padding: '12px 10px', fontWeight: 700 }}>{p.discountPercent || 10}% OFF</td>
                     <td style={{ padding: '12px 10px' }}><Badge variant="green">ACTIVE</Badge></td>
                   </tr>

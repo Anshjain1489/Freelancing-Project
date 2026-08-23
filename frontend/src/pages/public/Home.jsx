@@ -143,7 +143,7 @@ export const Home = () => {
       {/* 3. Promotional Banner & Coupon */}
       <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
         <PromotionalBanner onCtaClick={() => navigate('/products')} />
-        <CouponCard code="MAHRUNI50" description="Flat ₹50 OFF on monthly ration above ₹999" />
+        <CouponCard code="SAVE50" description="Flat ₹50 OFF on orders above ₹2,000" />
       </section>
 
       {/* 4. Featured Products Section */}

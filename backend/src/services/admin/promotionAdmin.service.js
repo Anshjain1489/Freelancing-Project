@@ -10,7 +10,7 @@ const getPromotions = async () => {
   }
   return {
     promotions: [
-      { id: 'promo-1', title: 'Weekend Kirana Offer', description: 'Get 10% off on Atta & Oils', code: 'MAHRUNI50', discountPercent: 10, isActive: true }
+      { id: 'promo-1', title: 'Weekend Kirana Offer', description: 'Get 10% off on Atta & Oils', code: 'SAVE50', discountPercent: 10, isActive: true }
     ]
   };
 };

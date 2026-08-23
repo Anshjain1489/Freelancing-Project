@@ -64,7 +64,7 @@ const generateFallbackAIResponse = (userMessage, toolResults) => {
   }
 
   if (textLower.includes('offer') || textLower.includes('discount') || textLower.includes('coupon')) {
-    return `🎉 Current Offers at Chaudhary Kirana Store:\n• Use coupon MAHRUNI50 for special local discounts!\n• Fast local delivery at ₹10 per KM.`;
+    return `🎉 Current Offers at Chaudhary Kirana Store:\n• Use coupon SAVE50 for ₹50 OFF on orders above ₹2,000!\n• Fast local delivery at ₹10 per KM.`;
   }
 
   if (toolResults.order) {

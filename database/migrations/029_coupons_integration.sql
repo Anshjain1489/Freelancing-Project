@@ -23,9 +23,7 @@ VALUES
   ('SAVE20', '₹20 OFF on orders above ₹1,000', 1000.00, 'FIXED', 20.00, TRUE),
   ('SAVE50', '₹50 OFF on orders above ₹2,000', 2000.00, 'FIXED', 50.00, TRUE),
   ('SAVE200', '₹200 OFF on orders above ₹5,000', 5000.00, 'FIXED', 200.00, TRUE),
-  ('SAVE500', '₹500 OFF on orders above ₹10,000', 10000.00, 'FIXED', 500.00, TRUE),
-  ('WELCOME10', '10% OFF on your first grocery order in Mahruni', 200.00, 'PERCENTAGE', 10.00, TRUE),
-  ('MAHRUNI50', 'Flat ₹50 OFF on monthly ration orders above ₹999', 999.00, 'FIXED', 50.00, TRUE)
+  ('SAVE500', '₹500 OFF on orders above ₹10,000', 10000.00, 'FIXED', 500.00, TRUE)
 ON CONFLICT (code) DO UPDATE 
 SET description = EXCLUDED.description,
     minimum_order_amount = EXCLUDED.minimum_order_amount,

@@ -105,7 +105,7 @@ export const ComponentShowcase = () => {
         <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '16px' }}>5. Product Card & Coupon Card</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px' }}>
           <ProductCard product={demoProduct} onQuickView={() => setIsModalOpen(true)} />
-          <CouponCard code="MAHRUNI50" description="Flat ₹50 OFF on monthly ration above ₹999" />
+          <CouponCard code="SAVE50" description="Flat ₹50 OFF on orders above ₹2,000" />
         </div>
       </Card>
 

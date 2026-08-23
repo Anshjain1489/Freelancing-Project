@@ -2,8 +2,8 @@
 
 -- Sample Coupons
 INSERT INTO coupons (code, description, discount_type, discount_value, minimum_order_amount, usage_limit, usage_limit_per_user, is_active) VALUES
-('WELCOME10', '10% OFF on your first grocery order in Mahruni', 'PERCENTAGE', 10.00, 200.00, 500, 1, TRUE),
-('MAHRUNI50', 'Flat ₹50 OFF on monthly ration orders above ₹999', 'FIXED', 50.00, 999.00, 200, 1, TRUE)
+('SAVE50', 'Flat ₹50 OFF on orders above ₹2,000', 'FIXED', 50.00, 2000.00, 500, 1, TRUE),
+('SAVE20', 'Flat ₹20 OFF on orders above ₹1,000', 'FIXED', 20.00, 1000.00, 500, 1, TRUE)
 ON CONFLICT (code) DO NOTHING;
 
 -- Sample Banners
