@@ -1,5 +1,18 @@
 const rateLimit = require('express-rate-limit');
 const { HTTP_STATUS, ERROR_CODES } = require('../constants/statusCodes');
+module.exports = { generalLimiter, authLimiter, paymentLimiter };
+
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 200, // Limit each IP to 200 requests per 15 minutes
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many requests from this IP, please try again after 15 minutes.',
+    code: ERROR_CODES.RATE_LIMIT_EXCEEDED
+  }
+});
 
 // const generalLimiter = rateLimit({
 //   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -13,17 +26,17 @@ const { HTTP_STATUS, ERROR_CODES } = require('../constants/statusCodes');
 //   }
 // });
 
-// const authLimiter = rateLimit({
-//   windowMs: 15 * 60 * 1000, // 15 minutes
-//   max: 20, // Limit login/register attempts to 20 per 15 minutes
-//   standardHeaders: true,
-//   legacyHeaders: false,
-//   message: {
-//     success: false,
-//     message: 'Too many authentication attempts, please try again after 15 minutes.',
-//     code: ERROR_CODES.RATE_LIMIT_EXCEEDED
-//   }
-// });
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // Limit login/register attempts to 20 per 15 minutes
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many authentication attempts, please try again after 15 minutes.',
+    code: ERROR_CODES.RATE_LIMIT_EXCEEDED
+  }
+});
 
 const paymentLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutes
@@ -37,4 +50,4 @@ const paymentLimiter = rateLimit({
   }
 });
 
-//module.exports = { generalLimiter, authLimiter, paymentLimiter };
+module.exports = { generalLimiter, authLimiter, paymentLimiter };
