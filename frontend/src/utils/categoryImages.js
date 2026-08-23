@@ -4,7 +4,7 @@ export const CATEGORY_IMAGES = {
   'rice-pulses': 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=400&q=80', // Basmati Rice & Lentils
   'oil-ghee': 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?auto=format&fit=crop&w=400&q=80',    // Mustard Oil & Desi Ghee
   'spices': 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=400&q=80',      // Indian Spices (Haldi, Mirch, Masala)
-  'dairy': 'https://images.unsplash.com/photo-1628088062854-d1870b4553da?auto=format&fit=crop&w=400&q=80',       // Fresh Milk, Curd & Paneer
+  'dairy': 'https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=400&q=80',       // 100% Pure Fresh Milk Glass & Bottle (Pure Veg)
   'snacks': 'https://images.unsplash.com/photo-1621939514649-280e2ee25f60?auto=format&fit=crop&w=400&q=80',      // Bhujia, Namkeen & Chips
   'biscuits': 'https://images.unsplash.com/photo-1558961363-fa8fdf82db35?auto=format&fit=crop&w=400&q=80',    // Tea Biscuits & Cookies
   'beverages': 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?auto=format&fit=crop&w=400&q=80',   // Tea, Coffee & Cold Drinks
