@@ -9,6 +9,8 @@ const EVENT_TYPES = require('../events/eventTypes');
 const sseManager = require('../notifications/sse.manager');
 const whatsappService = require('./whatsapp.service');
 
+const isUUID = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+
 // Memory fallbacks
 const mockDeliveryAssignments = [];
 const mockPartners = [
@@ -326,17 +328,12 @@ const getAssignedDeliveries = async () => {
       .select('*, orders(*, order_items(*), order_addresses(*), users!orders_user_id_fkey(id, full_name, phone, email)), partner:users!delivery_assignments_delivery_partner_id_fkey(id, full_name, phone, email)')
       .order('updated_at', { ascending: false });
 
-    const { data: waLogs } = await supabase.from('whatsapp_delivery_notifications')
-      .select('order_id, status, recipient_phone, sent_at, updated_at');
-
     if (!error && assignments) {
       return assignments
         .filter(a => a.status !== 'CANCELLED')
         .map(a => {
           const rawAddr = a.orders?.order_addresses?.[0] || null;
           const deliveryAddress = parseDeliveryAddress(rawAddr) || defaultDeliveryAddress;
-          const waLog = (waLogs || []).find(w => String(w.order_id) === String(a.orders?.id || a.order_id));
-          const whatsappStatus = waLog ? waLog.status : 'PENDING';
 
           return {
             assignmentId: a.id,
@@ -344,7 +341,8 @@ const getAssignedDeliveries = async () => {
             orderNumber: a.orders?.order_number || `CKS-DEL-${a.order_id}`,
             orderStatus: a.orders?.status || 'PROCESSING',
             deliveryStatus: a.status,
-            whatsappStatus,
+            whatsappStatus: 'READY_TO_SEND',
+            whatsappAvailable: true,
             totalAmount: parseFloat(a.orders?.total_amount || 0),
             paymentStatus: a.orders?.payment_status || 'PAID',
             customer: {
@@ -378,7 +376,8 @@ const getAssignedDeliveries = async () => {
     orderId: a.order_id,
     orderNumber: `CKS-DEL-${a.order_id}`,
     deliveryStatus: a.status,
-    whatsappStatus: 'SENT',
+    whatsappStatus: 'READY_TO_SEND',
+    whatsappAvailable: true,
     customer: { name: 'Valued Customer', phone: '9876543210', email: 'customer@example.com' },
     deliveryAddress: defaultDeliveryAddress,
     deliveryPartner: { name: 'Rahul Sharma', phone: '9876543210' },
@@ -399,6 +398,8 @@ const assignDeliveryPartner = async (adminId, orderId, partnerId, estimatedMinut
   const estimatedReadyAt = new Date(Date.now() + 15 * 60000).toISOString();
   const estimatedDeliveryAt = new Date(Date.now() + (parseInt(estimatedMinutes) || 30) * 60000).toISOString();
 
+  let assignmentRecord = null;
+
   if (supabase) {
     const { data: order } = await supabase.from('orders')
       .select('*, users!orders_user_id_fkey(full_name, phone)')
@@ -416,14 +417,21 @@ const assignDeliveryPartner = async (adminId, orderId, partnerId, estimatedMinut
       throw new AppError('This delivery assignment has already been modified by another administrator.', HTTP_STATUS.CONFLICT);
     }
 
+    let validAdminId = null;
+    if (adminId && isUUID(adminId)) {
+      const { data: adminUser } = await supabase.from('users').select('id').eq('id', adminId).maybeSingle();
+      if (adminUser) validAdminId = adminUser.id;
+    }
+
     const insertPayload = {
       order_id: orderId,
       delivery_partner_id: partnerId,
+      assigned_by: validAdminId,
       status: 'ASSIGNED',
       estimated_ready_at: estimatedReadyAt,
       estimated_delivery_at: estimatedDeliveryAt,
       assigned_at: new Date().toISOString(),
-      notes: deliveryNotes || null
+      delivery_notes: deliveryNotes || null
     };
 
     const { data: assignment, error: assignErr } = await supabase.from('delivery_assignments')
@@ -431,7 +439,12 @@ const assignDeliveryPartner = async (adminId, orderId, partnerId, estimatedMinut
       .select()
       .maybeSingle();
 
+    if (assignErr && assignErr.code === '23505') {
+      throw new AppError('This delivery assignment has already been created by another administrator.', HTTP_STATUS.CONFLICT);
+    }
+
     if (!assignErr && assignment) {
+      assignmentRecord = assignment;
       if ([ORDER_STATUS.CONFIRMED, ORDER_STATUS.PROCESSING].includes(order.status)) {
         await supabase.from('orders')
           .update({ status: ORDER_STATUS.READY_FOR_DELIVERY, updated_at: new Date().toISOString() })
@@ -455,81 +468,62 @@ const assignDeliveryPartner = async (adminId, orderId, partnerId, estimatedMinut
 
       eventBus.emit(EVENT_TYPES.DELIVERY_ASSIGNED, payload);
       sseManager.broadcastDeliveryUpdate(payload);
-
-      let waResult = { success: false, status: 'FAILED' };
-      try {
-        waResult = await whatsappService.sendDeliveryAssignmentNotification({
-          orderId,
-          deliveryPartnerId: partnerId,
-          isReassignment: false,
-          deliveryNotes,
-          estimatedDeliveryAt
-        });
-      } catch (waErr) {
-        console.warn('[WHATSAPP_ASSIGNMENT_NOTIF_NOTICE]', waErr.message);
-      }
-
-      return {
-        success: true,
-        assignment,
-        message: 'Delivery partner assigned successfully',
-        whatsappNotificationStatus: waResult.status || 'FAILED'
-      };
+    }
+  } else {
+    const existingMock = mockDeliveryAssignments.find(a => String(a.order_id) === String(orderId) && a.status !== 'CANCELLED');
+    if (existingMock) {
+      throw new AppError('This delivery assignment has already been created or modified by another administrator.', HTTP_STATUS.CONFLICT);
     }
 
-    if (assignErr && assignErr.code === '23505') {
-      throw new AppError('This delivery assignment has already been created by another administrator.', HTTP_STATUS.CONFLICT);
-    }
-  }
+    const mockAssign = {
+      id: `asgn-${Date.now()}`,
+      order_id: orderId,
+      delivery_partner_id: partnerId,
+      status: 'ASSIGNED',
+      estimated_delivery_at: estimatedDeliveryAt,
+      notes: deliveryNotes || null,
+      assigned_at: new Date().toISOString()
+    };
+    mockDeliveryAssignments.push(mockAssign);
+    assignmentRecord = mockAssign;
 
-  const existingMock = mockDeliveryAssignments.find(a => String(a.order_id) === String(orderId) && a.status !== 'CANCELLED');
-  if (existingMock) {
-    throw new AppError('This delivery assignment has already been created or modified by another administrator.', HTTP_STATUS.CONFLICT);
-  }
-
-  const mockAssign = {
-    id: `asgn-${Date.now()}`,
-    order_id: orderId,
-    delivery_partner_id: partnerId,
-    status: 'ASSIGNED',
-    estimated_delivery_at: estimatedDeliveryAt,
-    notes: deliveryNotes || null,
-    assigned_at: new Date().toISOString()
-  };
-  mockDeliveryAssignments.push(mockAssign);
-
-  const payload = {
-    eventType: EVENT_TYPES.DELIVERY_ASSIGNED,
-    orderId,
-    deliveryPartnerId: partnerId,
-    deliveryStatus: 'ASSIGNED',
-    orderStatus: ORDER_STATUS.READY_FOR_DELIVERY,
-    estimatedDeliveryAt,
-    notes: deliveryNotes || null,
-    updatedAt: new Date().toISOString()
-  };
-
-  eventBus.emit(EVENT_TYPES.DELIVERY_ASSIGNED, payload);
-  sseManager.broadcastDeliveryUpdate(payload);
-
-  let waResult = { success: false, status: 'FAILED' };
-  try {
-    waResult = await whatsappService.sendDeliveryAssignmentNotification({
+    const payload = {
+      eventType: EVENT_TYPES.DELIVERY_ASSIGNED,
       orderId,
       deliveryPartnerId: partnerId,
-      isReassignment: false,
+      deliveryStatus: 'ASSIGNED',
+      orderStatus: ORDER_STATUS.READY_FOR_DELIVERY,
+      estimatedDeliveryAt,
+      notes: deliveryNotes || null,
+      updatedAt: new Date().toISOString()
+    };
+
+    eventBus.emit(EVENT_TYPES.DELIVERY_ASSIGNED, payload);
+    sseManager.broadcastDeliveryUpdate(payload);
+  }
+
+  // Safe WhatsApp Click-to-Chat URL generation (never throws or causes rollback)
+  let whatsappInfo = { available: false, url: null };
+  try {
+    const waLinkRes = await whatsappService.generateDeliveryAssignmentWhatsAppUrl({
+      orderId,
+      deliveryPartnerId: partnerId,
       deliveryNotes,
       estimatedDeliveryAt
     });
+    if (waLinkRes && waLinkRes.available) {
+      whatsappInfo = { available: true, url: waLinkRes.url, phone: waLinkRes.phone };
+    }
   } catch (waErr) {
-    console.warn('[WHATSAPP_ASSIGNMENT_NOTIF_NOTICE]', waErr.message);
+    console.warn('[WHATSAPP_LINK_GEN_NOTICE]', waErr.message);
   }
 
   return {
     success: true,
-    assignment: mockAssign,
+    assignment: assignmentRecord,
     message: 'Delivery partner assigned successfully',
-    whatsappNotificationStatus: waResult.status || 'FAILED'
+    whatsapp: whatsappInfo,
+    whatsappUrl: whatsappInfo.url || null
   };
 };
 
@@ -537,6 +531,8 @@ const assignDeliveryPartner = async (adminId, orderId, partnerId, estimatedMinut
  * 7. Admin: Reassign Delivery Partner
  */
 const reassignDeliveryPartner = async (adminId, orderId, newPartnerId, req = null) => {
+  let updatedAssignment = null;
+
   if (supabase) {
     const { data: existing } = await supabase.from('delivery_assignments')
       .select('*')
@@ -548,10 +544,16 @@ const reassignDeliveryPartner = async (adminId, orderId, newPartnerId, req = nul
         throw new AppError('Cannot reassign order that is already picked up or delivered', HTTP_STATUS.BAD_REQUEST);
       }
 
+      let validAdminId = null;
+      if (adminId && isUUID(adminId)) {
+        const { data: adminUser } = await supabase.from('users').select('id').eq('id', adminId).maybeSingle();
+        if (adminUser) validAdminId = adminUser.id;
+      }
+
       const { data: updated, error } = await supabase.from('delivery_assignments')
         .update({
           delivery_partner_id: newPartnerId,
-          assigned_by: adminId,
+          assigned_by: validAdminId,
           status: 'ASSIGNED',
           assigned_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -565,6 +567,8 @@ const reassignDeliveryPartner = async (adminId, orderId, newPartnerId, req = nul
         throw new AppError('This delivery assignment has already been modified by another administrator.', HTTP_STATUS.CONFLICT);
       }
 
+      updatedAssignment = updated;
+
       const payload = {
         eventType: EVENT_TYPES.DELIVERY_REASSIGNED,
         orderId: existing.order_id,
@@ -575,50 +579,51 @@ const reassignDeliveryPartner = async (adminId, orderId, newPartnerId, req = nul
 
       await logAdminActivity(adminId, 'ADMIN_DELIVERY_REASSIGNED', 'order', orderId, { newPartnerId }, req);
       sseManager.broadcastDeliveryUpdate(payload);
-
-      let waResult = { success: false, status: 'FAILED' };
-      try {
-        waResult = await whatsappService.sendDeliveryAssignmentNotification({
-          orderId,
-          deliveryPartnerId: newPartnerId,
-          previousPartnerId: existing.delivery_partner_id,
-          isReassignment: true,
-          deliveryNotes: existing.notes,
-          estimatedDeliveryAt: existing.estimated_delivery_at
-        });
-      } catch (waErr) {
-        console.warn('[WHATSAPP_REASSIGNMENT_NOTIF_NOTICE]', waErr.message);
-      }
-
-      return {
-        success: true,
-        assignment: updated,
-        message: 'Delivery partner reassigned successfully',
-        whatsappNotificationStatus: waResult.status || 'FAILED'
-      };
     }
+  } else {
+    const foundMock = mockDeliveryAssignments.find(a => String(a.order_id) === String(orderId));
+    if (!foundMock) throw new AppError('No active delivery assignment found for this order', HTTP_STATUS.NOT_FOUND);
+
+    if (['OUT_FOR_DELIVERY', 'DELIVERED', 'PICKED_UP'].includes(foundMock.status)) {
+      throw new AppError('Cannot reassign order that is already picked up or delivered', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    foundMock.delivery_partner_id = newPartnerId;
+    foundMock.status = 'ASSIGNED';
+    updatedAssignment = foundMock;
+
+    const payload = {
+      eventType: EVENT_TYPES.DELIVERY_REASSIGNED,
+      orderId,
+      deliveryPartnerId: newPartnerId,
+      deliveryStatus: 'ASSIGNED',
+      updatedAt: new Date().toISOString()
+    };
+
+    sseManager.broadcastDeliveryUpdate(payload);
   }
 
-  const foundMock = mockDeliveryAssignments.find(a => String(a.order_id) === String(orderId));
-  if (!foundMock) throw new AppError('No active delivery assignment found for this order', HTTP_STATUS.NOT_FOUND);
-
-  if (['OUT_FOR_DELIVERY', 'DELIVERED', 'PICKED_UP'].includes(foundMock.status)) {
-    throw new AppError('Cannot reassign order that is already picked up or delivered', HTTP_STATUS.BAD_REQUEST);
+  // Generate WhatsApp Click-to-Chat link ONLY for new partner
+  let whatsappInfo = { available: false, url: null };
+  try {
+    const waLinkRes = await whatsappService.generateDeliveryAssignmentWhatsAppUrl({
+      orderId,
+      deliveryPartnerId: newPartnerId
+    });
+    if (waLinkRes && waLinkRes.available) {
+      whatsappInfo = { available: true, url: waLinkRes.url, phone: waLinkRes.phone };
+    }
+  } catch (waErr) {
+    console.warn('[WHATSAPP_LINK_REASSIGN_NOTICE]', waErr.message);
   }
 
-  foundMock.delivery_partner_id = newPartnerId;
-  foundMock.status = 'ASSIGNED';
-
-  const payload = {
-    eventType: EVENT_TYPES.DELIVERY_REASSIGNED,
-    orderId,
-    deliveryPartnerId: newPartnerId,
-    deliveryStatus: 'ASSIGNED',
-    updatedAt: new Date().toISOString()
+  return {
+    success: true,
+    assignment: updatedAssignment,
+    message: 'Delivery partner reassigned successfully',
+    whatsapp: whatsappInfo,
+    whatsappUrl: whatsappInfo.url || null
   };
-
-  sseManager.broadcastDeliveryUpdate(payload);
-  return { success: true, assignment: foundMock, message: 'Delivery partner reassigned successfully' };
 };
 
 /**
@@ -933,6 +938,20 @@ const inventoryService = require('./inventory.service');
 
 const deliverOrder = async (partnerId, orderId) => {
   if (supabase) {
+    const { data: existing } = await supabase.from('delivery_assignments')
+      .select('status')
+      .eq('order_id', orderId)
+      .eq('delivery_partner_id', partnerId)
+      .maybeSingle();
+
+    if (existing && existing.status === 'DELIVERED') {
+      throw new AppError('This order has already been marked as delivered', HTTP_STATUS.CONFLICT);
+    }
+
+    if (existing && !['PICKED_UP', 'OUT_FOR_DELIVERY'].includes(existing.status)) {
+      throw new AppError('Cannot mark order as delivered before pickup', HTTP_STATUS.BAD_REQUEST);
+    }
+
     const { data: updated, error } = await supabase.from('delivery_assignments')
       .update({
         status: 'DELIVERED',
@@ -941,7 +960,7 @@ const deliverOrder = async (partnerId, orderId) => {
       })
       .eq('order_id', orderId)
       .eq('delivery_partner_id', partnerId)
-      .in('status', ['ACCEPTED', 'PICKED_UP', 'OUT_FOR_DELIVERY'])
+      .in('status', ['PICKED_UP', 'OUT_FOR_DELIVERY'])
       .select('*, orders(user_id, order_number)')
       .maybeSingle();
 
@@ -973,29 +992,16 @@ const deliverOrder = async (partnerId, orderId) => {
   const foundMock = mockDeliveryAssignments.find(a => String(a.order_id) === String(orderId) && String(a.delivery_partner_id) === String(partnerId));
   if (foundMock) {
     if (foundMock.status === 'DELIVERED') {
-      throw new AppError('This order has already been marked as DELIVERED or modified.', HTTP_STATUS.CONFLICT);
+      throw new AppError('This order has already been marked as delivered', HTTP_STATUS.CONFLICT);
     }
     if (!['PICKED_UP', 'OUT_FOR_DELIVERY'].includes(foundMock.status)) {
-      throw new AppError(`Invalid delivery status transition to DELIVERED from status "${foundMock.status}". Order must be picked up first.`, HTTP_STATUS.BAD_REQUEST);
+      throw new AppError('Cannot mark order as delivered before pickup', HTTP_STATUS.BAD_REQUEST);
     }
     foundMock.status = 'DELIVERED';
+    foundMock.delivered_at = new Date().toISOString();
+    return { success: true, message: 'Order delivered' };
   }
 
-  await inventoryService.consumeStock(null, orderId);
-
-  const payload = {
-    eventType: EVENT_TYPES.ORDER_DELIVERED,
-    orderId,
-    deliveryPartnerId: partnerId,
-    deliveryStatus: 'DELIVERED',
-    orderStatus: ORDER_STATUS.DELIVERED,
-    updatedAt: new Date().toISOString()
-  };
-
-  eventBus.emit(EVENT_TYPES.ORDER_DELIVERED, payload);
-  sseManager.broadcastDeliveryUpdate(payload);
-
-  return { success: true, message: 'Order delivered' };
 };
 
 /**

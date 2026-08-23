@@ -1,14 +1,29 @@
 const supabase = require('../config/supabase');
-const { sendWhatsAppMessage, getWhatsAppConfig } = require('../providers/whatsapp/whatsapp.client');
 const AppError = require('../utils/AppError');
 const { HTTP_STATUS } = require('../constants/statusCodes');
 const logger = require('../utils/logger');
 
-// In-memory fallback notification store for local testing
-const mockNotifications = [];
+/**
+ * 1. Phone Normalizer Utility
+ * Strips non-digits, formats Indian 10-digit mobile numbers with country code 91
+ */
+const normalizePhone = (phone) => {
+  if (!phone) return '';
+  const digits = String(phone).replace(/\D/g, '');
+  if (digits.length === 10) {
+    return `91${digits}`;
+  }
+  if (digits.length === 12 && digits.startsWith('91')) {
+    return digits;
+  }
+  if (digits.length === 11 && digits.startsWith('0')) {
+    return `91${digits.slice(1)}`;
+  }
+  return digits.length >= 10 ? `91${digits.slice(-10)}` : digits;
+};
 
 /**
- * Format Google Maps Link from address object
+ * 2. Format Google Maps Link from Address Snapshot
  */
 const buildGoogleMapsUrl = (addressObj) => {
   if (!addressObj) return 'https://maps.google.com';
@@ -27,256 +42,194 @@ const buildGoogleMapsUrl = (addressObj) => {
 };
 
 /**
- * Build WhatsApp Assignment Message Text
+ * 3. Format Delivery Assignment WhatsApp Message Text
  */
-const formatAssignmentMessageText = ({ partnerName, orderNumber, customerName, customerPhone, address, itemCount, paymentStatus, orderAmount, estimatedDeliveryAt, deliveryNotes, googleMapsUrl }) => {
-  const addrLines = [
-    address.house_number || address.houseNumber,
-    address.street || address.streetAddress,
-    address.locality || address.area,
-    address.landmark ? `Landmark: ${address.landmark}` : null,
-    `${address.city || 'Mahruni'}, ${address.state || 'UP'} - ${address.pincode || '284405'}`
-  ].filter(Boolean).join('\n');
+const formatAssignmentMessageText = ({
+  partnerName,
+  orderNumber,
+  customerName,
+  customerPhone,
+  address,
+  items,
+  paymentStatus,
+  orderAmount,
+  estimatedDeliveryAt,
+  deliveryNotes,
+  googleMapsUrl
+}) => {
+  let addressStr = 'Address details unavailable';
+  if (typeof address === 'string') {
+    addressStr = address;
+  } else if (address && typeof address === 'object') {
+    const parts = [
+      address.house_number || address.houseNumber,
+      address.street || address.streetAddress,
+      address.locality || address.area,
+      address.landmark ? `Landmark: ${address.landmark}` : null,
+      `${address.city || 'Mahruni'}, ${address.state || 'UP'} - ${address.pincode || '284405'}`
+    ].filter(Boolean);
+    addressStr = parts.join('\n');
+  }
 
-  return `🚚 *New Delivery Assigned*
+  let itemsListStr = 'Items details unavailable';
+  if (Array.isArray(items) && items.length > 0) {
+    itemsListStr = items.map(i => `- ${i.product_name || i.name || 'Item'} (Qty: ${i.quantity || 1})`).join('\n');
+  } else if (typeof items === 'number') {
+    itemsListStr = `${items} item(s)`;
+  }
 
-Hello ${partnerName}! 👋
+  const estDeliveryStr = estimatedDeliveryAt
+    ? new Date(estimatedDeliveryAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+    : 'Within 30-45 mins';
+
+  return `🚚 *New Delivery Assignment*
+
+Hello ${partnerName || 'Delivery Partner'},
 
 You have been assigned a new delivery.
 
-📦 *Order:* #${orderNumber}
+📦 Order: #${orderNumber}
 
-👤 *Customer:* ${customerName}
-📞 *Phone:* ${customerPhone}
+👤 Customer: ${customerName || 'Valued Customer'}
+📞 Phone: ${customerPhone || 'N/A'}
 
-📍 *Delivery Address:*
-${addrLines}
+📍 Delivery Address:
+${addressStr}
 
-🛒 *Items:* ${itemCount}
-💳 *Payment Status:* ${paymentStatus}
-💰 *Order Amount:* ₹${orderAmount}
+🛒 Items:
+${itemsListStr}
 
-⏰ *Estimated Delivery:*
-${estimatedDeliveryAt ? new Date(estimatedDeliveryAt).toLocaleString('en-IN') : 'Within 30-45 mins'}
+💰 Order Amount: ₹${orderAmount || 0}
+💳 Payment Status: ${paymentStatus || 'PAID'}
 
-📝 *Delivery Notes:*
-${deliveryNotes || 'Standard delivery. Please verify items upon arrival.'}
-
-🗺️ *Open Location:*
+📍 Navigate using Google Maps:
 ${googleMapsUrl}
 
-Please accept and complete the delivery through your Delivery Partner dashboard.
+⏰ Estimated Delivery:
+${estDeliveryStr}
 
-Thank you! 🚚
-Chaudhary Kirana Store`;
+Please accept and complete the delivery through the Delivery Partner dashboard.`;
 };
 
 /**
- * 1. Send WhatsApp Notification on Delivery Partner Assignment / Reassignment
+ * 4. Generate Raw WhatsApp Click-to-Chat URL
  */
-const sendDeliveryAssignmentNotification = async ({ orderId, deliveryPartnerId, isReassignment = false, previousPartnerId = null, deliveryNotes = null, estimatedDeliveryAt = null }) => {
-  if (!orderId || !deliveryPartnerId) {
-    throw new AppError('Order ID and Delivery Partner ID are required for WhatsApp notification', HTTP_STATUS.BAD_REQUEST);
+const generateWhatsAppUrl = (phone, message) => {
+  const normalizedPhone = normalizePhone(phone);
+  return `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`;
+};
+
+/**
+ * 5. Generate Complete WhatsApp Click-to-Chat Link for an Assigned Order
+ */
+const generateDeliveryAssignmentWhatsAppUrl = async ({ orderId, deliveryPartnerId = null, deliveryNotes = null, estimatedDeliveryAt = null }) => {
+  if (!orderId) {
+    return { available: false, url: null, error: 'Order ID is required' };
   }
 
-  let orderData = null;
-  let partnerData = null;
-  let prevPartnerData = null;
-
-  if (supabase) {
-    // Fetch Order + Address Snapshot + Customer Details
-    const { data: order } = await supabase.from('orders')
-      .select('*, users!orders_user_id_fkey(full_name, phone), order_addresses(*), order_items(*)')
-      .eq('id', orderId)
-      .single();
-
-    if (!order) throw new AppError('Order not found for WhatsApp notification', HTTP_STATUS.NOT_FOUND);
-    orderData = order;
-
-    // Fetch Assigned Delivery Partner Details
-    const { data: partner } = await supabase.from('users')
-      .select('id, full_name, phone')
-      .eq('id', deliveryPartnerId)
-      .single();
-
-    if (!partner) throw new AppError('Delivery Partner account not found', HTTP_STATUS.NOT_FOUND);
-    partnerData = partner;
-
-    // Fetch Previous Partner for Reassignment Notice
-    if (isReassignment && previousPartnerId && previousPartnerId !== deliveryPartnerId) {
-      const { data: prevP } = await supabase.from('users')
-        .select('id, full_name, phone')
-        .eq('id', previousPartnerId)
-        .maybeSingle();
-      prevPartnerData = prevP;
-    }
-  } else {
-    orderData = {
-      id: orderId,
-      order_number: `CKS-${orderId.slice(-6)}`,
-      total_amount: 499.00,
-      payment_status: 'PAID',
-      users: { full_name: 'Customer Test', phone: '9876543210' },
-      order_addresses: [{ house_number: '12', street: 'Main Market', locality: 'Mahruni', city: 'Lalitpur', state: 'UP', pincode: '284405' }],
-      order_items: [{ id: '1' }]
-    };
-    partnerData = { id: deliveryPartnerId, full_name: 'Test Partner', phone: '9000000001' };
-  }
-
-  // Validate Partner Phone
-  const rawPartnerPhone = partnerData.phone || '';
-  const cleanPartnerPhone = rawPartnerPhone.replace(/\D/g, '').slice(-10);
-  if (!cleanPartnerPhone || cleanPartnerPhone.length < 10) {
-    throw new AppError('Cannot assign delivery notification because the Delivery Partner does not have a valid WhatsApp phone number.', HTTP_STATUS.BAD_REQUEST);
-  }
-
-  const rawAddr = orderData.order_addresses?.[0] || {};
-  const googleMapsUrl = buildGoogleMapsUrl(rawAddr);
-
-  const messageText = formatAssignmentMessageText({
-    partnerName: partnerData.full_name,
-    orderNumber: orderData.order_number,
-    customerName: orderData.users?.full_name || 'Customer',
-    customerPhone: orderData.users?.phone || '9876543210',
-    address: rawAddr,
-    itemCount: orderData.order_items?.length || 1,
-    paymentStatus: orderData.payment_status || 'PAID',
-    orderAmount: orderData.total_amount || 0,
-    estimatedDeliveryAt,
-    deliveryNotes,
-    googleMapsUrl
-  });
-
-  // Attempt WhatsApp Dispatch via Provider Client
-  let dispatchResult = { success: false, status: 'FAILED', messageId: null, errorMessage: null };
   try {
-    dispatchResult = await sendWhatsAppMessage({
-      to: cleanPartnerPhone,
-      templateName: 'delivery_assignment',
-      fallbackText: messageText
-    });
-  } catch (err) {
-    logger.error(`[WHATSAPP_ASSIGNMENT_DISPATCH_FAIL] Order: ${orderId} | Error: ${err.message}`);
-    dispatchResult = { success: false, status: 'FAILED', errorMessage: err.message };
-  }
+    let orderData = null;
+    let partnerData = null;
 
-  const notificationStatus = dispatchResult.success ? 'SENT' : 'FAILED';
-  const notificationType = isReassignment ? 'DELIVERY_REASSIGNED' : 'DELIVERY_ASSIGNED';
+    if (supabase) {
+      const { data: order } = await supabase.from('orders')
+        .select('*, users!orders_user_id_fkey(full_name, phone), order_addresses(*), order_items(*)')
+        .eq('id', orderId)
+        .maybeSingle();
 
-  // Audit Record Persistence
-  if (supabase) {
-    const auditPayload = {
-      order_id: orderId,
-      delivery_partner_id: deliveryPartnerId,
-      notification_type: notificationType,
-      recipient_phone: cleanPartnerPhone,
-      provider: 'WHATSAPP_CLOUD_API',
-      status: notificationStatus,
-      attempt_count: 1,
-      provider_message_id: dispatchResult.messageId || null,
-      message_text: messageText,
-      error_message: dispatchResult.errorMessage || null,
-      sent_at: notificationStatus === 'SENT' ? new Date().toISOString() : null,
-      updated_at: new Date().toISOString()
-    };
+      if (!order) return { available: false, url: null, error: 'Order not found' };
+      orderData = order;
 
-    await supabase.from('whatsapp_delivery_notifications').upsert([auditPayload], { onConflict: 'order_id, delivery_partner_id, notification_type' });
-  } else {
-    mockNotifications.push({
-      id: `wa-notif-${Date.now()}`,
-      order_id: orderId,
-      delivery_partner_id: deliveryPartnerId,
-      notification_type: notificationType,
-      recipient_phone: cleanPartnerPhone,
-      status: notificationStatus,
-      message_text: messageText,
-      sent_at: notificationStatus === 'SENT' ? new Date().toISOString() : null
-    });
-  }
-
-  // Handle Privacy-Safe Previous Partner Notification on Reassignment
-  if (isReassignment && prevPartnerData && prevPartnerData.phone) {
-    const prevCleanPhone = prevPartnerData.phone.replace(/\D/g, '').slice(-10);
-    if (prevCleanPhone && prevCleanPhone.length === 10) {
-      const prevRemovalText = `ℹ️ *Delivery Update*\n\nOrder #${orderData.order_number} is no longer assigned to you.\nPlease do not attempt to access or contact the customer regarding this order.`;
-      try {
-        await sendWhatsAppMessage({
-          to: prevCleanPhone,
-          templateName: 'delivery_unassigned',
-          fallbackText: prevRemovalText
-        });
-      } catch (prevErr) {
-        logger.warn(`[WHATSAPP_PREV_PARTNER_REMOVAL_NOTICE_FAIL] ${prevErr.message}`);
+      let targetPartnerId = deliveryPartnerId;
+      if (!targetPartnerId) {
+        const { data: asgn } = await supabase.from('delivery_assignments')
+          .select('delivery_partner_id')
+          .eq('order_id', orderId)
+          .maybeSingle();
+        targetPartnerId = asgn?.delivery_partner_id;
       }
+
+      if (targetPartnerId) {
+        const { data: partner } = await supabase.from('users')
+          .select('id, full_name, phone')
+          .eq('id', targetPartnerId)
+          .maybeSingle();
+        partnerData = partner;
+      }
+    } else {
+      orderData = {
+        id: orderId,
+        order_number: `CKS-${orderId.slice(-6)}`,
+        total_amount: 499.00,
+        payment_status: 'PAID',
+        users: { full_name: 'Customer Test', phone: '9876543210' },
+        order_addresses: [{ house_number: '12', street: 'Main Market', city: 'Mahruni', pincode: '284405' }],
+        order_items: [{ name: 'Rice 5kg', quantity: 1 }]
+      };
+      partnerData = { id: deliveryPartnerId || 'partner-1', full_name: 'Test Partner', phone: '9876543210' };
     }
+
+    if (!partnerData || !partnerData.phone) {
+      return { available: false, url: null, error: 'Delivery partner phone number not found' };
+    }
+
+    const rawAddr = orderData.order_addresses?.[0] || {};
+    const googleMapsUrl = buildGoogleMapsUrl(rawAddr);
+
+    const messageText = formatAssignmentMessageText({
+      partnerName: partnerData.full_name,
+      orderNumber: orderData.order_number || `CKS-${orderId.slice(-6)}`,
+      customerName: orderData.users?.full_name || 'Customer',
+      customerPhone: orderData.users?.phone || 'N/A',
+      address: rawAddr,
+      items: orderData.order_items || 1,
+      paymentStatus: orderData.payment_status || 'PAID',
+      orderAmount: orderData.total_amount || 0,
+      estimatedDeliveryAt,
+      deliveryNotes,
+      googleMapsUrl
+    });
+
+    const whatsappUrl = generateWhatsAppUrl(partnerData.phone, messageText);
+
+    return {
+      available: true,
+      url: whatsappUrl,
+      phone: normalizePhone(partnerData.phone),
+      message: messageText
+    };
+  } catch (err) {
+    logger.warn(`[WHATSAPP_LINK_GEN_WARN] Order ${orderId}: ${err.message}`);
+    return { available: false, url: null, error: err.message };
+  }
+};
+
+/**
+ * 6. Admin API Controller Helper to retrieve Click-to-Chat Link for an Order
+ */
+const getWhatsAppClickToChatLink = async (adminId, orderId) => {
+  if (!orderId) {
+    throw new AppError('Order ID is required', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  const result = await generateDeliveryAssignmentWhatsAppUrl({ orderId });
+  if (!result.available || !result.url) {
+    throw new AppError(result.error || 'Failed to generate WhatsApp Click-to-Chat URL', HTTP_STATUS.BAD_REQUEST);
   }
 
   return {
-    success: notificationStatus === 'SENT',
-    status: notificationStatus,
-    recipientPhone: cleanPartnerPhone,
-    messageId: dispatchResult.messageId,
-    errorMessage: dispatchResult.errorMessage
+    success: true,
+    whatsappUrl: result.url,
+    phone: result.phone,
+    message: result.message
   };
 };
 
-/**
- * 2. Admin: Resend WhatsApp Delivery Notification
- */
-const resendDeliveryNotification = async (adminId, orderId) => {
-  if (!orderId) {
-    throw new AppError('Order ID is required', HTTP_STATUS.BAD_REQUEST);
-  }
-
-  let assignment = null;
-  if (supabase) {
-    const { data: asgn } = await supabase.from('delivery_assignments')
-      .select('*')
-      .eq('order_id', orderId)
-      .maybeSingle();
-
-    assignment = asgn;
-  } else {
-    assignment = { delivery_partner_id: 'partner-1' };
-  }
-
-  if (!assignment || assignment.status === 'CANCELLED') {
-    throw new AppError('No active delivery assignment found for this order', HTTP_STATUS.NOT_FOUND);
-  }
-
-  return await sendDeliveryAssignmentNotification({
-    orderId,
-    deliveryPartnerId: assignment.delivery_partner_id,
-    isReassignment: false,
-    deliveryNotes: assignment.notes,
-    estimatedDeliveryAt: assignment.estimated_delivery_at
-  });
-};
-
-/**
- * 3. Admin: Get WhatsApp Notification Status for an Order
- */
-const getDeliveryNotifications = async (orderId) => {
-  if (!orderId) {
-    throw new AppError('Order ID is required', HTTP_STATUS.BAD_REQUEST);
-  }
-
-  if (supabase) {
-    const { data: logs } = await supabase.from('whatsapp_delivery_notifications')
-      .select('*')
-      .eq('order_id', orderId)
-      .order('created_at', { ascending: false });
-
-    return logs || [];
-  }
-
-  return mockNotifications.filter(n => String(n.order_id) === String(orderId));
-};
-
 module.exports = {
+  normalizePhone,
   buildGoogleMapsUrl,
   formatAssignmentMessageText,
-  sendDeliveryAssignmentNotification,
-  resendDeliveryNotification,
-  getDeliveryNotifications
+  generateWhatsAppUrl,
+  generateDeliveryAssignmentWhatsAppUrl,
+  getWhatsAppClickToChatLink
 };

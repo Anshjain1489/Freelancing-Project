@@ -149,6 +149,7 @@ export const ENDPOINTS = {
     ASSIGN_DELIVERY: (orderId) => `/admin/orders/${orderId}/assign-delivery`,
     REASSIGN_DELIVERY: (orderId) => `/admin/orders/${orderId}/reassign-delivery`,
     RESEND_WHATSAPP_DELIVERY: (orderId) => `/admin/deliveries/${orderId}/whatsapp/resend`,
+    WHATSAPP_LINK: (orderId) => `/admin/deliveries/${orderId}/whatsapp-link`,
     DELIVERY_NOTIFICATIONS: (orderId) => `/admin/deliveries/${orderId}/notifications`,
     COUPONS: '/admin/coupons',
     COUPON_BY_ID: (id) => `/admin/coupons/${id}`,

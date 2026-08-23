@@ -35,6 +35,7 @@ export const DeliveryAdminPage = () => {
   const [deliveryNotes, setDeliveryNotes] = useState('');
   const [isReassigning, setIsReassigning] = useState(false);
   const [assigning, setAssigning] = useState(false);
+  const [whatsAppModalUrl, setWhatsAppModalUrl] = useState(null);
 
   // Order Details Modal State
   const [viewDetailsOrder, setViewDetailsOrder] = useState(null);
@@ -63,6 +64,7 @@ export const DeliveryAdminPage = () => {
       }
     } catch (err) {
       console.error('Failed to load delivery management data:', err);
+      showError('Failed to load delivery dashboard data.');
     } finally {
       setLoading(false);
     }
@@ -70,13 +72,6 @@ export const DeliveryAdminPage = () => {
 
   useEffect(() => {
     fetchDeliveryData();
-
-    const handleRealtimeDelivery = () => {
-      fetchDeliveryData();
-    };
-
-    window.addEventListener('cks_delivery_updated', handleRealtimeDelivery);
-    return () => window.removeEventListener('cks_delivery_updated', handleRealtimeDelivery);
   }, []);
 
   const [registering, setRegistering] = useState(false);
@@ -98,21 +93,29 @@ export const DeliveryAdminPage = () => {
     }
   };
 
-  const handleOpenAssignModal = (order, reassignMode = false) => {
+  const handleOpenAssignModal = (order, isReassign = false) => {
     setSelectedOrder(order);
-    setIsReassigning(reassignMode);
-    setSelectedPartnerId(partners[0]?.id || '');
+    setIsReassigning(isReassign);
+    setSelectedPartnerId('');
     setEstimatedMinutes(30);
     setDeliveryNotes('');
   };
 
-  const handleResendWhatsApp = async (orderId) => {
+  const handleOpenWhatsApp = async (orderId, directUrl = null) => {
+    if (directUrl) {
+      window.open(directUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
     try {
-      await deliveryPartnerService.resendWhatsAppNotification(orderId);
-      showSuccess('WhatsApp delivery notification resent successfully! 📱');
-      fetchDeliveryData();
+      const res = await deliveryPartnerService.getWhatsAppClickToChatLink(orderId);
+      const url = res.data?.whatsappUrl || res.whatsappUrl;
+      if (url) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      } else {
+        showError('Could not generate WhatsApp link for this order.');
+      }
     } catch (err) {
-      showError(err.response?.data?.message || err.message || 'Failed to resend WhatsApp notification');
+      showError(err.response?.data?.message || err.message || 'Failed to generate WhatsApp link');
     }
   };
 
@@ -124,13 +127,20 @@ export const DeliveryAdminPage = () => {
 
     setAssigning(true);
     try {
+      let res = null;
       if (isReassigning) {
-        await deliveryPartnerService.reassignDeliveryPartner(selectedOrder.orderId, selectedPartnerId);
-        showSuccess(`Order ${selectedOrder.orderNumber} reassigned to partner! 📱 WhatsApp notification sent.`);
+        res = await deliveryPartnerService.reassignDeliveryPartner(selectedOrder.orderId, selectedPartnerId);
+        showSuccess(`Order ${selectedOrder.orderNumber} reassigned to partner successfully!`);
       } else {
-        await deliveryPartnerService.assignDeliveryPartner(selectedOrder.orderId, selectedPartnerId, estimatedMinutes, deliveryNotes);
-        showSuccess(`Order ${selectedOrder.orderNumber} assigned to partner! 📱 WhatsApp notification sent.`);
+        res = await deliveryPartnerService.assignDeliveryPartner(selectedOrder.orderId, selectedPartnerId, estimatedMinutes, deliveryNotes);
+        showSuccess(`Order ${selectedOrder.orderNumber} assigned to partner successfully!`);
       }
+
+      const waUrl = res.data?.whatsapp?.url || res.whatsapp?.url || res.data?.whatsappUrl || res.whatsappUrl;
+      if (waUrl) {
+        setWhatsAppModalUrl(waUrl);
+      }
+
       setSelectedOrder(null);
       fetchDeliveryData();
     } catch (err) {
@@ -387,11 +397,11 @@ export const DeliveryAdminPage = () => {
                           borderRadius: '12px',
                           fontSize: '0.75rem',
                           fontWeight: 800,
-                          background: asgn.whatsappStatus === 'SENT' ? '#E8F7F0' : asgn.whatsappStatus === 'FAILED' ? '#FDEDEC' : '#FEF9E7',
-                          color: asgn.whatsappStatus === 'SENT' ? '#06C167' : asgn.whatsappStatus === 'FAILED' ? '#C0392B' : '#D68910'
+                          background: '#E8F7F0',
+                          color: '#06C167'
                         }}
                       >
-                        📱 {asgn.whatsappStatus === 'SENT' ? 'Sent' : asgn.whatsappStatus === 'FAILED' ? '⚠️ Failed' : '⏳ Pending'}
+                        📱 Ready to Send
                       </span>
                     </div>
 
@@ -430,8 +440,8 @@ export const DeliveryAdminPage = () => {
                       View Details
                     </Button>
 
-                    <Button variant="outline" size="sm" onClick={() => handleResendWhatsApp(asgn.orderId)}>
-                      📱 Resend WhatsApp
+                    <Button variant="outline" size="sm" onClick={() => handleOpenWhatsApp(asgn.orderId)}>
+                      📱 Send Delivery Details
                     </Button>
 
                     {['ASSIGNED', 'ACCEPTED'].includes(asgn.deliveryStatus) && (
@@ -475,8 +485,6 @@ export const DeliveryAdminPage = () => {
                   {partners.map(p => (
                     <tr key={p.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
                       <td style={{ padding: '12px 10px', fontWeight: 800 }}>{p.fullName || p.name}</td>
-                      <td style={{ padding: '12px 10px', color: '#333' }}>{p.phone}</td>
-                      <td style={{ padding: '12px 10px', color: '#666' }}>{p.email}</td>
                       <td style={{ padding: '12px 10px' }}>
                         <span
                           style={{

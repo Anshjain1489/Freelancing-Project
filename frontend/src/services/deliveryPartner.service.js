@@ -84,6 +84,11 @@ export const deliveryPartnerService = {
     return response.data;
   },
 
+  getWhatsAppClickToChatLink: async (orderId) => {
+    const response = await apiClient.post(ENDPOINTS.ADMIN.WHATSAPP_LINK(orderId));
+    return response.data;
+  },
+
   getDeliveryNotifications: async (orderId) => {
     const response = await apiClient.get(ENDPOINTS.ADMIN.DELIVERY_NOTIFICATIONS(orderId));
     return response.data;

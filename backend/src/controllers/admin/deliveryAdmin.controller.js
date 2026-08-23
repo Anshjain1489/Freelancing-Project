@@ -53,14 +53,9 @@ const reassignDeliveryPartner = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, HTTP_STATUS.OK, result.message, result);
 });
 
-const resendWhatsAppNotification = asyncHandler(async (req, res) => {
-  const result = await whatsappService.resendDeliveryNotification(req.user.id, req.params.orderId);
-  return ApiResponse.success(res, HTTP_STATUS.OK, 'WhatsApp delivery notification resent', result);
-});
-
-const getDeliveryNotifications = asyncHandler(async (req, res) => {
-  const notifications = await whatsappService.getDeliveryNotifications(req.params.orderId);
-  return ApiResponse.success(res, HTTP_STATUS.OK, 'Delivery notification logs retrieved', { items: notifications });
+const getWhatsAppClickToChatLink = asyncHandler(async (req, res) => {
+  const result = await whatsappService.getWhatsAppClickToChatLink(req.user.id, req.params.orderId);
+  return ApiResponse.success(res, HTTP_STATUS.OK, 'WhatsApp Click-to-Chat link generated', result);
 });
 
 module.exports = {
@@ -71,6 +66,7 @@ module.exports = {
   getAssignedDeliveries,
   assignDeliveryPartner,
   reassignDeliveryPartner,
-  resendWhatsAppNotification,
-  getDeliveryNotifications
+  getWhatsAppClickToChatLink,
+  resendWhatsAppNotification: getWhatsAppClickToChatLink,
+  getDeliveryNotifications: getWhatsAppClickToChatLink
 };
