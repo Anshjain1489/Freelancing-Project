@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { adminService } from '../../services/admin.service';
+import { deliveryPartnerService } from '../../services/deliveryPartner.service';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -15,12 +16,22 @@ import {
   Plus,
   Boxes,
   Truck,
-  ArrowUpRight
+  ArrowRight,
+  CheckCircle2,
+  Clock,
+  Package
 } from 'lucide-react';
 
 export const DashboardPage = () => {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
+  const [deliveryStats, setDeliveryStats] = useState({
+    unassignedOrders: 0,
+    assignedOrders: 0,
+    outForDelivery: 0,
+    deliveredToday: 0,
+    failedDeliveries: 0
+  });
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState('today');
 
@@ -28,8 +39,25 @@ export const DashboardPage = () => {
     const fetchSummary = async () => {
       setLoading(true);
       try {
-        const res = await adminService.getDashboard({ range });
-        setData(res.data || null);
+        const [res, delRes] = await Promise.allSettled([
+          adminService.getDashboard({ range }),
+          deliveryPartnerService.getAdminDeliveryDashboard()
+        ]);
+
+        if (res.status === 'fulfilled') {
+          setData(res.value?.data || null);
+        }
+
+        if (delRes.status === 'fulfilled') {
+          const stats = delRes.value?.data || delRes.value || {};
+          setDeliveryStats({
+            unassignedOrders: stats.unassignedOrders ?? 0,
+            assignedOrders: stats.assignedOrders ?? 0,
+            outForDelivery: stats.outForDelivery ?? 0,
+            deliveredToday: stats.deliveredToday ?? 0,
+            failedDeliveries: stats.failedDeliveries ?? 0
+          });
+        }
       } catch (err) {
         console.error('Failed to load admin dashboard summary:', err);
       } finally {
@@ -147,18 +175,83 @@ export const DashboardPage = () => {
         </Card>
       </div>
 
+      {/* 🚚 DELIVERY MANAGEMENT FEATURED DASHBOARD CARD & STATS */}
+      <Card padding="24px" style={{ border: '2px solid var(--color-primary)', backgroundColor: '#F8FCFA' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Truck size={24} color="var(--color-primary-dark)" />
+              <h2 style={{ fontSize: '1.2rem', fontWeight: 800, margin: 0, color: 'var(--color-text-primary)' }}>
+                🚚 Delivery Management & Fleet Summary
+              </h2>
+            </div>
+            <p style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)', marginTop: '4px', margin: 0 }}>
+              Assign delivery partners, view customer phone & address, and track dispatch status in real-time
+            </p>
+          </div>
+
+          <Button
+            variant="primary"
+            size="md"
+            icon={ArrowRight}
+            onClick={() => navigate('/admin/delivery')}
+            style={{ fontWeight: 800 }}
+          >
+            Manage Deliveries →
+          </Button>
+        </div>
+
+        {/* 5 Delivery Dashboard Metric Cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
+          <div onClick={() => navigate('/admin/delivery')} style={{ cursor: 'pointer', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #E74C3C', background: '#FDEDEC' }}>
+            <div style={{ fontSize: '0.72rem', color: '#78281F', textTransform: 'uppercase', fontWeight: 800 }}>🚚 Unassigned</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#C0392B', marginTop: '2px' }}>
+              {deliveryStats.unassignedOrders}
+            </div>
+          </div>
+
+          <div onClick={() => navigate('/admin/delivery')} style={{ cursor: 'pointer', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #F39C12', background: '#FEF9E7' }}>
+            <div style={{ fontSize: '0.72rem', color: '#7E5109', textTransform: 'uppercase', fontWeight: 800 }}>📦 Assigned</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#D68910', marginTop: '2px' }}>
+              {deliveryStats.assignedOrders}
+            </div>
+          </div>
+
+          <div onClick={() => navigate('/admin/delivery')} style={{ cursor: 'pointer', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #3498DB', background: '#EBF5FB' }}>
+            <div style={{ fontSize: '0.72rem', color: '#1B4F72', textTransform: 'uppercase', fontWeight: 800 }}>🛵 Out For Delivery</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#2980B9', marginTop: '2px' }}>
+              {deliveryStats.outForDelivery}
+            </div>
+          </div>
+
+          <div onClick={() => navigate('/admin/delivery')} style={{ cursor: 'pointer', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #2ECC71', background: '#EAFAF1' }}>
+            <div style={{ fontSize: '0.72rem', color: '#145A32', textTransform: 'uppercase', fontWeight: 800 }}>✅ Delivered Today</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#27AE60', marginTop: '2px' }}>
+              {deliveryStats.deliveredToday}
+            </div>
+          </div>
+
+          <div onClick={() => navigate('/admin/delivery')} style={{ cursor: 'pointer', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #8E44AD', background: '#F4ECF7' }}>
+            <div style={{ fontSize: '0.72rem', color: '#4A235A', textTransform: 'uppercase', fontWeight: 800 }}>⚠️ Failed Deliveries</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#8E44AD', marginTop: '2px' }}>
+              {deliveryStats.failedDeliveries}
+            </div>
+          </div>
+        </div>
+      </Card>
+
       {/* Quick Action Buttons */}
       <Card padding="20px" style={{ backgroundColor: 'var(--color-mint-light)' }}>
         <h3 style={{ fontSize: '0.95rem', fontWeight: 800, marginBottom: '12px' }}>⚡ Quick Admin Actions</h3>
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <Button variant="primary" size="sm" icon={Plus} onClick={() => navigate('/admin/products/new')}>
+          <Button variant="primary" size="sm" icon={Truck} onClick={() => navigate('/admin/delivery')}>
+            🚚 Delivery Management
+          </Button>
+          <Button variant="outline" size="sm" icon={Plus} onClick={() => navigate('/admin/products/new')}>
             Add New Product
           </Button>
           <Button variant="outline" size="sm" icon={ShoppingBag} onClick={() => navigate('/admin/orders')}>
             Manage Orders
-          </Button>
-          <Button variant="outline" size="sm" icon={Truck} onClick={() => navigate('/admin/delivery')}>
-            Delivery Management
           </Button>
           <Button variant="outline" size="sm" icon={Boxes} onClick={() => navigate('/admin/inventory')}>
             Update Stock
@@ -202,3 +295,4 @@ export const DashboardPage = () => {
     </div>
   );
 };
+
