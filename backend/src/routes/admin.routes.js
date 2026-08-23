@@ -87,6 +87,8 @@ router.post('/orders/:orderId/reassign-delivery', deliveryAdminController.reassi
 router.patch('/orders/:orderId/reassign-delivery', deliveryAdminController.reassignDeliveryPartner);
 router.post('/deliveries/:orderId/reassign', deliveryAdminController.reassignDeliveryPartner);
 router.patch('/deliveries/:orderId/reassign', deliveryAdminController.reassignDeliveryPartner);
+router.post('/deliveries/:orderId/whatsapp/resend', deliveryAdminController.resendWhatsAppNotification);
+router.get('/deliveries/:orderId/notifications', deliveryAdminController.getDeliveryNotifications);
 
 // Coupon Management
 router.get('/coupons', couponAdminController.getAdminCoupons);

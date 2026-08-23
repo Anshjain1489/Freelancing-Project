@@ -1,6 +1,7 @@
 const asyncHandler = require('../../utils/asyncHandler');
 const ApiResponse = require('../../utils/ApiResponse');
 const deliveryService = require('../../services/delivery.management.service');
+const whatsappService = require('../../services/whatsapp.service');
 const { HTTP_STATUS } = require('../../constants/statusCodes');
 
 const getDeliveryPartners = asyncHandler(async (req, res) => {
@@ -52,6 +53,16 @@ const reassignDeliveryPartner = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, HTTP_STATUS.OK, result.message, result);
 });
 
+const resendWhatsAppNotification = asyncHandler(async (req, res) => {
+  const result = await whatsappService.resendDeliveryNotification(req.user.id, req.params.orderId);
+  return ApiResponse.success(res, HTTP_STATUS.OK, 'WhatsApp delivery notification resent', result);
+});
+
+const getDeliveryNotifications = asyncHandler(async (req, res) => {
+  const notifications = await whatsappService.getDeliveryNotifications(req.params.orderId);
+  return ApiResponse.success(res, HTTP_STATUS.OK, 'Delivery notification logs retrieved', { items: notifications });
+});
+
 module.exports = {
   getDeliveryPartners,
   createDeliveryPartner,
@@ -59,5 +70,7 @@ module.exports = {
   getUnassignedOrders,
   getAssignedDeliveries,
   assignDeliveryPartner,
-  reassignDeliveryPartner
+  reassignDeliveryPartner,
+  resendWhatsAppNotification,
+  getDeliveryNotifications
 };

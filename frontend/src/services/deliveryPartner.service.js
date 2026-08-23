@@ -77,5 +77,15 @@ export const deliveryPartnerService = {
   reassignDeliveryPartner: async (orderId, deliveryPartnerId) => {
     const response = await apiClient.post(ENDPOINTS.ADMIN.REASSIGN_DELIVERY(orderId), { deliveryPartnerId });
     return response.data;
+  },
+
+  resendWhatsAppNotification: async (orderId) => {
+    const response = await apiClient.post(ENDPOINTS.ADMIN.RESEND_WHATSAPP_DELIVERY(orderId));
+    return response.data;
+  },
+
+  getDeliveryNotifications: async (orderId) => {
+    const response = await apiClient.get(ENDPOINTS.ADMIN.DELIVERY_NOTIFICATIONS(orderId));
+    return response.data;
   }
 };

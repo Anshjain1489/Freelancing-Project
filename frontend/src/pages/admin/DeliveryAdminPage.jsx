@@ -106,6 +106,16 @@ export const DeliveryAdminPage = () => {
     setDeliveryNotes('');
   };
 
+  const handleResendWhatsApp = async (orderId) => {
+    try {
+      await deliveryPartnerService.resendWhatsAppNotification(orderId);
+      showSuccess('WhatsApp delivery notification resent successfully! 📱');
+      fetchDeliveryData();
+    } catch (err) {
+      showError(err.response?.data?.message || err.message || 'Failed to resend WhatsApp notification');
+    }
+  };
+
   const handleConfirmAssignment = async () => {
     if (!selectedOrder || !selectedPartnerId) {
       showError('Please select a delivery partner');
@@ -116,10 +126,10 @@ export const DeliveryAdminPage = () => {
     try {
       if (isReassigning) {
         await deliveryPartnerService.reassignDeliveryPartner(selectedOrder.orderId, selectedPartnerId);
-        showSuccess(`Order ${selectedOrder.orderNumber} reassigned to partner successfully!`);
+        showSuccess(`Order ${selectedOrder.orderNumber} reassigned to partner! 📱 WhatsApp notification sent.`);
       } else {
         await deliveryPartnerService.assignDeliveryPartner(selectedOrder.orderId, selectedPartnerId, estimatedMinutes, deliveryNotes);
-        showSuccess(`Order ${selectedOrder.orderNumber} assigned to partner successfully!`);
+        showSuccess(`Order ${selectedOrder.orderNumber} assigned to partner! 📱 WhatsApp notification sent.`);
       }
       setSelectedOrder(null);
       fetchDeliveryData();
@@ -370,6 +380,19 @@ export const DeliveryAdminPage = () => {
                       >
                         STATUS: {asgn.deliveryStatus}
                       </span>
+                      <span
+                        style={{
+                          marginLeft: '8px',
+                          padding: '3px 10px',
+                          borderRadius: '12px',
+                          fontSize: '0.75rem',
+                          fontWeight: 800,
+                          background: asgn.whatsappStatus === 'SENT' ? '#E8F7F0' : asgn.whatsappStatus === 'FAILED' ? '#FDEDEC' : '#FEF9E7',
+                          color: asgn.whatsappStatus === 'SENT' ? '#06C167' : asgn.whatsappStatus === 'FAILED' ? '#C0392B' : '#D68910'
+                        }}
+                      >
+                        📱 {asgn.whatsappStatus === 'SENT' ? 'Sent' : asgn.whatsappStatus === 'FAILED' ? '⚠️ Failed' : '⏳ Pending'}
+                      </span>
                     </div>
 
                     <div style={{ fontSize: '1.05rem', fontWeight: 900 }}>
@@ -405,6 +428,10 @@ export const DeliveryAdminPage = () => {
                   <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', borderTop: '1px solid var(--color-border)', paddingTop: '12px' }}>
                     <Button variant="outline" size="sm" onClick={() => setViewDetailsOrder(asgn)}>
                       View Details
+                    </Button>
+
+                    <Button variant="outline" size="sm" onClick={() => handleResendWhatsApp(asgn.orderId)}>
+                      📱 Resend WhatsApp
                     </Button>
 
                     {['ASSIGNED', 'ACCEPTED'].includes(asgn.deliveryStatus) && (

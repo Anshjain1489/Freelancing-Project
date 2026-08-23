@@ -7,6 +7,7 @@ const { logAdminActivity } = require('./adminLog.service');
 const eventBus = require('../events/eventBus');
 const EVENT_TYPES = require('../events/eventTypes');
 const sseManager = require('../notifications/sse.manager');
+const whatsappService = require('./whatsapp.service');
 
 // Memory fallbacks
 const mockDeliveryAssignments = [];
@@ -325,12 +326,17 @@ const getAssignedDeliveries = async () => {
       .select('*, orders(*, order_items(*), order_addresses(*), users!orders_user_id_fkey(id, full_name, phone, email)), partner:users!delivery_assignments_delivery_partner_id_fkey(id, full_name, phone, email)')
       .order('updated_at', { ascending: false });
 
+    const { data: waLogs } = await supabase.from('whatsapp_delivery_notifications')
+      .select('order_id, status, recipient_phone, sent_at, updated_at');
+
     if (!error && assignments) {
       return assignments
         .filter(a => a.status !== 'CANCELLED')
         .map(a => {
           const rawAddr = a.orders?.order_addresses?.[0] || null;
           const deliveryAddress = parseDeliveryAddress(rawAddr) || defaultDeliveryAddress;
+          const waLog = (waLogs || []).find(w => String(w.order_id) === String(a.orders?.id || a.order_id));
+          const whatsappStatus = waLog ? waLog.status : 'PENDING';
 
           return {
             assignmentId: a.id,
@@ -338,6 +344,7 @@ const getAssignedDeliveries = async () => {
             orderNumber: a.orders?.order_number || `CKS-DEL-${a.order_id}`,
             orderStatus: a.orders?.status || 'PROCESSING',
             deliveryStatus: a.status,
+            whatsappStatus,
             totalAmount: parseFloat(a.orders?.total_amount || 0),
             paymentStatus: a.orders?.payment_status || 'PAID',
             customer: {
@@ -371,6 +378,7 @@ const getAssignedDeliveries = async () => {
     orderId: a.order_id,
     orderNumber: `CKS-DEL-${a.order_id}`,
     deliveryStatus: a.status,
+    whatsappStatus: 'SENT',
     customer: { name: 'Valued Customer', phone: '9876543210', email: 'customer@example.com' },
     deliveryAddress: defaultDeliveryAddress,
     deliveryPartner: { name: 'Rahul Sharma', phone: '9876543210' },
@@ -448,7 +456,25 @@ const assignDeliveryPartner = async (adminId, orderId, partnerId, estimatedMinut
       eventBus.emit(EVENT_TYPES.DELIVERY_ASSIGNED, payload);
       sseManager.broadcastDeliveryUpdate(payload);
 
-      return { success: true, assignment, message: 'Delivery partner assigned successfully' };
+      let waResult = { success: false, status: 'FAILED' };
+      try {
+        waResult = await whatsappService.sendDeliveryAssignmentNotification({
+          orderId,
+          deliveryPartnerId: partnerId,
+          isReassignment: false,
+          deliveryNotes,
+          estimatedDeliveryAt
+        });
+      } catch (waErr) {
+        console.warn('[WHATSAPP_ASSIGNMENT_NOTIF_NOTICE]', waErr.message);
+      }
+
+      return {
+        success: true,
+        assignment,
+        message: 'Delivery partner assigned successfully',
+        whatsappNotificationStatus: waResult.status || 'FAILED'
+      };
     }
 
     if (assignErr && assignErr.code === '23505') {
@@ -486,7 +512,25 @@ const assignDeliveryPartner = async (adminId, orderId, partnerId, estimatedMinut
   eventBus.emit(EVENT_TYPES.DELIVERY_ASSIGNED, payload);
   sseManager.broadcastDeliveryUpdate(payload);
 
-  return { success: true, assignment: mockAssign, message: 'Delivery partner assigned successfully' };
+  let waResult = { success: false, status: 'FAILED' };
+  try {
+    waResult = await whatsappService.sendDeliveryAssignmentNotification({
+      orderId,
+      deliveryPartnerId: partnerId,
+      isReassignment: false,
+      deliveryNotes,
+      estimatedDeliveryAt
+    });
+  } catch (waErr) {
+    console.warn('[WHATSAPP_ASSIGNMENT_NOTIF_NOTICE]', waErr.message);
+  }
+
+  return {
+    success: true,
+    assignment: mockAssign,
+    message: 'Delivery partner assigned successfully',
+    whatsappNotificationStatus: waResult.status || 'FAILED'
+  };
 };
 
 /**
@@ -532,7 +576,26 @@ const reassignDeliveryPartner = async (adminId, orderId, newPartnerId, req = nul
       await logAdminActivity(adminId, 'ADMIN_DELIVERY_REASSIGNED', 'order', orderId, { newPartnerId }, req);
       sseManager.broadcastDeliveryUpdate(payload);
 
-      return { success: true, assignment: updated, message: 'Delivery partner reassigned successfully' };
+      let waResult = { success: false, status: 'FAILED' };
+      try {
+        waResult = await whatsappService.sendDeliveryAssignmentNotification({
+          orderId,
+          deliveryPartnerId: newPartnerId,
+          previousPartnerId: existing.delivery_partner_id,
+          isReassignment: true,
+          deliveryNotes: existing.notes,
+          estimatedDeliveryAt: existing.estimated_delivery_at
+        });
+      } catch (waErr) {
+        console.warn('[WHATSAPP_REASSIGNMENT_NOTIF_NOTICE]', waErr.message);
+      }
+
+      return {
+        success: true,
+        assignment: updated,
+        message: 'Delivery partner reassigned successfully',
+        whatsappNotificationStatus: waResult.status || 'FAILED'
+      };
     }
   }
 

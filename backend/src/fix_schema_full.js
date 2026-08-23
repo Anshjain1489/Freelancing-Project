@@ -308,12 +308,33 @@ async function fixSchemaFull() {
       );
     `, 'create table store_settings');
 
+    await exec(`
+      CREATE TABLE IF NOT EXISTS whatsapp_delivery_notifications (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+        delivery_partner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        notification_type VARCHAR(50) NOT NULL DEFAULT 'DELIVERY_ASSIGNED',
+        recipient_phone VARCHAR(50) NOT NULL,
+        provider VARCHAR(50) DEFAULT 'WHATSAPP_CLOUD_API',
+        status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+        attempt_count INT DEFAULT 1,
+        provider_message_id VARCHAR(255),
+        message_text TEXT,
+        error_message TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        sent_at TIMESTAMPTZ,
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        CONSTRAINT unique_order_partner_notification UNIQUE(order_id, delivery_partner_id, notification_type)
+      );
+    `, 'create table whatsapp_delivery_notifications');
+
     // Disable RLS on operational tables for backend service consistency
     const rlsTables = [
       'orders', 'payments', 'order_addresses', 'refunds', 'coupons',
       'delivery_assignments', 'notifications', 'notification_deliveries',
       'notification_preferences', 'admin_activity_logs', 'inventory_movements',
-      'cancellation_requests', 'returns', 'return_items', 'replacement_requests', 'store_settings'
+      'cancellation_requests', 'returns', 'return_items', 'replacement_requests', 'store_settings',
+      'whatsapp_delivery_notifications'
     ];
     for (const table of rlsTables) {
       await exec(`ALTER TABLE ${table} DISABLE ROW LEVEL SECURITY;`, `disable RLS on ${table}`);
