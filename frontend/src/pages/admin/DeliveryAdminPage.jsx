@@ -36,6 +36,7 @@ export const DeliveryAdminPage = () => {
   const [isReassigning, setIsReassigning] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [whatsAppModalUrl, setWhatsAppModalUrl] = useState(null);
+  const [assignmentSuccessData, setAssignmentSuccessData] = useState(null);
 
   // Order Details Modal State
   const [viewDetailsOrder, setViewDetailsOrder] = useState(null);
@@ -115,14 +116,10 @@ export const DeliveryAdminPage = () => {
     setDeliveryNotes('');
   };
 
-  const handleOpenWhatsApp = async (orderId, directUrl = null) => {
-    if (directUrl) {
-      window.open(directUrl, '_blank', 'noopener,noreferrer');
-      return;
-    }
+  const handleOpenWhatsApp = async (orderId, partnerId = null) => {
     try {
-      const res = await deliveryPartnerService.getWhatsAppClickToChatLink(orderId);
-      const url = res.data?.whatsappUrl || res.whatsappUrl;
+      const res = await deliveryPartnerService.getWhatsAppClickToChatLink(orderId, partnerId);
+      const url = res.data?.whatsappUrl || res.whatsappUrl || res.data?.url;
       if (url) {
         window.open(url, '_blank', 'noopener,noreferrer');
       } else {
@@ -150,10 +147,18 @@ export const DeliveryAdminPage = () => {
         showSuccess(`Order ${selectedOrder.orderNumber} assigned to partner successfully!`);
       }
 
-      const waUrl = res.data?.whatsapp?.url || res.whatsapp?.url || res.data?.whatsappUrl || res.whatsappUrl;
-      if (waUrl) {
-        setWhatsAppModalUrl(waUrl);
-      }
+      const waUrl = res.data?.whatsappUrl || res.whatsappUrl || res.data?.whatsapp?.url || res.whatsapp?.url;
+      const waMsg = res.data?.whatsappMessage || res.whatsappMessage || res.data?.whatsapp?.message || res.whatsapp?.message;
+      const assignedPartner = partners.find(p => String(p.id) === String(selectedPartnerId));
+
+      setAssignmentSuccessData({
+        partnerName: assignedPartner?.fullName || assignedPartner?.name || 'Delivery Partner',
+        partnerPhone: assignedPartner?.phone || 'N/A',
+        customerName: selectedOrder.customer?.name || selectedOrder.customerName || 'Valued Customer',
+        orderId: selectedOrder.orderNumber || selectedOrder.orderId,
+        whatsappUrl: waUrl,
+        whatsappMessage: waMsg
+      });
 
       setSelectedOrder(null);
       fetchDeliveryData();
@@ -729,6 +734,77 @@ export const DeliveryAdminPage = () => {
                 <span>Total Amount Paid</span>
                 <span style={{ color: 'var(--color-primary-dark)' }}>{formatCurrency(viewDetailsOrder.totalAmount)}</span>
               </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* ASSIGNMENT SUCCESS MODAL */}
+      {assignmentSuccessData && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <Card padding="24px" style={{ width: '90%', maxWidth: '480px', background: '#FFF' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#06C167', marginBottom: '16px' }}>
+              <CheckCircle size={24} />
+              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800 }}>Delivery Partner Assigned Successfully</h3>
+            </div>
+
+            <div style={{ background: '#F8F9FA', padding: '14px', borderRadius: '8px', fontSize: '0.9rem', marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div>🛵 <strong>Delivery Partner:</strong> {assignmentSuccessData.partnerName}</div>
+              <div>📞 <strong>Phone:</strong> {assignmentSuccessData.partnerPhone}</div>
+              <div>👤 <strong>Customer:</strong> {assignmentSuccessData.customerName}</div>
+              <div>📦 <strong>Order:</strong> #{assignmentSuccessData.orderId}</div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {assignmentSuccessData.whatsappUrl && (
+                <Button
+                  variant="primary"
+                  size="md"
+                  style={{ width: '100%', background: '#25D366', borderColor: '#25D366', fontWeight: 800 }}
+                  onClick={() => window.open(assignmentSuccessData.whatsappUrl, '_blank', 'noopener,noreferrer')}
+                >
+                  📲 Send Delivery Details via WhatsApp
+                </Button>
+              )}
+
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {assignmentSuccessData.whatsappMessage && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    style={{ flex: 1 }}
+                    onClick={() => {
+                      navigator.clipboard.writeText(assignmentSuccessData.whatsappMessage);
+                      showSuccess('WhatsApp message copied to clipboard! 📋');
+                    }}
+                  >
+                    📋 Copy WhatsApp Message
+                  </Button>
+                )}
+
+                {assignmentSuccessData.whatsappUrl && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    style={{ flex: 1 }}
+                    onClick={() => {
+                      navigator.clipboard.writeText(assignmentSuccessData.whatsappUrl);
+                      showSuccess('WhatsApp link copied to clipboard! 📋');
+                    }}
+                  >
+                    📋 Copy WhatsApp Link
+                  </Button>
+                )}
+              </div>
+
+              <Button
+                variant="secondary"
+                size="sm"
+                style={{ marginTop: '6px' }}
+                onClick={() => setAssignmentSuccessData(null)}
+              >
+                Close
+              </Button>
             </div>
           </Card>
         </div>

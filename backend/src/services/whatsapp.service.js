@@ -28,13 +28,12 @@ const normalizePhone = (phone) => {
 const buildGoogleMapsUrl = (addressObj) => {
   if (!addressObj) return 'https://maps.google.com';
   const parts = [
-    addressObj.house_number || addressObj.houseNumber,
-    addressObj.street || addressObj.streetAddress,
-    addressObj.locality || addressObj.area,
-    addressObj.landmark ? `Near ${addressObj.landmark}` : null,
+    addressObj.house_number || addressObj.houseNumber || addressObj.address_line1,
+    addressObj.street || addressObj.streetAddress || addressObj.address_line2,
+    addressObj.locality || addressObj.area || addressObj.landmark ? `Landmark: ${addressObj.landmark}` : null,
     addressObj.city || 'Mahruni',
-    addressObj.state || 'Uttar Pradesh',
-    addressObj.pincode || '284405'
+    addressObj.state || 'Madhya Pradesh',
+    addressObj.pincode || addressObj.postal_code || addressObj.postalCode || '284405'
   ].filter(Boolean);
 
   const fullAddressStr = parts.join(', ');
@@ -42,73 +41,109 @@ const buildGoogleMapsUrl = (addressObj) => {
 };
 
 /**
- * 3. Format Delivery Assignment WhatsApp Message Text
+ * 3. Centralized WhatsApp Delivery Assignment Message Formatter (Phase 20.7 Spec)
  */
-const formatAssignmentMessageText = ({
-  partnerName,
-  orderNumber,
-  customerName,
-  customerPhone,
+const formatDeliveryAssignmentMessage = ({
+  order,
+  customer,
   address,
   items,
-  paymentStatus,
-  orderAmount,
+  deliveryPartner,
   estimatedDeliveryAt,
-  deliveryNotes,
-  googleMapsUrl
+  deliveryNotes
 }) => {
-  let addressStr = 'Address details unavailable';
+  const rawOrderNumber = order?.order_number || order?.orderNumber || (order?.id ? `CKS-${order.id.slice(-6)}` : 'N/A');
+  const orderIdStr = String(rawOrderNumber).replace(/^#/, '');
+
+  const customerName = customer?.name || customer?.full_name || order?.users?.full_name || address?.recipient_name || 'Valued Customer';
+  const customerPhone = customer?.phone || order?.users?.phone || address?.phone || 'N/A';
+
+  // Format full address
+  let fullAddress = 'Address details unavailable';
+  const rawAddrObj = Array.isArray(address) ? address[0] : address;
   if (typeof address === 'string') {
-    addressStr = address;
-  } else if (address && typeof address === 'object') {
+    fullAddress = address;
+  } else if (rawAddrObj && typeof rawAddrObj === 'object') {
     const parts = [
-      address.house_number || address.houseNumber,
-      address.street || address.streetAddress,
-      address.locality || address.area,
-      address.landmark ? `Landmark: ${address.landmark}` : null,
-      `${address.city || 'Mahruni'}, ${address.state || 'UP'} - ${address.pincode || '284405'}`
+      rawAddrObj.house_number || rawAddrObj.houseNumber || rawAddrObj.address_line1,
+      rawAddrObj.street || rawAddrObj.streetAddress || rawAddrObj.address_line2,
+      rawAddrObj.locality || rawAddrObj.area || (rawAddrObj.landmark ? `Landmark: ${rawAddrObj.landmark}` : null),
+      rawAddrObj.city || 'Mahruni',
+      rawAddrObj.state || 'Madhya Pradesh',
+      rawAddrObj.pincode || rawAddrObj.postal_code || rawAddrObj.postalCode || '284405'
     ].filter(Boolean);
-    addressStr = parts.join('\n');
+    fullAddress = parts.join(', ');
   }
 
-  let itemsListStr = 'Items details unavailable';
-  if (Array.isArray(items) && items.length > 0) {
-    itemsListStr = items.map(i => `- ${i.product_name || i.name || 'Item'} (Qty: ${i.quantity || 1})`).join('\n');
-  } else if (typeof items === 'number') {
-    itemsListStr = `${items} item(s)`;
+  const googleMapsUrl = buildGoogleMapsUrl(rawAddrObj);
+
+  // Format items
+  let itemNames = 'N/A';
+  let itemCount = 0;
+  const rawItems = items || order?.order_items || order?.items || [];
+  if (Array.isArray(rawItems) && rawItems.length > 0) {
+    itemCount = rawItems.reduce((acc, i) => acc + (parseInt(i.quantity) || 1), 0);
+    itemNames = rawItems.map(i => `${i.product_name || i.name || 'Item'} (x${i.quantity || 1})`).join(', ');
+  } else if (typeof rawItems === 'number') {
+    itemCount = rawItems;
+    itemNames = `${rawItems} item(s)`;
   }
 
-  const estDeliveryStr = estimatedDeliveryAt
-    ? new Date(estimatedDeliveryAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
-    : 'Within 30-45 mins';
+  const amount = order?.total_amount || order?.totalAmount || 0;
+  const paymentStatus = order?.payment_status || order?.paymentStatus || 'PAID';
 
-  return `🚚 *New Delivery Assignment*
+  let estimatedTime = 'Within 30-45 mins';
+  if (estimatedDeliveryAt) {
+    try {
+      estimatedTime = new Date(estimatedDeliveryAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    } catch (e) {
+      estimatedTime = String(estimatedDeliveryAt);
+    }
+  }
 
-Hello ${partnerName || 'Delivery Partner'},
+  const notes = deliveryNotes || order?.delivery_notes || order?.notes || 'None';
 
-You have been assigned a new delivery.
+  return `🚚 NEW DELIVERY ASSIGNED
 
-📦 Order: #${orderNumber}
+Order ID: #${orderIdStr}
 
-👤 Customer: ${customerName || 'Valued Customer'}
-📞 Phone: ${customerPhone || 'N/A'}
+👤 Customer Details
+Name: ${customerName}
+Phone: ${customerPhone}
 
-📍 Delivery Address:
-${addressStr}
+📍 Delivery Address
+${fullAddress}
 
-🛒 Items:
-${itemsListStr}
-
-💰 Order Amount: ₹${orderAmount || 0}
-💳 Payment Status: ${paymentStatus || 'PAID'}
-
-📍 Navigate using Google Maps:
+🗺️ Google Maps:
 ${googleMapsUrl}
 
-⏰ Estimated Delivery:
-${estDeliveryStr}
+📦 Order Details
+Items: ${itemNames}
+Total Items: ${itemCount}
 
-Please accept and complete the delivery through the Delivery Partner dashboard.`;
+💰 Order Amount: ₹${amount}
+💳 Payment Status: ${paymentStatus}
+
+⏰ Estimated Delivery:
+${estimatedTime}
+
+📝 Delivery Instructions:
+${notes}
+
+Please contact the customer before delivery.
+
+Thank you.`;
+};
+
+// Alias formatAssignmentMessageText to formatDeliveryAssignmentMessage for backwards compatibility
+const formatAssignmentMessageText = (data) => {
+  if (data.orderNumber && !data.order) {
+    data.order = { order_number: data.orderNumber, total_amount: data.orderAmount, payment_status: data.paymentStatus };
+  }
+  if (data.customerName && !data.customer) {
+    data.customer = { name: data.customerName, phone: data.customerPhone };
+  }
+  return formatDeliveryAssignmentMessage(data);
 };
 
 /**
@@ -145,6 +180,7 @@ const generateDeliveryAssignmentWhatsAppUrl = async ({ orderId, deliveryPartnerI
         const { data: asgn } = await supabase.from('delivery_assignments')
           .select('delivery_partner_id')
           .eq('order_id', orderId)
+          .neq('status', 'CANCELLED')
           .maybeSingle();
         targetPartnerId = asgn?.delivery_partner_id;
       }
@@ -174,20 +210,15 @@ const generateDeliveryAssignmentWhatsAppUrl = async ({ orderId, deliveryPartnerI
     }
 
     const rawAddr = orderData.order_addresses?.[0] || {};
-    const googleMapsUrl = buildGoogleMapsUrl(rawAddr);
 
-    const messageText = formatAssignmentMessageText({
-      partnerName: partnerData.full_name,
-      orderNumber: orderData.order_number || `CKS-${orderId.slice(-6)}`,
-      customerName: orderData.users?.full_name || 'Customer',
-      customerPhone: orderData.users?.phone || 'N/A',
+    const messageText = formatDeliveryAssignmentMessage({
+      order: orderData,
+      customer: orderData.users,
       address: rawAddr,
-      items: orderData.order_items || 1,
-      paymentStatus: orderData.payment_status || 'PAID',
-      orderAmount: orderData.total_amount || 0,
+      items: orderData.order_items,
+      deliveryPartner: partnerData,
       estimatedDeliveryAt,
-      deliveryNotes,
-      googleMapsUrl
+      deliveryNotes: deliveryNotes || orderData.delivery_notes
     });
 
     const whatsappUrl = generateWhatsAppUrl(partnerData.phone, messageText);
@@ -206,13 +237,49 @@ const generateDeliveryAssignmentWhatsAppUrl = async ({ orderId, deliveryPartnerI
 
 /**
  * 6. Admin API Controller Helper to retrieve Click-to-Chat Link for an Order
+ * Verifies that the order has an active assignment and matches target partner (if specified)
  */
-const getWhatsAppClickToChatLink = async (adminId, orderId) => {
+const getWhatsAppClickToChatLink = async (adminId, orderId, reqPartnerId = null) => {
   if (!orderId) {
     throw new AppError('Order ID is required', HTTP_STATUS.BAD_REQUEST);
   }
 
-  const result = await generateDeliveryAssignmentWhatsAppUrl({ orderId });
+  if (supabase) {
+    const { data: assignment } = await supabase.from('delivery_assignments')
+      .select('*, partner:users!delivery_assignments_delivery_partner_id_fkey(id, full_name, phone)')
+      .eq('order_id', orderId)
+      .neq('status', 'CANCELLED')
+      .maybeSingle();
+
+    if (!assignment) {
+      throw new AppError('This order is not currently assigned to any delivery partner.', HTTP_STATUS.FORBIDDEN);
+    }
+
+    if (reqPartnerId && String(reqPartnerId) !== String(assignment.delivery_partner_id)) {
+      throw new AppError('The specified delivery partner is not assigned to this order.', HTTP_STATUS.FORBIDDEN);
+    }
+
+    const result = await generateDeliveryAssignmentWhatsAppUrl({
+      orderId,
+      deliveryPartnerId: assignment.delivery_partner_id,
+      deliveryNotes: assignment.delivery_notes,
+      estimatedDeliveryAt: assignment.estimated_delivery_at
+    });
+
+    if (!result.available || !result.url) {
+      throw new AppError(result.error || 'Failed to generate WhatsApp Click-to-Chat URL', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    return {
+      success: true,
+      whatsappUrl: result.url,
+      whatsappMessage: result.message,
+      phone: result.phone
+    };
+  }
+
+  // Fallback for memory/mock mode
+  const result = await generateDeliveryAssignmentWhatsAppUrl({ orderId, deliveryPartnerId: reqPartnerId });
   if (!result.available || !result.url) {
     throw new AppError(result.error || 'Failed to generate WhatsApp Click-to-Chat URL', HTTP_STATUS.BAD_REQUEST);
   }
@@ -220,14 +287,15 @@ const getWhatsAppClickToChatLink = async (adminId, orderId) => {
   return {
     success: true,
     whatsappUrl: result.url,
-    phone: result.phone,
-    message: result.message
+    whatsappMessage: result.message,
+    phone: result.phone
   };
 };
 
 module.exports = {
   normalizePhone,
   buildGoogleMapsUrl,
+  formatDeliveryAssignmentMessage,
   formatAssignmentMessageText,
   generateWhatsAppUrl,
   generateDeliveryAssignmentWhatsAppUrl,

@@ -531,7 +531,7 @@ const assignDeliveryPartner = async (adminId, orderId, partnerId, estimatedMinut
   }
 
   // Safe WhatsApp Click-to-Chat URL generation (never throws or causes rollback)
-  let whatsappInfo = { available: false, url: null };
+  let whatsappInfo = { available: false, url: null, message: null };
   try {
     const waLinkRes = await whatsappService.generateDeliveryAssignmentWhatsAppUrl({
       orderId,
@@ -540,7 +540,7 @@ const assignDeliveryPartner = async (adminId, orderId, partnerId, estimatedMinut
       estimatedDeliveryAt
     });
     if (waLinkRes && waLinkRes.available) {
-      whatsappInfo = { available: true, url: waLinkRes.url, phone: waLinkRes.phone };
+      whatsappInfo = { available: true, url: waLinkRes.url, phone: waLinkRes.phone, message: waLinkRes.message };
     }
   } catch (waErr) {
     console.warn('[WHATSAPP_LINK_GEN_NOTICE]', waErr.message);
@@ -551,7 +551,8 @@ const assignDeliveryPartner = async (adminId, orderId, partnerId, estimatedMinut
     assignment: assignmentRecord,
     message: 'Delivery partner assigned successfully',
     whatsapp: whatsappInfo,
-    whatsappUrl: whatsappInfo.url || null
+    whatsappUrl: whatsappInfo.url || null,
+    whatsappMessage: whatsappInfo.message || null
   };
 };
 
@@ -632,14 +633,14 @@ const reassignDeliveryPartner = async (adminId, orderId, newPartnerId, req = nul
   }
 
   // Generate WhatsApp Click-to-Chat link ONLY for new partner
-  let whatsappInfo = { available: false, url: null };
+  let whatsappInfo = { available: false, url: null, message: null };
   try {
     const waLinkRes = await whatsappService.generateDeliveryAssignmentWhatsAppUrl({
       orderId,
       deliveryPartnerId: newPartnerId
     });
     if (waLinkRes && waLinkRes.available) {
-      whatsappInfo = { available: true, url: waLinkRes.url, phone: waLinkRes.phone };
+      whatsappInfo = { available: true, url: waLinkRes.url, phone: waLinkRes.phone, message: waLinkRes.message };
     }
   } catch (waErr) {
     console.warn('[WHATSAPP_LINK_REASSIGN_NOTICE]', waErr.message);
@@ -650,7 +651,8 @@ const reassignDeliveryPartner = async (adminId, orderId, newPartnerId, req = nul
     assignment: updatedAssignment,
     message: 'Delivery partner reassigned successfully',
     whatsapp: whatsappInfo,
-    whatsappUrl: whatsappInfo.url || null
+    whatsappUrl: whatsappInfo.url || null,
+    whatsappMessage: whatsappInfo.message || null
   };
 };
 
