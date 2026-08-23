@@ -65,6 +65,9 @@ export const Home = () => {
       }}>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <span className="badge-green">🛵 Fast Delivery ₹10/KM</span>
+          <span style={{ backgroundColor: '#FFF5F5', color: '#9B2C2C', border: '1px solid #FEB2B2', padding: '4px 12px', borderRadius: 'var(--radius-full)', fontSize: '0.8rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            🚫 No Refund & Exchange Policy
+          </span>
         </div>
         <h1 className="text-display" style={{ color: 'var(--color-text-primary)' }}>
           Online Grocery Delivery in Mahruni 🚀
@@ -102,6 +105,65 @@ export const Home = () => {
             Browse Categories
           </button>
         </div>
+      </section>
+
+      {/* Highlighted Store Policy Notice */}
+      <section style={{
+        backgroundColor: '#FFF5F5',
+        border: '1.5px solid #FEB2B2',
+        borderRadius: 'var(--radius-lg)',
+        padding: '18px 20px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '16px',
+        flexWrap: 'wrap',
+        boxShadow: '0 4px 12px rgba(229, 62, 62, 0.08)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div style={{
+            width: '44px',
+            height: '44px',
+            borderRadius: '50%',
+            backgroundColor: '#FED7D7',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0
+          }}>
+            <ShieldCheck size={24} color="#C53030" />
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#9B2C2C', margin: 0 }}>
+                Notice: Strict No Refund & Exchange Policy
+              </h3>
+              <span style={{ backgroundColor: '#C53030', color: '#FFFFFF', fontSize: '0.7rem', fontWeight: 800, padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase' }}>
+                Important Policy
+              </span>
+            </div>
+            <p style={{ fontSize: '0.85rem', color: '#742A2A', marginTop: '4px', margin: '4px 0 0 0', lineHeight: '1.4' }}>
+              Due to hygiene and food safety standards for fresh groceries and daily essentials, <strong>Chaudhary Kirana Store follows a strict NO REFUND and NO EXCHANGE policy</strong> after successful delivery. Please inspect all items upon arrival.
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => navigate('/refund-policy')}
+          style={{
+            padding: '10px 18px',
+            backgroundColor: '#9B2C2C',
+            color: '#FFFFFF',
+            fontWeight: 800,
+            fontSize: '0.82rem',
+            borderRadius: 'var(--radius-md)',
+            border: 'none',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+            boxShadow: '0 2px 6px rgba(155, 44, 44, 0.2)'
+          }}
+        >
+          Read Policy →
+        </button>
       </section>
 
       {/* 2. Quick Categories Grid */}

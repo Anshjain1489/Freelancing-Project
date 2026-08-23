@@ -54,6 +54,19 @@ export const Footer = () => {
           </ul>
         </div>
 
+        {/* Store Policies */}
+        <div>
+          <h4 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '12px' }}>Store Policies</h4>
+          <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.9rem' }}>
+            <li><Link to="/refund-policy" style={{ color: 'var(--color-primary-dark)', fontWeight: 700 }}>Refund & Replacement Policy</Link></li>
+            <li><Link to="/terms" style={{ color: 'var(--color-text-secondary)' }}>Terms of Service</Link></li>
+            <li><Link to="/privacy" style={{ color: 'var(--color-text-secondary)' }}>Privacy Policy</Link></li>
+          </ul>
+          <div style={{ marginTop: '12px', padding: '8px 10px', backgroundColor: '#FFF5F5', borderRadius: 'var(--radius-sm)', border: '1px solid #FEB2B2', fontSize: '0.75rem', color: '#9B2C2C', fontWeight: 700 }}>
+            ⚠️ Strict No Refund & Exchange on Delivered Groceries
+          </div>
+        </div>
+
         {/* Delivery & Security Guarantee */}
         <div>
           <h4 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '12px' }}>Hyper-Local Delivery</h4>
@@ -78,17 +91,18 @@ export const Footer = () => {
         paddingTop: '16px',
         borderTop: '1px solid var(--color-border)',
         display: 'flex',
-        justifySpace: 'space-between',
+        justifyContent: 'space-between',
         alignItems: 'center',
         flexWrap: 'wrap',
+        gap: '12px',
         fontSize: '0.8rem',
         color: 'var(--color-text-secondary)'
       }}>
         <span>© {new Date().getFullYear()} Chaudhary Kirana Store. All rights reserved.</span>
-        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-          <Link to="/privacy">Privacy Policy</Link>
+        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontWeight: 600 }}>
+          <Link to="/refund-policy" style={{ color: 'var(--color-primary-dark)' }}>Refund & Replacement Policy</Link>
           <Link to="/terms">Terms of Service</Link>
-          <Link to="/refund-policy">Refund & Replacement Policy</Link>
+          <Link to="/privacy">Privacy Policy</Link>
         </div>
       </div>
     </footer>

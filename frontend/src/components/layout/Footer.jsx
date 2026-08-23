@@ -53,6 +53,18 @@ export const Footer = () => {
           </div>
         </div>
 
+        {/* Store Policies */}
+        <div>
+          <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: '12px' }}>
+            Store Policies
+          </h4>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <Link to="/refund-policy" style={{ fontWeight: 700, color: 'var(--color-primary-dark)' }}>Refund & Replacement Policy</Link>
+            <Link to="/terms">Terms of Service</Link>
+            <Link to="/privacy">Privacy Policy</Link>
+          </div>
+        </div>
+
         {/* Quick Links */}
         <div>
           <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: '12px' }}>
@@ -63,13 +75,27 @@ export const Footer = () => {
             <Link to="/categories">Categories</Link>
             <Link to="/cart">Cart</Link>
             <Link to="/profile">My Account</Link>
-            <Link to="/addresses">Saved Addresses</Link>
           </div>
         </div>
       </div>
 
-      <div style={{ textAlign: 'center', marginTop: '32px', paddingTop: '16px', borderTop: '1px solid var(--color-border)', fontSize: '0.75rem' }}>
-        © {new Date().getFullYear()} Chaudhary Kirana Store • Store Owner: Akash Chaudhary • All Rights Reserved.
+      <div style={{
+        textAlign: 'center',
+        marginTop: '32px',
+        paddingTop: '16px',
+        borderTop: '1px solid var(--color-border)',
+        fontSize: '0.75rem',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '8px'
+      }}>
+        <div>© {new Date().getFullYear()} Chaudhary Kirana Store • Store Owner: Akash Chaudhary • All Rights Reserved.</div>
+        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontWeight: 600 }}>
+          <Link to="/refund-policy" style={{ color: 'var(--color-primary-dark)' }}>Refund & Replacement Policy</Link>
+          <Link to="/terms">Terms of Service</Link>
+          <Link to="/privacy">Privacy Policy</Link>
+        </div>
       </div>
     </footer>
   );
