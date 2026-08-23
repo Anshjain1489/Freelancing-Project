@@ -10,6 +10,7 @@ import { CategorySkeleton } from '../../components/ui/Skeleton';
 import { categoryService } from '../../services/category.service';
 import { productService } from '../../services/product.service';
 import { ShoppingBag, Phone, MapPin, Truck, ShieldCheck, ArrowRight, X } from 'lucide-react';
+import { getCategoryImage } from '../../utils/categoryImages';
 
 export const Home = () => {
   const navigate = useNavigate();
@@ -123,17 +124,35 @@ export const Home = () => {
                 key={cat.id}
                 onClick={() => navigate(`/products?category=${cat.slug}`)}
                 style={{
-                  padding: '16px 12px',
+                  padding: '14px 10px',
                   backgroundColor: 'var(--color-surface)',
-                  borderRadius: 'var(--radius-md)',
+                  borderRadius: 'var(--radius-lg)',
                   border: '1px solid var(--color-border)',
                   textAlign: 'center',
                   cursor: 'pointer',
-                  transition: 'all var(--transition-fast)'
+                  transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.04)'
                 }}
               >
-                <div style={{ fontSize: '2rem', marginBottom: '6px' }}>🌾</div>
-                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>{cat.name}</span>
+                <div style={{
+                  width: '64px',
+                  height: '64px',
+                  borderRadius: '50%',
+                  overflow: 'hidden',
+                  margin: '0 auto 8px auto',
+                  border: '2px solid var(--color-mint)',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                  backgroundColor: '#F8F9FA'
+                }}>
+                  <img
+                    src={getCategoryImage(cat)}
+                    alt={cat.name}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                </div>
+                <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--color-text-primary)', display: 'block', lineHeight: '1.2' }}>
+                  {cat.name}
+                </span>
               </div>
             ))}
           </div>
