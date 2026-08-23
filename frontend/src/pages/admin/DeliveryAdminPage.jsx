@@ -72,6 +72,20 @@ export const DeliveryAdminPage = () => {
 
   useEffect(() => {
     fetchDeliveryData();
+
+    const handleUpdate = () => {
+      fetchDeliveryData();
+    };
+
+    window.addEventListener('cks_delivery_updated', handleUpdate);
+    window.addEventListener('cks_order_status_updated', handleUpdate);
+    window.addEventListener('focus', handleUpdate);
+
+    return () => {
+      window.removeEventListener('cks_delivery_updated', handleUpdate);
+      window.removeEventListener('cks_order_status_updated', handleUpdate);
+      window.removeEventListener('focus', handleUpdate);
+    };
   }, []);
 
   const [registering, setRegistering] = useState(false);

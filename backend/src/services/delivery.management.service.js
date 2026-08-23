@@ -11,6 +11,32 @@ const whatsappService = require('./whatsapp.service');
 
 const isUUID = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 
+/**
+ * Phase 20.6 Centralized Delivery Eligibility & Assignment Helpers
+ */
+const DELIVERY_ELIGIBLE_ORDER_STATUSES = [
+  ORDER_STATUS.PROCESSING,
+  ORDER_STATUS.READY_FOR_DELIVERY
+];
+
+const ACTIVE_DELIVERY_ASSIGNMENT_STATUSES = [
+  'ASSIGNED',
+  'ACCEPTED',
+  'PICKED_UP',
+  'OUT_FOR_DELIVERY'
+];
+
+function isOrderReadyForDelivery(order) {
+  if (!order || !order.status) return false;
+  return DELIVERY_ELIGIBLE_ORDER_STATUSES.includes(order.status);
+}
+
+function hasActiveDeliveryAssignment(assignments) {
+  if (!assignments) return false;
+  const list = Array.isArray(assignments) ? assignments : [assignments];
+  return list.some(a => a && ACTIVE_DELIVERY_ASSIGNMENT_STATUSES.includes(a.status));
+}
+
 // Memory fallbacks
 const mockDeliveryAssignments = [];
 const mockPartners = [
@@ -163,39 +189,34 @@ const createDeliveryPartner = async (adminId, partnerData, req = null) => {
   const hashedPassword = await bcrypt.hash(password, 10);
 
   if (supabase) {
-    // 1. Check for existing account with same phone or email
-    let query = supabase.from('users').select('id, phone, email');
-    if (cleanEmail) {
-      query = query.or(`phone.eq.${cleanPhone},email.eq.${cleanEmail}`);
-    } else {
-      query = query.eq('phone', cleanPhone);
-    }
-
-    const { data: existingUser } = await query.maybeSingle();
+    const { data: existingUser } = await supabase.from('users')
+      .select('id, phone, email')
+      .or(`phone.eq.${cleanPhone},email.eq.${dbEmail}`)
+      .maybeSingle();
 
     if (existingUser) {
       throw new AppError('An account with this phone number or email already exists.', HTTP_STATUS.CONFLICT);
     }
 
-    // 2. Insert into users table
-    const { data: newUser, error: insertErr } = await supabase.from('users').insert([{
-      full_name: actualName.trim(),
-      phone: cleanPhone,
-      email: dbEmail,
-      password_hash: hashedPassword,
-      role: 'DELIVERY_PARTNER',
-      is_active: true
-    }]).select().maybeSingle();
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(password, salt);
 
-    if (insertErr || !newUser) {
-      console.error('[DELIVERY_PARTNER_REGISTRATION_ERROR]', insertErr);
-      if (insertErr?.code === '23505' || insertErr?.message?.includes('unique') || insertErr?.message?.includes('already exists')) {
-        throw new AppError('An account with this phone number or email already exists.', HTTP_STATUS.CONFLICT);
-      }
-      throw new AppError('Unable to create Delivery Partner account. Please try again.', HTTP_STATUS.INTERNAL_SERVER_ERROR);
+    const { data: newUser, error: createErr } = await supabase.from('users')
+      .insert([{
+        full_name: actualName.trim(),
+        phone: cleanPhone,
+        email: cleanEmail,
+        password_hash: passwordHash,
+        role: 'DELIVERY_PARTNER',
+        is_active: true
+      }])
+      .select('id, full_name, phone, email, role')
+      .single();
+
+    if (createErr || !newUser) {
+      throw new AppError(`Failed to create Delivery Partner account: ${createErr?.message || 'DB Error'}`, HTTP_STATUS.INTERNAL_SERVER_ERROR);
     }
 
-    // 3. Dual sync to user_roles table if present
     try {
       const { data: partnerRole } = await supabase
         .from('roles')
@@ -229,7 +250,7 @@ const createDeliveryPartner = async (adminId, partnerData, req = null) => {
     throw new AppError('An account with this phone number or email already exists.', HTTP_STATUS.CONFLICT);
   }
 
-  const mockNew = { id: `partner-${Date.now()}`, full_name: actualName.trim(), phone: cleanPhone, email: dbEmail, is_active: true, role: 'DELIVERY_PARTNER' };
+  const mockNew = { id: `partner-${Date.now()}`, full_name: actualName.trim(), phone: cleanPhone, email: cleanEmail, is_active: true, role: 'DELIVERY_PARTNER' };
   mockPartners.push(mockNew);
   return mockNew;
 };
@@ -241,23 +262,18 @@ const getAdminDeliveryDashboard = async () => {
   if (supabase) {
     const today = new Date().toISOString().split('T')[0];
 
-    const { data: orders } = await supabase.from('orders')
-      .select('id, status, delivery_assignments(*)')
-      .in('status', [ORDER_STATUS.CONFIRMED, ORDER_STATUS.PROCESSING, ORDER_STATUS.READY_FOR_DELIVERY, ORDER_STATUS.OUT_FOR_DELIVERY, ORDER_STATUS.DELIVERED]);
+    const unassignedList = await getUnassignedOrders();
 
     const { data: assignments } = await supabase.from('delivery_assignments').select('*');
-
-    const listOrders = orders || [];
     const listAssignments = assignments || [];
 
-    const unassignedCount = listOrders.filter(o => !o.delivery_assignments || o.delivery_assignments.length === 0 || o.delivery_assignments[0].status === 'CANCELLED').length;
     const assignedCount = listAssignments.filter(a => ['ASSIGNED', 'ACCEPTED'].includes(a.status)).length;
     const outForDeliveryCount = listAssignments.filter(a => ['PICKED_UP', 'OUT_FOR_DELIVERY'].includes(a.status)).length;
     const deliveredTodayCount = listAssignments.filter(a => a.status === 'DELIVERED' && a.delivered_at && a.delivered_at.startsWith(today)).length;
     const failedDeliveriesCount = listAssignments.filter(a => a.status === 'FAILED_DELIVERY').length;
 
     return {
-      unassignedOrders: unassignedCount,
+      unassignedOrders: unassignedList.length,
       assignedOrders: assignedCount,
       outForDelivery: outForDeliveryCount,
       deliveredToday: deliveredTodayCount,
@@ -281,11 +297,23 @@ const getUnassignedOrders = async () => {
   if (supabase) {
     const { data: orders, error } = await supabase.from('orders')
       .select('*, users!orders_user_id_fkey(id, full_name, phone, email), order_addresses(*), order_items(*), delivery_assignments(*)')
-      .in('status', [ORDER_STATUS.CONFIRMED, ORDER_STATUS.PROCESSING, ORDER_STATUS.READY_FOR_DELIVERY])
+      .in('status', DELIVERY_ELIGIBLE_ORDER_STATUSES)
       .order('created_at', { ascending: false });
 
     if (!error && orders) {
-      const unassigned = orders.filter(o => !o.delivery_assignments || o.delivery_assignments.length === 0 || o.delivery_assignments[0].status === 'CANCELLED');
+      const unassigned = orders.filter(o => isOrderReadyForDelivery(o) && !hasActiveDeliveryAssignment(o.delivery_assignments));
+
+      if (process.env.NODE_ENV !== 'production') {
+        unassigned.forEach(o => {
+          console.log('[Delivery Queue]', {
+            orderId: o.id,
+            status: o.status,
+            eligible: isOrderReadyForDelivery(o),
+            hasActiveAssignment: hasActiveDeliveryAssignment(o.delivery_assignments)
+          });
+        });
+      }
+
       return unassigned.map(o => {
         const rawAddr = o.order_addresses?.[0] || null;
         const deliveryAddress = parseDeliveryAddress(rawAddr) || defaultDeliveryAddress;
@@ -1066,6 +1094,10 @@ const failDelivery = async (partnerId, orderId, failureReason) => {
 };
 
 module.exports = {
+  DELIVERY_ELIGIBLE_ORDER_STATUSES,
+  ACTIVE_DELIVERY_ASSIGNMENT_STATUSES,
+  isOrderReadyForDelivery,
+  hasActiveDeliveryAssignment,
   getDeliveryPartners,
   createDeliveryPartner,
   getAdminDeliveryDashboard,

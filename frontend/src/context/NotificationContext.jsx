@@ -138,6 +138,7 @@ export const NotificationProvider = ({ children }) => {
             stopIncomingOrderAlert(targetId);
             fetchUnresolvedOrders();
             window.dispatchEvent(new CustomEvent('cks_order_status_updated', { detail: data }));
+            window.dispatchEvent(new CustomEvent('cks_delivery_updated', { detail: data }));
             return;
           }
 

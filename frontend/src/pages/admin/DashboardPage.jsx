@@ -66,6 +66,29 @@ export const DashboardPage = () => {
     };
 
     fetchSummary();
+
+    const handleUpdate = () => {
+      deliveryPartnerService.getAdminDeliveryDashboard().then(delRes => {
+        const stats = delRes?.data || delRes || {};
+        setDeliveryStats({
+          unassignedOrders: stats.unassignedOrders ?? 0,
+          assignedOrders: stats.assignedOrders ?? 0,
+          outForDelivery: stats.outForDelivery ?? 0,
+          deliveredToday: stats.deliveredToday ?? 0,
+          failedDeliveries: stats.failedDeliveries ?? 0
+        });
+      }).catch(() => {});
+    };
+
+    window.addEventListener('cks_delivery_updated', handleUpdate);
+    window.addEventListener('cks_order_status_updated', handleUpdate);
+    window.addEventListener('focus', handleUpdate);
+
+    return () => {
+      window.removeEventListener('cks_delivery_updated', handleUpdate);
+      window.removeEventListener('cks_order_status_updated', handleUpdate);
+      window.removeEventListener('focus', handleUpdate);
+    };
   }, [range]);
 
   if (loading) {
