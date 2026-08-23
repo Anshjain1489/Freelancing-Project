@@ -72,12 +72,21 @@ router.patch('/replacements/:id/fulfillment', replacementAdminController.updateF
 
 // Delivery Management
 router.get('/delivery/dashboard', deliveryAdminController.getAdminDeliveryDashboard);
+router.get('/deliveries/dashboard', deliveryAdminController.getAdminDeliveryDashboard);
 router.get('/delivery-partners', deliveryAdminController.getDeliveryPartners);
 router.post('/delivery-partners', deliveryAdminController.createDeliveryPartner);
 router.get('/delivery/orders/unassigned', deliveryAdminController.getUnassignedOrders);
+router.get('/deliveries/orders/unassigned', deliveryAdminController.getUnassignedOrders);
+router.get('/deliveries/unassigned', deliveryAdminController.getUnassignedOrders);
 router.get('/delivery/orders/assigned', deliveryAdminController.getAssignedDeliveries);
+router.get('/deliveries/orders/assigned', deliveryAdminController.getAssignedDeliveries);
+router.get('/deliveries/assigned', deliveryAdminController.getAssignedDeliveries);
 router.post('/orders/:orderId/assign-delivery', deliveryAdminController.assignDeliveryPartner);
+router.post('/deliveries/:orderId/assign', deliveryAdminController.assignDeliveryPartner);
 router.post('/orders/:orderId/reassign-delivery', deliveryAdminController.reassignDeliveryPartner);
+router.patch('/orders/:orderId/reassign-delivery', deliveryAdminController.reassignDeliveryPartner);
+router.post('/deliveries/:orderId/reassign', deliveryAdminController.reassignDeliveryPartner);
+router.patch('/deliveries/:orderId/reassign', deliveryAdminController.reassignDeliveryPartner);
 
 // Coupon Management
 router.get('/coupons', couponAdminController.getAdminCoupons);
