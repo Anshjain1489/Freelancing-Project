@@ -37,4 +37,4 @@ const paymentLimiter = rateLimit({
   }
 });
 
-module.exports = { generalLimiter, authLimiter, paymentLimiter };
+//module.exports = { generalLimiter, authLimiter, paymentLimiter };
