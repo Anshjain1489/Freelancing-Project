@@ -14,6 +14,7 @@ import {
   Users,
   Plus,
   Boxes,
+  Truck,
   ArrowUpRight
 } from 'lucide-react';
 
@@ -155,6 +156,9 @@ export const DashboardPage = () => {
           </Button>
           <Button variant="outline" size="sm" icon={ShoppingBag} onClick={() => navigate('/admin/orders')}>
             Manage Orders
+          </Button>
+          <Button variant="outline" size="sm" icon={Truck} onClick={() => navigate('/admin/delivery')}>
+            Delivery Management
           </Button>
           <Button variant="outline" size="sm" icon={Boxes} onClick={() => navigate('/admin/inventory')}>
             Update Stock

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Outlet, NavLink, Link } from 'react-router-dom';
-import { LayoutDashboard, Package, Grid, Layers, ShoppingBag, Users, CreditCard, BarChart2, Tag, Image, Settings, Store, Volume2, VolumeX, BellRing } from 'lucide-react';
+import { LayoutDashboard, Package, Grid, Layers, ShoppingBag, Truck, Users, CreditCard, BarChart2, Tag, Image, Settings, Store, Volume2, VolumeX, BellRing } from 'lucide-react';
 import { NotificationBell } from '../components/notifications/NotificationBell';
 import { useNotifications } from '../hooks/useNotifications';
 
@@ -13,6 +13,7 @@ export const AdminLayout = () => {
     { to: '/admin/categories', label: 'Categories', icon: Grid },
     { to: '/admin/inventory', label: 'Inventory', icon: Layers },
     { to: '/admin/orders', label: 'Orders', icon: ShoppingBag },
+    { to: '/admin/delivery', label: 'Delivery Management', icon: Truck },
     { to: '/admin/customers', label: 'Customers', icon: Users },
     { to: '/admin/payments', label: 'Payments', icon: CreditCard },
     { to: '/admin/sales', label: 'Sales & Analytics', icon: BarChart2 },
