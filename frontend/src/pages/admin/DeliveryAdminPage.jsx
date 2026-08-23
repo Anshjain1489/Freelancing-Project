@@ -79,8 +79,11 @@ export const DeliveryAdminPage = () => {
     return () => window.removeEventListener('cks_delivery_updated', handleRealtimeDelivery);
   }, []);
 
+  const [registering, setRegistering] = useState(false);
+
   const handleRegisterPartner = async (e) => {
     e.preventDefault();
+    setRegistering(true);
     try {
       await deliveryPartnerService.createDeliveryPartner(registerForm);
       showSuccess('Delivery Partner account registered successfully! 🚚');
@@ -88,7 +91,10 @@ export const DeliveryAdminPage = () => {
       setRegisterForm({ fullName: '', phone: '', email: '', password: '' });
       fetchDeliveryData();
     } catch (err) {
-      showError(err.response?.data?.message || 'Failed to register delivery partner');
+      console.error('Registration failed:', err);
+      showError(err.response?.data?.message || err.message || 'Failed to register delivery partner');
+    } finally {
+      setRegistering(false);
     }
   };
 
@@ -528,7 +534,7 @@ export const DeliveryAdminPage = () => {
 
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '16px' }}>
                 <Button variant="outline" size="sm" type="button" onClick={() => setIsRegisterModalOpen(false)}>Cancel</Button>
-                <Button variant="primary" size="sm" type="submit">Create Account</Button>
+                <Button variant="primary" size="sm" type="submit" loading={registering}>Create Account</Button>
               </div>
             </form>
           </Card>

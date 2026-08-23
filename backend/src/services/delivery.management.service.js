@@ -134,29 +134,41 @@ const getDeliveryPartners = async () => {
  * 2. Admin: Register / Create new Delivery Partner Account
  */
 const createDeliveryPartner = async (adminId, partnerData, req = null) => {
-  const { fullName, phone, email, password } = partnerData || {};
-  if (!fullName || !String(fullName).trim()) {
+  const { fullName, name, phone, email, password } = partnerData || {};
+  const actualName = fullName || name;
+  if (!actualName || !String(actualName).trim()) {
     throw new AppError('Full name is required', HTTP_STATUS.BAD_REQUEST);
   }
+
   if (!phone || !String(phone).trim()) {
     throw new AppError('Phone number is required', HTTP_STATUS.BAD_REQUEST);
   }
+
+  // Clean phone to digits only (e.g. +91 98765 43210 -> 9876543210)
+  const cleanPhone = String(phone).replace(/\D/g, '').slice(-10);
+  if (!cleanPhone || cleanPhone.length < 10) {
+    throw new AppError('Please provide a valid 10-digit phone number', HTTP_STATUS.BAD_REQUEST);
+  }
+
   if (!password || String(password).length < 4) {
     throw new AppError('Password must be at least 4 characters', HTTP_STATUS.BAD_REQUEST);
   }
 
-  const cleanPhone = String(phone).trim();
-  const cleanEmail = email && String(email).trim() ? String(email).trim().toLowerCase() : `partner_${cleanPhone}@chaudhary.com`;
+  const cleanEmail = email && String(email).trim() ? String(email).trim().toLowerCase() : null;
+  const dbEmail = cleanEmail || `partner_${cleanPhone}_${Date.now().toString().slice(-4)}@chaudhary.com`;
 
   const hashedPassword = await bcrypt.hash(password, 10);
 
   if (supabase) {
     // 1. Check for existing account with same phone or email
-    const { data: existingUser } = await supabase
-      .from('users')
-      .select('id, phone, email')
-      .or(`phone.eq.${cleanPhone}${cleanEmail ? `,email.eq.${cleanEmail}` : ''}`)
-      .maybeSingle();
+    let query = supabase.from('users').select('id, phone, email');
+    if (cleanEmail) {
+      query = query.or(`phone.eq.${cleanPhone},email.eq.${cleanEmail}`);
+    } else {
+      query = query.eq('phone', cleanPhone);
+    }
+
+    const { data: existingUser } = await query.maybeSingle();
 
     if (existingUser) {
       throw new AppError('An account with this phone number or email already exists.', HTTP_STATUS.CONFLICT);
@@ -164,9 +176,9 @@ const createDeliveryPartner = async (adminId, partnerData, req = null) => {
 
     // 2. Insert into users table
     const { data: newUser, error: insertErr } = await supabase.from('users').insert([{
-      full_name: fullName.trim(),
+      full_name: actualName.trim(),
       phone: cleanPhone,
-      email: cleanEmail,
+      email: dbEmail,
       password_hash: hashedPassword,
       role: 'DELIVERY_PARTNER',
       is_active: true
@@ -198,7 +210,7 @@ const createDeliveryPartner = async (adminId, partnerData, req = null) => {
       console.warn('[USER_ROLES_SYNC_NOTICE]', syncErr.message);
     }
 
-    await logAdminActivity(adminId, 'ADMIN_DELIVERY_PARTNER_CREATED', 'user', newUser.id, { fullName: fullName.trim(), phone: cleanPhone }, req);
+    await logAdminActivity(adminId || 'admin-1', 'ADMIN_DELIVERY_PARTNER_CREATED', 'user', newUser.id, { fullName: actualName.trim(), phone: cleanPhone }, req);
 
     return {
       id: newUser.id,
@@ -209,12 +221,12 @@ const createDeliveryPartner = async (adminId, partnerData, req = null) => {
     };
   }
 
-  const existingMock = mockPartners.find(p => p.phone === cleanPhone || p.email === cleanEmail);
+  const existingMock = mockPartners.find(p => p.phone === cleanPhone || (cleanEmail && p.email === cleanEmail));
   if (existingMock) {
     throw new AppError('An account with this phone number or email already exists.', HTTP_STATUS.CONFLICT);
   }
 
-  const mockNew = { id: `partner-${Date.now()}`, full_name: fullName.trim(), phone: cleanPhone, email: cleanEmail, is_active: true, role: 'DELIVERY_PARTNER' };
+  const mockNew = { id: `partner-${Date.now()}`, full_name: actualName.trim(), phone: cleanPhone, email: dbEmail, is_active: true, role: 'DELIVERY_PARTNER' };
   mockPartners.push(mockNew);
   return mockNew;
 };
