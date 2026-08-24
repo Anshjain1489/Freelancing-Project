@@ -3,7 +3,7 @@ const { HTTP_STATUS, ERROR_CODES } = require('../constants/statusCodes');
 
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200, // Limit each IP to 200 requests per 15 minutes
+  max: 500, // Limit each IP to 500 requests per 15 minutes
   standardHeaders: true,
   legacyHeaders: false,
   message: {
