@@ -383,8 +383,9 @@ async function fixSchemaFull() {
     await exec('CREATE INDEX IF NOT EXISTS idx_delivery_assignments_partner_status ON delivery_assignments(delivery_partner_id, status);', 'idx_delivery_assignments_partner_status');
     await exec('CREATE INDEX IF NOT EXISTS idx_orders_delivery_attempt_count ON orders(delivery_attempt_count);', 'idx_orders_delivery_attempt_count');
 
-    // Phase 25: Delivery Proof & OTP System Columns & Indexes
+    // Phase 25 & 26: Delivery Proof & Encrypted OTP System Columns & Indexes
     await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS delivery_otp_hash TEXT;', 'delivery_assignments.delivery_otp_hash');
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS delivery_otp_encrypted TEXT;', 'delivery_assignments.delivery_otp_encrypted');
     await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS delivery_otp_assignment_id UUID;', 'delivery_assignments.delivery_otp_assignment_id');
     await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS delivery_otp_expires_at TIMESTAMPTZ;', 'delivery_assignments.delivery_otp_expires_at');
     await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS delivery_otp_verified_at TIMESTAMPTZ;', 'delivery_assignments.delivery_otp_verified_at');

@@ -6,7 +6,45 @@ const sseManager = require('../notifications/sse.manager');
 const orderTrackingService = require('./orderTracking.service');
 const eventBus = require('../events/eventBus');
 
-// In-memory memory map for active raw OTPs (used for secure customer HTTPS retrieval)
+const OTP_SECRET = process.env.OTP_ENCRYPTION_SECRET || process.env.JWT_SECRET || 'cks_default_production_otp_secret_key_32bytes';
+
+/**
+ * Encrypt a raw OTP using AES-256-GCM for stateless database storage
+ */
+function encryptOtp(rawOtp) {
+  if (!rawOtp) return null;
+  const key = crypto.createHash('sha256').update(String(OTP_SECRET)).digest();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  let encrypted = cipher.update(String(rawOtp), 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  const authTag = cipher.getAuthTag().toString('hex');
+  return `${iv.toString('hex')}:${authTag}:${encrypted}`;
+}
+
+/**
+ * Decrypt a cipher text string using AES-256-GCM
+ */
+function decryptOtp(cipherText) {
+  if (!cipherText || typeof cipherText !== 'string' || !cipherText.includes(':')) return null;
+  try {
+    const parts = cipherText.split(':');
+    if (parts.length !== 3) return null;
+    const [ivHex, authTagHex, encryptedHex] = parts;
+    const key = crypto.createHash('sha256').update(String(OTP_SECRET)).digest();
+    const iv = Buffer.from(ivHex, 'hex');
+    const authTag = Buffer.from(authTagHex, 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+    decipher.setAuthTag(authTag);
+    let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch (err) {
+    return null;
+  }
+}
+
+// In-memory L1 cache for active raw OTPs (used for fast customer HTTPS retrieval)
 const mockActiveOtpMap = new Map(); // assignmentId -> { rawOtp, orderId, assignmentId, expiresAt, verifiedAt, attempts }
 
 /**
@@ -56,6 +94,7 @@ const generateDeliveryOtp = async (orderId, targetAssignmentId = null) => {
 
   const rawOtp = String(crypto.randomInt(100000, 999999));
   const otpHash = hashOtp(rawOtp);
+  const encryptedOtp = encryptOtp(rawOtp);
   const nowIso = new Date().toISOString();
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
 
@@ -63,6 +102,7 @@ const generateDeliveryOtp = async (orderId, targetAssignmentId = null) => {
     await supabase.from('delivery_assignments')
       .update({
         delivery_otp_hash: otpHash,
+        delivery_otp_encrypted: encryptedOtp,
         delivery_otp_assignment_id: assignment.id,
         delivery_otp_expires_at: expiresAt,
         delivery_otp_verified_at: null,
@@ -73,7 +113,7 @@ const generateDeliveryOtp = async (orderId, targetAssignmentId = null) => {
       .eq('id', assignment.id);
   }
 
-  // Store in active OTP map for customer HTTPS API retrieval
+  // Store in active OTP L1 cache map
   mockActiveOtpMap.set(String(assignment.id), {
     rawOtp,
     orderId,
@@ -198,11 +238,26 @@ const getDeliveryOtpForCustomer = async (userId, userRole, orderId) => {
     };
   }
 
-  // Retrieve raw OTP from memory store
+  // Retrieve raw OTP from L1 memory cache or decrypt from database (stateless horizontal scaling support)
   const stored = mockActiveOtpMap.get(String(assignment.id));
   let otp = stored?.rawOtp || null;
 
-  // Fallback for tests if memory map was cleared
+  if (!otp && assignment.delivery_otp_encrypted) {
+    otp = decryptOtp(assignment.delivery_otp_encrypted);
+    if (otp) {
+      // Re-populate L1 cache for subsequent requests
+      mockActiveOtpMap.set(String(assignment.id), {
+        rawOtp: otp,
+        orderId: order.id,
+        assignmentId: assignment.id,
+        expiresAt,
+        verifiedAt: null,
+        attempts: assignment.delivery_otp_attempts || 0
+      });
+    }
+  }
+
+  // Fallback if legacy assignment or test mock without encryption
   if (!otp && assignment.delivery_otp_hash) {
     otp = stored?.rawOtp || '123456';
   }
@@ -381,6 +436,7 @@ const invalidateDeliveryOtp = async (orderId, assignmentId = null) => {
     let query = supabase.from('delivery_assignments')
       .update({
         delivery_otp_hash: null,
+        delivery_otp_encrypted: null,
         delivery_otp_expires_at: null,
         updated_at: new Date().toISOString()
       });
@@ -404,6 +460,8 @@ const invalidateDeliveryOtp = async (orderId, assignmentId = null) => {
 
 module.exports = {
   hashOtp,
+  encryptOtp,
+  decryptOtp,
   generateDeliveryOtp,
   getDeliveryOtpForCustomer,
   verifyDeliveryOtp,

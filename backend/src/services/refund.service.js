@@ -20,7 +20,44 @@ const mockRefunds = {};
 /**
  * Process automated full refund for a rejected order
  */
-const processOrderRefund = async ({ order, paymentRecord, adminId, reason = 'Order rejected by store administrator', req = null }) => {
+const processOrderRefund = async (arg1, arg2, arg3, arg4) => {
+  let order = null;
+  let paymentRecord = null;
+  let adminId = null;
+  let reason = 'Order rejected by store administrator';
+  let req = null;
+
+  if (arg1 && typeof arg1 === 'object' && !arg1.id) {
+    order = arg1.order || null;
+    paymentRecord = arg1.paymentRecord || null;
+    adminId = arg1.adminId || null;
+    reason = arg1.reason || reason;
+    req = arg1.req || null;
+  } else if (arg1 && typeof arg1 === 'object' && arg1.id) {
+    order = arg1;
+    adminId = arg2 || null;
+    reason = arg3 || reason;
+    req = arg4 || null;
+  } else if (typeof arg1 === 'string') {
+    const orderIdArg = arg1;
+    adminId = arg2 || null;
+    reason = arg3 || reason;
+    req = arg4 || null;
+
+    if (supabase) {
+      const { data: o } = await supabase.from('orders').select('*').or(`id.eq.${orderIdArg},order_number.eq.${orderIdArg}`).maybeSingle();
+      order = o;
+      if (order) {
+        const { data: p } = await supabase.from('payments').select('*').eq('order_id', order.id).maybeSingle();
+        paymentRecord = p;
+      }
+    }
+  }
+
+  if (!order) {
+    throw new AppError('Order not found for refund processing', HTTP_STATUS.NOT_FOUND);
+  }
+
   const orderId = order.id;
 
   // 1. Check if Cash on Delivery (COD) order
