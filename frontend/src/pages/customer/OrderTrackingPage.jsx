@@ -31,10 +31,7 @@ export const OrderTrackingPage = () => {
   const [trackingData, setTrackingData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [lastRefreshed, setLastRefreshed] = useState(new Date());
-
-  const [otpData, setOtpData] = useState(null);
-  const [otpLoading, setOtpLoading] = useState(false);
+  const lastUpdatedAtRef = React.useRef(0);
 
   const fetchTracking = useCallback(async (showSkeleton = false) => {
     if (showSkeleton) setLoading(true);
@@ -42,11 +39,17 @@ export const OrderTrackingPage = () => {
       const res = await orderService.getOrderTracking(orderId);
       if (res.data || res.order) {
         const tData = res.data || res;
-        setTrackingData(tData);
-        setError(null);
+        const fetchedUpdatedAt = Date.parse(tData.order?.updated_at || tData.order?.updatedAt || 0) || Date.now();
 
-        if (tData.order?.status === 'OUT_FOR_DELIVERY') {
-          fetchOtp();
+        // Race Condition Safeguard: Only apply API response if its timestamp >= last applied timestamp
+        if (fetchedUpdatedAt >= lastUpdatedAtRef.current) {
+          lastUpdatedAtRef.current = fetchedUpdatedAt;
+          setTrackingData(tData);
+          setError(null);
+
+          if (tData.order?.status === 'OUT_FOR_DELIVERY') {
+            fetchOtp();
+          }
         }
       }
       setLastRefreshed(new Date());
@@ -58,7 +61,7 @@ export const OrderTrackingPage = () => {
     }
   }, [orderId]);
 
-  const fetchOtp = async () => {
+  const fetchOtp = useCallback(async () => {
     setOtpLoading(true);
     try {
       const res = await orderService.getDeliveryOtp(orderId);
@@ -70,35 +73,79 @@ export const OrderTrackingPage = () => {
     } finally {
       setOtpLoading(false);
     }
-  };
+  }, [orderId]);
+
+  const handleRealtimeUpdate = useCallback((e) => {
+    const detail = e.detail || {};
+    const targetId = String(detail.orderId || detail.id || '');
+    if (!targetId || targetId === String(orderId)) {
+      const eventTimestamp = Date.parse(detail.updatedAt || detail.timestamp || 0) || Date.now();
+
+      // Race condition safeguard
+      if (eventTimestamp >= lastUpdatedAtRef.current) {
+        lastUpdatedAtRef.current = eventTimestamp;
+
+        // 1. Optimistic React State Update for Instantaneous UI Re-render
+        if (detail.status) {
+          setTrackingData(prev => {
+            if (!prev || !prev.order) return prev;
+            return {
+              ...prev,
+              order: {
+                ...prev.order,
+                status: detail.status
+              }
+            };
+          });
+        }
+
+        // 2. Authoritative Backend API Refetch
+        fetchTracking(false);
+      }
+    }
+  }, [orderId, fetchTracking]);
+
+  const handleOtpAvailable = useCallback(() => {
+    fetchOtp();
+  }, [fetchOtp]);
+
+  const handleFocus = useCallback(() => {
+    fetchTracking(false);
+  }, [fetchTracking]);
 
   useEffect(() => {
     fetchTracking(true);
 
-    const handleRealtimeUpdate = (e) => {
-      const detail = e.detail || {};
-      const targetId = String(detail.orderId || detail.id || '');
-      if (!targetId || targetId === String(orderId)) {
-        fetchTracking(false);
-      }
-    };
-
     window.addEventListener('cks_order_tracking_updated', handleRealtimeUpdate);
     window.addEventListener('cks_order_status_updated', handleRealtimeUpdate);
     window.addEventListener('cks_delivery_updated', handleRealtimeUpdate);
-    window.addEventListener('cks_delivery_otp_available', () => fetchOtp());
-
-    const handleFocus = () => fetchTracking(false);
+    window.addEventListener('cks_delivery_otp_available', handleOtpAvailable);
     window.addEventListener('focus', handleFocus);
 
     return () => {
       window.removeEventListener('cks_order_tracking_updated', handleRealtimeUpdate);
       window.removeEventListener('cks_order_status_updated', handleRealtimeUpdate);
       window.removeEventListener('cks_delivery_updated', handleRealtimeUpdate);
-      window.removeEventListener('cks_delivery_otp_available', () => fetchOtp());
+      window.removeEventListener('cks_delivery_otp_available', handleOtpAvailable);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [orderId, fetchTracking]);
+  }, [orderId, fetchTracking, handleRealtimeUpdate, handleOtpAvailable, handleFocus]);
+
+  // Fallback Polling (30s Interval) for Active Orders
+  useEffect(() => {
+    const currentStatus = trackingData?.order?.status;
+    const terminalStates = ['DELIVERED', 'CANCELLED', 'REJECTED'];
+
+    if (!currentStatus || terminalStates.includes(currentStatus)) {
+      return; // Stop polling on terminal states
+    }
+
+    const intervalId = setInterval(() => {
+      fetchTracking(false);
+    }, 30000);
+
+    return () => clearInterval(intervalId);
+  }, [trackingData?.order?.status, fetchTracking]);
 
   if (loading) {
     return (

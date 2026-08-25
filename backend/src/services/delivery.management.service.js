@@ -1079,6 +1079,14 @@ const startDelivery = async (partnerId, orderId) => {
     metadata: { eventType: 'OUT_FOR_DELIVERY', deliveryPartnerId: partnerId, assignmentStatus: 'OUT_FOR_DELIVERY' }
   });
 
+  const orderRealtimeService = require('./orderRealtime.service');
+  await orderRealtimeService.emitOrderStatusUpdate({
+    orderId,
+    status: ORDER_STATUS.OUT_FOR_DELIVERY,
+    previousStatus: ORDER_STATUS.PROCESSING,
+    message: 'Your order is out for delivery with our delivery partner!'
+  });
+
   return { success: true, message: 'Delivery started! Order is now Out For Delivery.' };
 };
 
@@ -1098,6 +1106,7 @@ const completeDelivery = async (partnerId, orderId, {
   longitude = null
 } = {}) => {
   let existing = null;
+  const nowIso = new Date().toISOString();
 
   if (supabase) {
     const { data } = await supabase.from('delivery_assignments')
@@ -1171,7 +1180,6 @@ const completeDelivery = async (partnerId, orderId, {
     }
   }
 
-  const nowIso = new Date().toISOString();
   const cleanRecipientName = recipientName ? String(recipientName).trim() : null;
   const cleanProofImageUrl = proofImageUrl ? String(proofImageUrl).trim() : null;
 
@@ -1357,6 +1365,15 @@ const failDelivery = async (partnerId, orderId, failureReason, notes = null) => 
     changedByRole: 'DELIVERY_PARTNER',
     reason: `Delivery attempt failed: ${cleanReason}`,
     metadata: { eventType: 'FAILED_DELIVERY', deliveryPartnerId: partnerId, assignmentStatus: 'FAILED', failureReason: cleanReason }
+  });
+
+  const orderRealtimeService = require('./orderRealtime.service');
+  await orderRealtimeService.emitOrderStatusUpdate({
+    orderId,
+    status: ORDER_STATUS.DELIVERY_FAILED,
+    previousStatus: currentOrderStatus,
+    userId: existing.orders?.user_id,
+    message: 'We encountered an issue during delivery. Store team is resolving this.'
   });
 
   return { success: true, message: 'Delivery attempt recorded as failed. Admin notified.', deliveryAttemptCount: newAttemptCount };
@@ -1564,6 +1581,15 @@ const reassignFailedDelivery = async (adminId, orderId, newPartnerId) => {
     previousStatus: ORDER_STATUS.DELIVERY_FAILED,
     newStatus: ORDER_STATUS.PROCESSING,
     updatedAt: nowIso
+  });
+
+  const orderRealtimeService = require('./orderRealtime.service');
+  await orderRealtimeService.emitOrderStatusUpdate({
+    orderId: order.id,
+    status: ORDER_STATUS.PROCESSING,
+    previousStatus: ORDER_STATUS.DELIVERY_FAILED,
+    userId: order.user_id,
+    message: 'Your order has been reassigned and is being prepared for delivery.'
   });
 
   return {
@@ -1803,6 +1829,15 @@ const returnOrderToStore = async (adminId, orderId) => {
     updatedAt: nowIso
   });
 
+  const orderRealtimeService = require('./orderRealtime.service');
+  await orderRealtimeService.emitOrderStatusUpdate({
+    orderId: order.id,
+    status: ORDER_STATUS.RETURN_TO_STORE,
+    previousStatus: ORDER_STATUS.DELIVERY_FAILED,
+    userId: order.user_id,
+    message: 'Your delivery is returning to the store.'
+  });
+
   return {
     success: true,
     message: 'Order marked as returned to store.',
@@ -1914,6 +1949,15 @@ const cancelOrderAfterDeliveryFailure = async (adminId, orderId, reason = 'Cance
     previousStatus: prevStatus,
     newStatus: ORDER_STATUS.CANCELLED,
     updatedAt: nowIso
+  });
+
+  const orderRealtimeService = require('./orderRealtime.service');
+  await orderRealtimeService.emitOrderStatusUpdate({
+    orderId: order.id,
+    status: ORDER_STATUS.CANCELLED,
+    previousStatus: prevStatus,
+    userId: order.user_id,
+    message: 'Your order has been cancelled.'
   });
 
   return {

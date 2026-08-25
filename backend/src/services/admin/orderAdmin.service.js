@@ -197,6 +197,15 @@ const acceptOrder = async (adminId, orderId, req = null) => {
       metadata: { eventType: 'ORDER_ACCEPTED', paymentMethod: existing.payment_method }
     });
 
+    const orderRealtimeService = require('../orderRealtime.service');
+    await orderRealtimeService.emitOrderStatusUpdate({
+      orderId: existing.id,
+      status: targetStatus,
+      previousStatus: existing.status,
+      userId: existing.user_id,
+      message
+    });
+
     return {
       orderId: existing.id,
       orderNumber: existing.order_number,
@@ -301,6 +310,15 @@ const rejectOrder = async (adminId, orderId, { reason } = {}, req = null) => {
 
     const paidRecord = payRecords ? payRecords.find(p => (p.status === 'PAID' || p.payment_status === 'PAID') && (p.razorpay_payment_id || p.provider_payment_id)) : null;
 
+    const orderRealtimeService = require('../orderRealtime.service');
+    await orderRealtimeService.emitOrderStatusUpdate({
+      orderId: existing.id,
+      status: ORDER_STATUS.REJECTED,
+      previousStatus: existing.status,
+      userId: existing.user_id,
+      message: 'Unfortunately, your order could not be accepted.'
+    });
+
     // Phase 21 Rule: If order was unpaid (payment_status !== PAID and no paid payment record exists), DO NOT trigger Razorpay refund API
     if (existing.payment_status !== 'PAID' && !paidRecord) {
       eventBus.emit(EVENT_TYPES.ORDER_REJECTED, { adminId, orderId: existing.id, orderNumber: existing.order_number, rejectionReason: sanitizedReason });
@@ -401,6 +419,14 @@ const updateOrderStatus = async (userId, orderId, { status }, req = null) => {
 
     eventBus.emit(EVENT_TYPES.ORDER_STATUS_UPDATED, payload);
     sseManager.broadcastOrderStatusUpdate(payload);
+
+    const orderRealtimeService = require('../orderRealtime.service');
+    await orderRealtimeService.emitOrderStatusUpdate({
+      orderId: order.id,
+      status,
+      previousStatus: order.status,
+      userId: order.user_id
+    });
 
     if (status === ORDER_STATUS.OUT_FOR_DELIVERY) {
       eventBus.emit(EVENT_TYPES.ORDER_OUT_FOR_DELIVERY, {
