@@ -295,6 +295,23 @@ const clearForTests = () => {
   sseClients.clear();
 };
 
+const shutdown = () => {
+  logger.info(`[SSE_SHUTDOWN] Closing ${sseClients.size} active SSE client streams cleanly...`);
+  for (const [userId, clientSet] of sseClients.entries()) {
+    for (const res of clientSet) {
+      try {
+        if (res.writable && !res.destroyed) {
+          res.write('comment: server shutting down\n\n');
+          res.end();
+        }
+      } catch (err) {
+        // Ignored
+      }
+    }
+  }
+  sseClients.clear();
+};
+
 module.exports = {
   addClient,
   removeClient,
@@ -302,6 +319,7 @@ module.exports = {
   broadcastToAdmins,
   getStats,
   clearForTests,
+  shutdown,
   broadcastNotification,
   broadcastDecision,
   broadcastOrderStatusUpdate,

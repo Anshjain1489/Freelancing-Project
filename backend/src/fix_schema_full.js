@@ -401,13 +401,36 @@ async function fixSchemaFull() {
     await exec('CREATE INDEX IF NOT EXISTS idx_delivery_assignments_otp_verified_at ON delivery_assignments(delivery_otp_verified_at);', 'idx_delivery_assignments_otp_verified_at');
     await exec('CREATE INDEX IF NOT EXISTS idx_delivery_assignments_delivered_at ON delivery_assignments(delivered_at DESC);', 'idx_delivery_assignments_delivered_at');
 
+    // Phase 30: Migration 042 background_jobs table
+    await exec(`
+      CREATE TABLE IF NOT EXISTS background_jobs (
+        id VARCHAR(100) PRIMARY KEY,
+        job_type VARCHAR(100) NOT NULL,
+        payload JSONB DEFAULT '{}'::jsonb,
+        status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+        idempotency_key VARCHAR(255) UNIQUE NULL,
+        attempt_count INT DEFAULT 0,
+        max_attempts INT DEFAULT 3,
+        next_run_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        locked_at TIMESTAMPTZ NULL,
+        locked_by VARCHAR(100) NULL,
+        last_error TEXT NULL,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        completed_at TIMESTAMPTZ NULL
+      );
+    `, 'create background_jobs table');
+
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_status_next_run ON background_jobs (status, next_run_at);', 'idx_jobs_status_next_run');
+    await exec('CREATE INDEX IF NOT EXISTS idx_jobs_idempotency_key ON background_jobs (idempotency_key);', 'idx_jobs_idempotency_key');
+
     // Disable RLS on operational tables for backend service consistency
     const rlsTables = [
       'orders', 'payments', 'order_addresses', 'refunds', 'coupons',
       'delivery_assignments', 'notifications', 'notification_deliveries',
       'notification_preferences', 'admin_activity_logs', 'inventory_movements',
       'cancellation_requests', 'returns', 'return_items', 'replacement_requests', 'store_settings',
-      'whatsapp_delivery_notifications', 'order_status_history'
+      'whatsapp_delivery_notifications', 'order_status_history', 'background_jobs'
     ];
     for (const table of rlsTables) {
       await exec(`ALTER TABLE ${table} DISABLE ROW LEVEL SECURITY;`, `disable RLS on ${table}`);

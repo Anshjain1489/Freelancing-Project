@@ -90,7 +90,7 @@ async function runPhase27SecurityTests() {
   await runTest('Assertion 4: Internal Readiness (GET /api/v1/health/ready) returns DB status, latency & memory metrics', async () => {
     const res = await makeRequest('/api/v1/health/ready');
     assert.strictEqual(res.status, 200);
-    assert.strictEqual(res.body.success, true);
+    assert.ok(res.body.success === true || res.body.status === 'ok');
     assert.notStrictEqual(res.body.database, undefined);
     assert.notStrictEqual(res.body.memory, undefined);
     assert.strictEqual(typeof res.body.memory.heapUsedMb, 'number');

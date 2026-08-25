@@ -10,10 +10,15 @@ const { notFound } = require('./middleware/error.middleware');
 const errorMonitoringMiddleware = require('./middleware/errorMonitoring.middleware');
 const apiRoutes = require('./routes');
 
+const { shutdownMiddleware } = require('./services/gracefulShutdown.service');
+
 const app = express();
 
 // Request ID assignment for correlation tracing
 app.use(requestIdMiddleware);
+
+// Graceful shutdown DRAINING request rejection middleware
+app.use(shutdownMiddleware);
 
 // Performance latency monitoring & X-Response-Time header
 app.use(performanceMiddleware);
