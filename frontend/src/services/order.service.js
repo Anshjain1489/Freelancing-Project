@@ -35,5 +35,10 @@ export const orderService = {
   getOrderTracking: async (id) => {
     const response = await apiClient.get(ENDPOINTS.ORDERS.ORDER_TRACKING(id));
     return response.data;
+  },
+
+  getDeliveryOtp: async (id) => {
+    const response = await apiClient.get(ENDPOINTS.ORDERS.DELIVERY_OTP(id));
+    return response.data;
   }
 };

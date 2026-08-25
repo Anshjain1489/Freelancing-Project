@@ -926,6 +926,7 @@ const acceptDelivery = async (partnerId, orderId) => {
     const { data } = await supabase.from('delivery_assignments')
       .select('*, orders(user_id, order_number)')
       .eq('order_id', orderId)
+      .neq('status', 'REVOKED')
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -993,6 +994,8 @@ const acceptDelivery = async (partnerId, orderId) => {
 /**
  * 12. Delivery Partner: Start Delivery (ACCEPTED -> OUT_FOR_DELIVERY)
  */
+const deliveryOtpService = require('./deliveryOtp.service');
+
 const startDelivery = async (partnerId, orderId) => {
   let existing = null;
 
@@ -1000,6 +1003,7 @@ const startDelivery = async (partnerId, orderId) => {
     const { data } = await supabase.from('delivery_assignments')
       .select('*, orders(id, user_id, order_number, status)')
       .eq('order_id', orderId)
+      .neq('status', 'REVOKED')
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -1044,6 +1048,13 @@ const startDelivery = async (partnerId, orderId) => {
   existing.out_for_delivery_at = nowIso;
   existing.picked_up_at = nowIso;
 
+  // Phase 25: Automatically generate secure delivery OTP bound to active assignment
+  try {
+    await deliveryOtpService.generateDeliveryOtp(orderId, existing.id);
+  } catch (err) {
+    console.error('[OTP_GEN_ERR] Failed to generate OTP on startDelivery:', err.message);
+  }
+
   const payload = {
     eventType: EVENT_TYPES.ORDER_PICKED_UP,
     orderId,
@@ -1078,13 +1089,21 @@ const pickupDelivery = startDelivery;
  */
 const inventoryService = require('./inventory.service');
 
-const completeDelivery = async (partnerId, orderId, { codCollected = false, collectedAmount = 0 } = {}) => {
+const completeDelivery = async (partnerId, orderId, { 
+  codCollected = false, 
+  collectedAmount = 0,
+  recipientName = null,
+  proofImageUrl = null,
+  latitude = null,
+  longitude = null
+} = {}) => {
   let existing = null;
 
   if (supabase) {
     const { data } = await supabase.from('delivery_assignments')
       .select('*, orders(id, user_id, order_number, status, total_amount, payment_method, payment_status)')
       .eq('order_id', orderId)
+      .neq('status', 'REVOKED')
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -1112,6 +1131,28 @@ const completeDelivery = async (partnerId, orderId, { codCollected = false, coll
     throw new AppError('Cannot mark order as delivered before starting delivery', HTTP_STATUS.CONFLICT);
   }
 
+  // Phase 25 Safeguard: Enforce Verified OTP check against active assignment
+  const storedOtpData = deliveryOtpService.mockActiveOtpMap.get(String(existing.id));
+  const isOtpVerified = Boolean(existing.delivery_otp_verified_at || storedOtpData?.verifiedAt);
+
+  if (!isOtpVerified) {
+    throw new AppError('Delivery OTP must be verified by customer before marking order as delivered.', HTTP_STATUS.UNPROCESSABLE_ENTITY);
+  }
+
+  // GPS Coordinates validation if provided
+  if (latitude !== null && latitude !== undefined && latitude !== '') {
+    const latNum = Number(latitude);
+    if (isNaN(latNum) || latNum < -90 || latNum > 90) {
+      throw new AppError('Invalid delivery latitude coordinate.', HTTP_STATUS.BAD_REQUEST);
+    }
+  }
+  if (longitude !== null && longitude !== undefined && longitude !== '') {
+    const lngNum = Number(longitude);
+    if (isNaN(lngNum) || lngNum < -180 || lngNum > 180) {
+      throw new AppError('Invalid delivery longitude coordinate.', HTTP_STATUS.BAD_REQUEST);
+    }
+  }
+
   const orderTotal = parseFloat(existing.orders?.total_amount || existing.totalAmount || 500);
   const paymentMethod = String(existing.orders?.payment_method || existing.paymentMethod || 'RAZORPAY').toUpperCase();
   const paymentStatus = existing.orders?.payment_status || existing.paymentStatus || 'PENDING';
@@ -1131,11 +1172,17 @@ const completeDelivery = async (partnerId, orderId, { codCollected = false, coll
   }
 
   const nowIso = new Date().toISOString();
+  const cleanRecipientName = recipientName ? String(recipientName).trim() : null;
+  const cleanProofImageUrl = proofImageUrl ? String(proofImageUrl).trim() : null;
 
   if (supabase) {
     const updatePayload = {
       status: 'DELIVERED',
       delivered_at: nowIso,
+      recipient_name: cleanRecipientName,
+      proof_image_url: cleanProofImageUrl,
+      delivery_latitude: latitude !== null && latitude !== undefined ? Number(latitude) : null,
+      delivery_longitude: longitude !== null && longitude !== undefined ? Number(longitude) : null,
       updated_at: nowIso
     };
 
@@ -1158,6 +1205,8 @@ const completeDelivery = async (partnerId, orderId, { codCollected = false, coll
 
   existing.status = 'DELIVERED';
   existing.delivered_at = nowIso;
+  existing.recipient_name = cleanRecipientName;
+  existing.proof_image_url = cleanProofImageUrl;
   if (paymentMethod === 'COD') {
     existing.cod_collected = true;
     existing.cod_collected_amount = Number(collectedAmount);
@@ -1267,6 +1316,11 @@ const failDelivery = async (partnerId, orderId, failureReason, notes = null) => 
   existing.failure_reason = cleanReason;
   existing.failure_notes = notes || null;
   existing.failed_at = nowIso;
+
+  // Invalidate active OTP on failure
+  try {
+    await deliveryOtpService.invalidateDeliveryOtp(orderId, existing.id);
+  } catch {}
 
   // COD Safety: cod_collected remains false, payment_status remains PENDING if unpaid
 
@@ -1418,28 +1472,44 @@ const reassignFailedDelivery = async (adminId, orderId, newPartnerId) => {
   const newReassignmentCount = prevReassignmentCount + 1;
 
   if (supabase) {
-    // 1. Revoke previous active/failed assignment
+    // 1. Invalidate any existing OTP for previous assignment
+    if (prevAssignment) {
+      await deliveryOtpService.invalidateDeliveryOtp(order.id, prevAssignment.id);
+    }
+
+    // 2. Update existing assignment row in-place (or insert if none exists)
     if (prevAssignment) {
       await supabase.from('delivery_assignments')
         .update({
-          status: 'REVOKED',
-          revoked_at: nowIso,
-          revoked_by: isUUID(adminId) ? adminId : null,
-          revocation_reason: 'REASSIGNED_AFTER_FAILURE',
+          delivery_partner_id: newPartnerId,
+          assigned_by: isUUID(adminId) ? adminId : null,
+          status: 'ASSIGNED',
+          assigned_at: nowIso,
+          accepted_at: null,
+          picked_up_at: null,
+          out_for_delivery_at: null,
+          delivered_at: null,
+          failed_at: null,
+          failure_reason: null,
+          failure_notes: null,
+          reassignment_count: newReassignmentCount,
+          delivery_otp_hash: null,
+          delivery_otp_expires_at: null,
+          delivery_otp_verified_at: null,
+          delivery_otp_attempts: 0,
           updated_at: nowIso
         })
         .eq('id', prevAssignment.id);
+    } else {
+      await supabase.from('delivery_assignments').insert([{
+        order_id: order.id,
+        delivery_partner_id: newPartnerId,
+        assigned_by: isUUID(adminId) ? adminId : null,
+        status: 'ASSIGNED',
+        assigned_at: nowIso,
+        reassignment_count: newReassignmentCount
+      }]);
     }
-
-    // 2. Create NEW assignment with status ASSIGNED
-    await supabase.from('delivery_assignments').insert([{
-      order_id: order.id,
-      delivery_partner_id: newPartnerId,
-      assigned_by: isUUID(adminId) ? adminId : null,
-      status: 'ASSIGNED',
-      assigned_at: nowIso,
-      reassignment_count: newReassignmentCount
-    }]);
 
     // 3. Update orders.status back to PROCESSING
     await supabase.from('orders')
@@ -1576,6 +1646,8 @@ const retryFailedDelivery = async (adminId, orderId) => {
           updated_at: nowIso
         })
         .eq('id', prevAssignment.id);
+
+      await deliveryOtpService.invalidateDeliveryOtp(order.id, prevAssignment.id);
     }
 
     // 2. Create NEW assignment
@@ -1695,6 +1767,8 @@ const returnOrderToStore = async (adminId, orderId) => {
     }
   }
 
+  await deliveryOtpService.invalidateDeliveryOtp(order.id);
+
   await logAdminActivity(adminId, 'RETURN_TO_STORE_INITIATED', 'order', order.id, {
     orderNumber: order.order_number
   });
@@ -1792,6 +1866,7 @@ const cancelOrderAfterDeliveryFailure = async (adminId, orderId, reason = 'Cance
   // 2. Inventory Handling: Release reserved stock idempotently
   const orderItems = (order.order_items || []).map(i => ({ productId: i.product_id, quantity: i.quantity }));
   await inventoryService.releaseStock(orderItems, order.id, `CANCELLED_AFTER_DELIVERY_FAILURE: ${reason}`);
+  await deliveryOtpService.invalidateDeliveryOtp(order.id);
 
   // 3. Update orders table -> CANCELLED
   if (supabase) {

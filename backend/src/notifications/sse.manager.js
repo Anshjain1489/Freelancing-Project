@@ -155,6 +155,12 @@ const broadcastDeliveryUpdate = (deliveryUpdate) => {
             ...deliveryUpdate
           };
 
+          // Phase 25 Privacy Safeguard: Ensure raw OTPs and OTP hashes are NEVER broadcast over SSE
+          delete payload.delivery_otp_hash;
+          delete payload.deliveryOtpHash;
+          delete payload.rawOtp;
+          delete payload.otp;
+
           // Privacy Sanitization: Omit internal failure notes & secrets for non-admin streams
           if (!isAdmin) {
             delete payload.failure_notes;

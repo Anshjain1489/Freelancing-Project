@@ -1,6 +1,7 @@
 const assert = require('assert');
 const supabase = require('./config/supabase');
 const deliveryService = require('./services/delivery.management.service');
+const deliveryOtpService = require('./services/deliveryOtp.service');
 const AppError = require('./utils/AppError');
 const { HTTP_STATUS } = require('./constants/statusCodes');
 const { authorizeDeliveryPartner } = require('./middleware/auth.middleware');
@@ -260,6 +261,9 @@ async function runPhase23Tests() {
   console.log('\n📌 GROUP 4: PREPAID & COD COMPLETION SAFEGUARDS (TESTS 21 - 28)\n');
 
   await test('21. Prepaid Order 1 marked DELIVERED successfully', async () => {
+    const otpRes = await deliveryOtpService.getDeliveryOtpForCustomer(customerId, 'CUSTOMER', order1Id);
+    await deliveryOtpService.verifyDeliveryOtp(partner1Id, order1Id, otpRes.otp);
+
     const res = await deliveryService.completeDelivery(partner1Id, order1Id, { codCollected: false });
     assert.strictEqual(res.success, true);
   });
@@ -285,6 +289,9 @@ async function runPhase23Tests() {
     await deliveryService.startDelivery(partner1Id, order2Id);
     const detail = await deliveryService.getPartnerOrderById(partner1Id, order2Id);
     assert.strictEqual(detail.deliveryStatus, 'OUT_FOR_DELIVERY');
+
+    const otpRes = await deliveryOtpService.getDeliveryOtpForCustomer(customerId, 'CUSTOMER', order2Id);
+    await deliveryOtpService.verifyDeliveryOtp(partner1Id, order2Id, otpRes.otp);
   });
 
   await test('25. COD Order 2 completion without codCollected returns 400 Bad Request', async () => {

@@ -81,6 +81,17 @@ const failReturnPickup = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, HTTP_STATUS.OK, result.message, result);
 });
 
+const deliveryOtpService = require('../services/deliveryOtp.service');
+
+const verifyDeliveryOtp = asyncHandler(async (req, res) => {
+  const result = await deliveryOtpService.verifyDeliveryOtp(
+    req.user.id,
+    req.params.id,
+    req.body?.otp
+  );
+  return ApiResponse.success(res, HTTP_STATUS.OK, result.message, result);
+});
+
 module.exports = {
   getPartnerDashboard,
   getPartnerOrders,
@@ -91,6 +102,7 @@ module.exports = {
   deliverOrder,
   completeDelivery,
   failDelivery,
+  verifyDeliveryOtp,
   getReturnPickups,
   acceptReturnPickup,
   markReturnPickedUp,

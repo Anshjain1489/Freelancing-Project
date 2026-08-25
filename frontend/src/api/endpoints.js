@@ -59,7 +59,8 @@ export const ENDPOINTS = {
     CANCEL: (id) => `/orders/${id}/cancel`,
     CREATE_PAYMENT: (id) => `/orders/${id}/create-payment`,
     RETRY_PAYMENT: (id) => `/orders/${id}/payment/retry`,
-    ORDER_TRACKING: (id) => `/orders/${id}/tracking`
+    ORDER_TRACKING: (id) => `/orders/${id}/tracking`,
+    DELIVERY_OTP: (id) => `/orders/${id}/delivery-otp`
   },
 
   DELIVERY: {
@@ -69,6 +70,7 @@ export const ENDPOINTS = {
     ACCEPT: (id) => `/delivery/orders/${id}/accept`,
     PICKUP: (id) => `/delivery/orders/${id}/pickup`,
     START: (id) => `/delivery/orders/${id}/start`,
+    VERIFY_OTP: (id) => `/delivery/orders/${id}/verify-otp`,
     DELIVER: (id) => `/delivery/orders/${id}/deliver`,
     COMPLETE: (id) => `/delivery/orders/${id}/complete`,
     FAIL: (id) => `/delivery/orders/${id}/fail`,

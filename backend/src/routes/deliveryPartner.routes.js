@@ -13,6 +13,7 @@ router.get('/orders/:id', deliveryController.getPartnerOrderById);
 router.post('/orders/:id/accept', deliveryController.acceptDelivery);
 router.post('/orders/:id/pickup', deliveryController.pickupDelivery);
 router.post('/orders/:id/start', deliveryController.startDelivery);
+router.post('/orders/:id/verify-otp', deliveryController.verifyDeliveryOtp);
 router.post('/orders/:id/deliver', deliveryController.deliverOrder);
 router.post('/orders/:id/complete', deliveryController.completeDelivery);
 router.post('/orders/:id/fail', deliveryController.failDelivery);

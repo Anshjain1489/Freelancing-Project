@@ -33,13 +33,18 @@ export const deliveryPartnerService = {
     return response.data;
   },
 
-  deliverOrder: async (id, codPayload = {}) => {
-    const response = await apiClient.post(ENDPOINTS.DELIVERY.COMPLETE(id), codPayload);
+  verifyDeliveryOtp: async (id, otp) => {
+    const response = await apiClient.post(ENDPOINTS.DELIVERY.VERIFY_OTP(id), { otp });
     return response.data;
   },
 
-  completeDelivery: async (id, codPayload = {}) => {
-    const response = await apiClient.post(ENDPOINTS.DELIVERY.COMPLETE(id), codPayload);
+  deliverOrder: async (id, payload = {}) => {
+    const response = await apiClient.post(ENDPOINTS.DELIVERY.COMPLETE(id), payload);
+    return response.data;
+  },
+
+  completeDelivery: async (id, payload = {}) => {
+    const response = await apiClient.post(ENDPOINTS.DELIVERY.COMPLETE(id), payload);
     return response.data;
   },
 

@@ -873,6 +873,49 @@ export const DeliveryAdminPage = () => {
                 </div>
               )}
 
+              {/* Delivery Proof & OTP Verification Section */}
+              <div style={{ background: '#F1F5F9', padding: '12px', borderRadius: '8px', border: '1px solid #CBD5E1' }}>
+                <div style={{ fontSize: '0.78rem', color: '#475569', fontWeight: 800, textTransform: 'uppercase', marginBottom: '6px' }}>
+                  🔐 Verification & Proof of Delivery
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.85rem' }}>
+                  <div>
+                    <span style={{ color: '#64748B' }}>OTP Status: </span>
+                    <strong style={{ color: viewDetailsOrder.deliveryOtpVerifiedAt || viewDetailsOrder.delivery_otp_verified_at ? '#059669' : '#D97706' }}>
+                      {viewDetailsOrder.deliveryOtpVerifiedAt || viewDetailsOrder.delivery_otp_verified_at ? '✓ Verified' : 'Pending Verification'}
+                    </strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748B' }}>Attempts: </span>
+                    <strong>{viewDetailsOrder.deliveryOtpAttempts || viewDetailsOrder.delivery_otp_attempts || 0} / 5</strong>
+                  </div>
+                  {viewDetailsOrder.recipientName && (
+                    <div style={{ gridColumn: 'span 2' }}>
+                      <span style={{ color: '#64748B' }}>Recipient Name: </span>
+                      <strong>{viewDetailsOrder.recipientName}</strong>
+                    </div>
+                  )}
+                  {(viewDetailsOrder.deliveryLatitude || viewDetailsOrder.delivery_latitude) && (
+                    <div style={{ gridColumn: 'span 2' }}>
+                      <span style={{ color: '#64748B' }}>GPS Location: </span>
+                      <strong>
+                        {viewDetailsOrder.deliveryLatitude || viewDetailsOrder.delivery_latitude}, {viewDetailsOrder.deliveryLongitude || viewDetailsOrder.delivery_longitude}
+                      </strong>
+                    </div>
+                  )}
+                  {viewDetailsOrder.proofImageUrl && (
+                    <div style={{ gridColumn: 'span 2', marginTop: '6px' }}>
+                      <div style={{ color: '#64748B', fontSize: '0.78rem', marginBottom: '4px' }}>Proof of Delivery Photo:</div>
+                      <img
+                        src={viewDetailsOrder.proofImageUrl}
+                        alt="Proof of Delivery"
+                        style={{ maxWidth: '100%', maxHeight: '140px', borderRadius: '6px', border: '1px solid #CBD5E1', objectFit: 'cover' }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Pricing */}
               <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', fontWeight: 900, fontSize: '1rem' }}>
                 <span>Total Amount Paid</span>

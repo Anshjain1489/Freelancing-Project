@@ -383,6 +383,23 @@ async function fixSchemaFull() {
     await exec('CREATE INDEX IF NOT EXISTS idx_delivery_assignments_partner_status ON delivery_assignments(delivery_partner_id, status);', 'idx_delivery_assignments_partner_status');
     await exec('CREATE INDEX IF NOT EXISTS idx_orders_delivery_attempt_count ON orders(delivery_attempt_count);', 'idx_orders_delivery_attempt_count');
 
+    // Phase 25: Delivery Proof & OTP System Columns & Indexes
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS delivery_otp_hash TEXT;', 'delivery_assignments.delivery_otp_hash');
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS delivery_otp_assignment_id UUID;', 'delivery_assignments.delivery_otp_assignment_id');
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS delivery_otp_expires_at TIMESTAMPTZ;', 'delivery_assignments.delivery_otp_expires_at');
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS delivery_otp_verified_at TIMESTAMPTZ;', 'delivery_assignments.delivery_otp_verified_at');
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS delivery_otp_attempts INTEGER NOT NULL DEFAULT 0;', 'delivery_assignments.delivery_otp_attempts');
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS delivery_otp_last_attempt_at TIMESTAMPTZ;', 'delivery_assignments.delivery_otp_last_attempt_at');
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS recipient_name VARCHAR(255);', 'delivery_assignments.recipient_name');
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS proof_image_url TEXT;', 'delivery_assignments.proof_image_url');
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS delivery_latitude NUMERIC;', 'delivery_assignments.delivery_latitude');
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS delivery_longitude NUMERIC;', 'delivery_assignments.delivery_longitude');
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ;', 'delivery_assignments.delivered_at');
+
+    await exec('CREATE INDEX IF NOT EXISTS idx_delivery_assignments_otp_expires_at ON delivery_assignments(delivery_otp_expires_at);', 'idx_delivery_assignments_otp_expires_at');
+    await exec('CREATE INDEX IF NOT EXISTS idx_delivery_assignments_otp_verified_at ON delivery_assignments(delivery_otp_verified_at);', 'idx_delivery_assignments_otp_verified_at');
+    await exec('CREATE INDEX IF NOT EXISTS idx_delivery_assignments_delivered_at ON delivery_assignments(delivered_at DESC);', 'idx_delivery_assignments_delivered_at');
+
     // Disable RLS on operational tables for backend service consistency
     const rlsTables = [
       'orders', 'payments', 'order_addresses', 'refunds', 'coupons',

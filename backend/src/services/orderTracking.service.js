@@ -14,7 +14,7 @@ function sanitizeMetadata(metadata = {}) {
   const cleaned = { ...metadata };
   const sensitiveKeywords = [
     'password', 'token', 'secret', 'apikey', 'api_key', 'razorpay_secret',
-    'internal_note', 'phone'
+    'internal_note', 'phone', 'otp', 'hash', 'delivery_otp', 'delivery_otp_hash'
   ];
   Object.keys(cleaned).forEach(key => {
     const lower = key.toLowerCase();
@@ -340,6 +340,7 @@ async function getCustomerOrderTracking(userId, userRole, orderId) {
 }
 
 module.exports = {
+  sanitizeMetadata,
   recordStatusChange,
   getOrderTrackingHistory,
   getCustomerOrderTracking,
