@@ -15,13 +15,12 @@ const performanceMiddleware = (req, res, next) => {
     const durationMs = Number(endHrTime - startHrTime) / 1e6;
     const roundedDurationMs = parseFloat(durationMs.toFixed(2));
 
-    // Append X-Response-Time header if headers not yet sent (handled via res.setHeader on writeHead)
-    performanceMetrics.recordRequest(roundedDurationMs);
-
     const requestId = req.id || res.getHeader('X-Request-ID') || '-';
     const method = req.method;
     const path = req.originalUrl || req.url;
     const statusCode = res.statusCode;
+    const userId = req.user ? (req.user.id || req.user.userId) : null;
+    const role = req.user ? req.user.role : null;
 
     const logDetails = {
       requestId,
@@ -29,15 +28,27 @@ const performanceMiddleware = (req, res, next) => {
       path,
       statusCode,
       durationMs: roundedDurationMs,
-      timestamp: new Date().toISOString()
+      userId,
+      role
     };
 
-    if (roundedDurationMs > 3000) {
-      logger.error(`[PERF_CRITICAL] ${method} ${path} - ${statusCode} took ${roundedDurationMs}ms`, logDetails);
-    } else if (roundedDurationMs > 1000) {
-      logger.warn(`[PERF_SLOW] ${method} ${path} - ${statusCode} took ${roundedDurationMs}ms`, logDetails);
-    } else if (roundedDurationMs > 500) {
-      logger.info(`[PERF_WARN] ${method} ${path} - ${statusCode} took ${roundedDurationMs}ms`, logDetails);
+    try {
+      const metricsService = require('../monitoring/metrics.service');
+      const structuredLogger = require('../monitoring/structuredLogger');
+
+      metricsService.recordHttpRequest(statusCode, roundedDurationMs);
+
+      if (roundedDurationMs > 3000) {
+        logger.error(`[PERF_CRITICAL] ${method} ${path} - ${statusCode} took ${roundedDurationMs}ms`, logDetails);
+        structuredLogger.error(`[PERF_CRITICAL] Request took ${roundedDurationMs}ms`, logDetails);
+      } else if (roundedDurationMs > 1000) {
+        logger.warn(`[PERF_SLOW] ${method} ${path} - ${statusCode} took ${roundedDurationMs}ms`, logDetails);
+        structuredLogger.warn(`[PERF_SLOW] Request took ${roundedDurationMs}ms`, logDetails);
+      } else {
+        structuredLogger.info('Request completed', logDetails);
+      }
+    } catch (err) {
+      // Monitoring isolation: failure must never break request flow
     }
   });
 

@@ -16,6 +16,7 @@ const activityAdminController = require('../controllers/admin/activityAdmin.cont
 const cancellationAdminController = require('../controllers/admin/cancellationAdmin.controller');
 const returnAdminController = require('../controllers/admin/returnAdmin.controller');
 const replacementAdminController = require('../controllers/admin/replacementAdmin.controller');
+const observabilityController = require('../controllers/observability.controller');
 
 const router = express.Router();
 
@@ -25,6 +26,7 @@ router.use(authorizeAdmin);
 
 // Dashboard Overview
 router.get('/dashboard', dashboardController.getDashboardSummary);
+router.get('/observability/dashboard', observabilityController.getObservabilityDashboard);
 
 // Business Analytics
 router.get('/analytics/revenue', analyticsAdminController.getRevenueAnalytics);

@@ -18,8 +18,20 @@ const errorMonitoringMiddleware = (err, req, res, next) => {
     body: redactSensitiveData(req.body)
   };
 
-  if (statusCode >= 500) {
-    console.error(`[ERROR_MONITORING_ALERT] 🚨 HTTP ${statusCode}:`, JSON.stringify(serverErrorLog));
+  try {
+    const errorTracker = require('../monitoring/errorTracker.service');
+    const structuredLogger = require('../monitoring/structuredLogger');
+
+    errorTracker.captureError(err, serverErrorLog);
+
+    if (statusCode >= 500) {
+      console.error(`[ERROR_MONITORING_ALERT] 🚨 HTTP ${statusCode}:`, JSON.stringify(serverErrorLog));
+      structuredLogger.error(`HTTP ${statusCode} Server Error: ${err.message}`, serverErrorLog);
+    } else {
+      structuredLogger.warn(`HTTP ${statusCode} Request Error: ${err.message}`, serverErrorLog);
+    }
+  } catch (mErr) {
+    // Monitoring isolation: failure must never break error response pipeline
   }
 
   const isProduction = process.env.NODE_ENV === 'production';

@@ -215,8 +215,11 @@ const getMetrics = () => {
     processing: 0,
     completed: 0,
     retrying: 0,
+    failed: 0,
     deadLetter: 0,
-    totalJobs: memoryJobQueue.size
+    dead_letter: 0,
+    totalJobs: memoryJobQueue.size,
+    total: memoryJobQueue.size
   };
 
   for (const job of memoryJobQueue.values()) {
@@ -224,7 +227,11 @@ const getMetrics = () => {
     else if (job.status === JOB_STATES.PROCESSING) stats.processing++;
     else if (job.status === JOB_STATES.COMPLETED) stats.completed++;
     else if (job.status === JOB_STATES.RETRYING) stats.retrying++;
-    else if (job.status === JOB_STATES.DEAD_LETTER) stats.deadLetter++;
+    else if (job.status === JOB_STATES.DEAD_LETTER) {
+      stats.deadLetter++;
+      stats.dead_letter++;
+      stats.failed++;
+    }
   }
 
   return stats;
@@ -239,5 +246,7 @@ module.exports = {
   replayDeadLetterJob,
   getJobById,
   clearQueueForTests,
-  getMetrics
+  clearForTests: clearQueueForTests,
+  getMetrics,
+  getQueueStats: getMetrics
 };
