@@ -430,9 +430,9 @@ async function runPhase24Tests() {
   console.log('====================================================\n');
 
   if (failed > 0) {
-    process.exit(1);
+    setTimeout(() => process.exit(1), 50);
   } else {
-    process.exit(0);
+    setTimeout(() => process.exit(0), 50);
   }
 }
 

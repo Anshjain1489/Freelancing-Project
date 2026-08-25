@@ -112,6 +112,26 @@ export const Navbar = () => {
             </Link>
           )}
 
+          {user?.role === 'DELIVERY_PARTNER' && (
+            <Link
+              to="/delivery/dashboard"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                backgroundColor: '#1E1B4B',
+                color: '#38BDF8',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '0.85rem',
+                fontWeight: 800,
+                textDecoration: 'none'
+              }}
+            >
+              🛵 Delivery Portal
+            </Link>
+          )}
+
           <NotificationBell />
 
           {isAuthenticated ? (

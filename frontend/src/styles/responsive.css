@@ -18,3 +18,14 @@
 @media (min-width: 1280px) {
   .xl-grid-5 { grid-template-columns: repeat(5, 1fr); }
 }
+
+/* Admin Sidebar & Main Layout Breakpoints */
+@media (min-width: 768px) {
+  .admin-sidebar {
+    transform: none !important;
+  }
+  .admin-main-content {
+    margin-left: 240px !important;
+  }
+}
+

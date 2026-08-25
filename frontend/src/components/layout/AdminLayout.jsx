@@ -54,7 +54,7 @@ export const AdminLayout = () => {
       )}
 
       {/* Admin Sidebar */}
-      <aside style={{
+      <aside className="admin-sidebar" style={{
         width: '240px',
         backgroundColor: 'var(--color-surface)',
         borderRight: '1px solid var(--color-border)',
@@ -66,8 +66,7 @@ export const AdminLayout = () => {
         left: 0,
         zIndex: 999,
         transform: mobileOpen ? 'translateX(0)' : 'translateX(-100%)',
-        transition: 'transform 0.3s ease',
-        '@media(min-width: 768px)': { transform: 'none' }
+        transition: 'transform 0.3s ease'
       }}>
         {/* Sidebar Brand Header */}
         <div style={{ padding: '20px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -127,7 +126,7 @@ export const AdminLayout = () => {
       </aside>
 
       {/* Main Admin Body Area */}
-      <div style={{ flex: 1, marginLeft: '0px', display: 'flex', flexDirection: 'column' }}>
+      <div className="admin-main-content" style={{ flex: 1, marginLeft: '0px', display: 'flex', flexDirection: 'column' }}>
         {/* Admin Topbar */}
         <header style={{ height: '60px', backgroundColor: 'var(--color-surface)', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', sticky: 'top', top: 0, zIndex: 900 }}>
           <button
