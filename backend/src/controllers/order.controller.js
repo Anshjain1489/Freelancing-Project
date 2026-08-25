@@ -1,11 +1,12 @@
 const asyncHandler = require('../utils/asyncHandler');
 const ApiResponse = require('../utils/ApiResponse');
 const orderService = require('../services/order.service');
+const paymentService = require('../services/payment.service');
 const { HTTP_STATUS } = require('../constants/statusCodes');
 
 const createOrder = asyncHandler(async (req, res) => {
-  const { addressId, couponCode } = req.body || {};
-  const result = await orderService.createOrder(req.user.id, addressId, couponCode);
+  const { addressId, couponCode, paymentMethod } = req.body || {};
+  const result = await orderService.createOrder(req.user.id, addressId, couponCode, paymentMethod);
   return ApiResponse.success(res, HTTP_STATUS.CREATED, 'Order created successfully', result);
 });
 
@@ -20,13 +21,29 @@ const getOrderById = asyncHandler(async (req, res) => {
 });
 
 const cancelOrder = asyncHandler(async (req, res) => {
-  const result = await orderService.cancelOrder(req.user.id, req.params.id, req.body.reason);
+  const result = await orderService.cancelOrder(req.user.id, req.params.id, req.body?.reason);
   return ApiResponse.success(res, HTTP_STATUS.OK, 'Order cancelled successfully', result);
 });
 
+const createOrderPayment = asyncHandler(async (req, res) => {
+  const result = await paymentService.createPaymentForOrder(req.user.id, req.params.id);
+  return ApiResponse.success(res, HTTP_STATUS.OK, 'Payment checkout initialized', result);
+});
+
 const retryOrderPayment = asyncHandler(async (req, res) => {
-  const result = await orderService.retryOrderPayment(req.user.id, req.params.id);
+  const result = await paymentService.createPaymentForOrder(req.user.id, req.params.id);
   return ApiResponse.success(res, HTTP_STATUS.OK, 'Payment checkout generated for retry', result);
+});
+
+const orderTrackingService = require('../services/orderTracking.service');
+
+const getOrderTracking = asyncHandler(async (req, res) => {
+  const result = await orderTrackingService.getCustomerOrderTracking(
+    req.user.id,
+    req.user.role,
+    req.params.id
+  );
+  return ApiResponse.success(res, HTTP_STATUS.OK, 'Order tracking retrieved successfully', result);
 });
 
 module.exports = {
@@ -34,5 +51,7 @@ module.exports = {
   getUserOrders,
   getOrderById,
   cancelOrder,
-  retryOrderPayment
+  createOrderPayment,
+  retryOrderPayment,
+  getOrderTracking
 };

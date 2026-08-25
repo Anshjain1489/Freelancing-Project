@@ -11,6 +11,7 @@ const { HTTP_STATUS, ERROR_CODES } = require('../constants/statusCodes');
 const { ORDER_STATUS, PAYMENT_STATUS } = require('./orderStatus.service');
 const config = require('../config/environment');
 const { getPaginationParams, formatPaginatedResponse } = require('../utils/pagination');
+const orderTrackingService = require('./orderTracking.service');
 
 // Local in-memory mock fallback
 const mockOrders = [];
@@ -20,12 +21,14 @@ const parsePaymentInfo = (payments) => {
   return payList.find(p => p.status === 'PAID' || p.payment_status === 'PAID') || payList[0] || {};
 };
 
-const createOrder = async (userId, addressId, couponCode = null) => {
+const createOrder = async (userId, addressId, couponCode = null, paymentMethod = 'RAZORPAY') => {
   // 1. Fetch user's active cart & calculate live subtotal
   const cart = await cartService.getUserCart(userId);
   if (!cart.items || cart.items.length === 0) {
     throw new AppError('Your cart is empty. Please add items before checkout.', HTTP_STATUS.BAD_REQUEST, ERROR_CODES.BAD_REQUEST);
   }
+
+  const cleanPaymentMethod = String(paymentMethod || 'RAZORPAY').toUpperCase() === 'COD' ? 'COD' : 'RAZORPAY';
 
   // 2. Minimum Order Value Check (Phase 16)
   const minOrderVal = config.store.minOrderValue || 199.0;
@@ -69,7 +72,7 @@ const createOrder = async (userId, addressId, couponCode = null) => {
     throw new AppError(err.message || 'Failed to reserve product stock for checkout.', HTTP_STATUS.BAD_REQUEST, ERROR_CODES.BAD_REQUEST);
   }
 
-  // 7. Create Order Database Record
+  // 7. Create Order Database Record (Phase 21: CONFIRMED + PENDING payment state)
   const orderNumber = `CKS-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
 
   if (supabase) {
@@ -86,7 +89,7 @@ const createOrder = async (userId, addressId, couponCode = null) => {
         total_amount: totalPayableAmount,
         status: ORDER_STATUS.CONFIRMED,
         payment_status: PAYMENT_STATUS.PENDING,
-        payment_method: 'RAZORPAY'
+        payment_method: cleanPaymentMethod
       }]).select('*').single();
 
       if (createErr || !newOrder) {
@@ -125,36 +128,30 @@ const createOrder = async (userId, addressId, couponCode = null) => {
         }
       }
 
-      // 8. Create Razorpay Payment Gateway Order with discounted total in paise (Phase 19.3)
-      const amountInPaise = Math.round(totalPayableAmount * 100);
-      const razorpayOrder = await razorpayService.createRazorpayOrder(amountInPaise, 'INR', orderNumber);
-
-      // 9. Create Initial Payment Record
-      await supabase.from('payments').insert([{
-        order_id: newOrder.id,
-        payment_method: 'RAZORPAY',
-        provider: 'RAZORPAY',
-        status: PAYMENT_STATUS.PENDING,
-        payment_status: PAYMENT_STATUS.PENDING,
-        razorpay_order_id: razorpayOrder.id,
-        provider_order_id: razorpayOrder.id,
-        amount: totalPayableAmount,
-        currency: 'INR'
-      }]);
+      // Record initial CONFIRMED status history entry
+      await orderTrackingService.recordStatusChange({
+        orderId: newOrder.id,
+        previousStatus: null,
+        newStatus: ORDER_STATUS.CONFIRMED,
+        changedBy: userId,
+        changedByRole: 'CUSTOMER',
+        reason: 'Order placed by customer',
+        metadata: { eventType: 'ORDER_CREATED', paymentMethod: cleanPaymentMethod }
+      });
 
       return {
         orderId: newOrder.id,
         orderNumber: newOrder.order_number,
+        status: ORDER_STATUS.CONFIRMED,
+        paymentStatus: PAYMENT_STATUS.PENDING,
+        paymentMethod: cleanPaymentMethod,
         subtotal: cart.subtotal,
         deliveryCharge,
         couponCode: coupon ? coupon.code : null,
         discountAmount,
         totalPayableAmount,
         totalAmount: totalPayableAmount, // Alias for backward compatibility
-        amountInPaise,
-        razorpayOrderId: razorpayOrder.id,
-        currency: razorpayOrder.currency,
-        keyId: config.razorpay.keyId
+        message: 'Order placed successfully. Waiting for store confirmation.'
       };
     } catch (err) {
       if (reservationSuccessful) {
@@ -165,7 +162,6 @@ const createOrder = async (userId, addressId, couponCode = null) => {
   }
 
   // Local Mock Fallback
-  const amountInPaise = Math.round(totalPayableAmount * 100);
   const mockOrder = {
     id: `ord_${Date.now()}`,
     userId,
@@ -177,6 +173,7 @@ const createOrder = async (userId, addressId, couponCode = null) => {
     totalPayableAmount,
     status: ORDER_STATUS.CONFIRMED,
     paymentStatus: PAYMENT_STATUS.PENDING,
+    paymentMethod: cleanPaymentMethod,
     items: cart.items,
     createdAt: new Date().toISOString()
   };
@@ -191,10 +188,10 @@ const createOrder = async (userId, addressId, couponCode = null) => {
     discountAmount,
     totalPayableAmount,
     totalAmount: totalPayableAmount,
-    amountInPaise,
-    razorpayOrderId: `rzp_order_mock_${Date.now()}`,
-    currency: 'INR',
-    keyId: config.razorpay.keyId || 'mock_key'
+    status: ORDER_STATUS.CONFIRMED,
+    paymentStatus: PAYMENT_STATUS.PENDING,
+    paymentMethod: cleanPaymentMethod,
+    message: 'Order placed successfully. Waiting for store confirmation.'
   };
 };
 

@@ -45,7 +45,7 @@ const authorizeAdmin = (req, res, next) => {
 };
 
 const authorizeDeliveryPartner = (req, res, next) => {
-  if (!req.user || (req.user.role !== 'DELIVERY_PARTNER' && req.user.role !== 'ADMIN')) {
+  if (!req.user || req.user.role !== 'DELIVERY_PARTNER') {
     return next(new AppError('Forbidden: Delivery Partner permissions required', HTTP_STATUS.FORBIDDEN, ERROR_CODES.FORBIDDEN));
   }
   next();

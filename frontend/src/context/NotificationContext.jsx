@@ -145,15 +145,29 @@ export const NotificationProvider = ({ children }) => {
           // 1b. Real-Time Order Status Update Event Dispatcher
           if (data.eventType === 'ORDER_STATUS_UPDATED' || data.type === 'ORDER_STATUS_UPDATED') {
             window.dispatchEvent(new CustomEvent('cks_order_status_updated', { detail: data }));
+            window.dispatchEvent(new CustomEvent('cks_order_tracking_updated', { detail: { orderId: data.orderId, status: data.newStatus || data.status, timestamp: data.updatedAt } }));
           }
 
           // 1c. Real-Time Delivery Management Event Dispatcher
           if (data.eventType?.startsWith('DELIVERY_') || data.type === 'DELIVERY_UPDATED') {
             window.dispatchEvent(new CustomEvent('cks_delivery_updated', { detail: data }));
             window.dispatchEvent(new CustomEvent('cks_order_status_updated', { detail: data }));
+            window.dispatchEvent(new CustomEvent('cks_order_tracking_updated', { detail: { orderId: data.orderId, status: data.orderStatus || data.deliveryStatus, timestamp: data.updatedAt } }));
           }
 
-          // 1d. Real-Time Inventory Event Dispatcher
+          // 1d. Real-Time Order Tracking Event Dispatcher
+          if (data.eventType === 'ORDER_TRACKING_UPDATED' || data.type === 'ORDER_TRACKING_UPDATED') {
+            window.dispatchEvent(new CustomEvent('cks_order_tracking_updated', {
+              detail: {
+                orderId: data.orderId,
+                status: data.status,
+                timestamp: data.timestamp
+              }
+            }));
+            window.dispatchEvent(new CustomEvent('cks_order_status_updated', { detail: data }));
+          }
+
+          // 1e. Real-Time Inventory Event Dispatcher
           if (data.eventType === 'INVENTORY_UPDATED' || data.type === 'INVENTORY_UPDATED' || data.eventType === 'LOW_STOCK_ALERT' || data.eventType === 'LOW_STOCK') {
             window.dispatchEvent(new CustomEvent('cks_inventory_updated', { detail: data }));
           }

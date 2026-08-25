@@ -3,7 +3,8 @@ const { z } = require('zod');
 const createOrderSchema = {
   body: z.object({
     addressId: z.string().min(1, 'Address ID is required'),
-    couponCode: z.string().nullable().optional()
+    couponCode: z.string().nullable().optional(),
+    paymentMethod: z.string().optional()
   })
 };
 

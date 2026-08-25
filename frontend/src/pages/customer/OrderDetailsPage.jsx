@@ -155,6 +155,20 @@ export const OrderDetailsPage = () => {
     }
   };
 
+  const handleCreatePayment = async () => {
+    setRetrying(true);
+    try {
+      const res = await orderService.createPayment(order.id);
+      const payload = res.data || res;
+      setRetryPayload(payload);
+      showSuccess('Payment portal ready! Proceeding to payment...');
+    } catch (err) {
+      showError(err.response?.data?.message || 'Failed to initialize payment gateway');
+    } finally {
+      setRetrying(false);
+    }
+  };
+
   const handleRetryPayment = async () => {
     setRetrying(true);
     try {
@@ -196,11 +210,78 @@ export const OrderDetailsPage = () => {
             Placed on: {new Date(order.createdAt || order.created_at).toLocaleString()}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <StatusBadge status={order.status} />
           <StatusBadge status={order.paymentStatus} />
+          <Button
+            variant="outline"
+            size="sm"
+            icon={Truck}
+            onClick={() => navigate(`/orders/${order.id}/tracking`)}
+          >
+            Track Order 🚚
+          </Button>
         </div>
       </div>
+
+      {/* PHASE 21 STATUS BANNER */}
+      {order.status === 'CONFIRMED' && (
+        <Card padding="16px" style={{ background: '#FFFBEB', border: '1px solid #FCD34D' }}>
+          <div style={{ fontWeight: 800, color: '#D97706', fontSize: '1rem' }}>
+            ⏳ Waiting for Store Confirmation
+          </div>
+          <p style={{ fontSize: '0.85rem', color: '#92400E', marginTop: '4px' }}>
+            Your order has been placed successfully and is currently awaiting store admin approval. You will receive a notification once accepted.
+          </p>
+        </Card>
+      )}
+
+      {order.status === 'PENDING_PAYMENT' && (
+        <Card padding="20px" style={{ background: '#EFF6FF', border: '1.5px solid #3B82F6' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+            <div>
+              <div style={{ fontWeight: 800, color: '#1D4ED8', fontSize: '1.05rem' }}>
+                💳 Order Accepted! Please Complete Payment
+              </div>
+              <p style={{ fontSize: '0.85rem', color: '#1E40AF', marginTop: '4px' }}>
+                Store admin has accepted your order. Complete your payment to start order processing.
+              </p>
+            </div>
+            <div>
+              {retryPayload ? (
+                <RazorpayCheckoutButton orderDetails={retryPayload} onSuccess={fetchOrder} />
+              ) : (
+                <Button variant="primary" size="md" loading={retrying} onClick={handleCreatePayment}>
+                  💳 Pay Now ({formatCurrency(order.totalAmount)})
+                </Button>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {order.status === 'PROCESSING' && (
+        <Card padding="16px" style={{ background: '#ECFDF5', border: '1px solid #6EE7B7' }}>
+          <div style={{ fontWeight: 800, color: '#047857', fontSize: '0.95rem' }}>
+            {String(order.paymentMethod || '').toUpperCase() === 'COD'
+              ? '📦 Order Accepted. Cash on Delivery.'
+              : '✅ Payment Successful. Your order is being processed.'}
+          </div>
+        </Card>
+      )}
+
+      {order.status === 'REJECTED' && (
+        <Card padding="16px" style={{ background: '#FEF2F2', border: '1px solid #FCA5A5' }}>
+          <div style={{ fontWeight: 800, color: '#DC2626', fontSize: '1rem' }}>
+            ❌ Order Rejected
+          </div>
+          {order.rejectionReason && (
+            <p style={{ fontSize: '0.85rem', color: '#991B1B', marginTop: '4px' }}>
+              Reason: {order.rejectionReason}
+            </p>
+          )}
+        </Card>
+      )}
 
       {/* VISUAL ORDER DELIVERY TIMELINE */}
       {order.status !== 'REJECTED' && order.status !== 'CANCELLED' && (
@@ -218,7 +299,7 @@ export const OrderDetailsPage = () => {
               { id: 'DELIVERED', label: 'Delivered', icon: '🎉' }
             ].map((step, idx) => {
               const statusOrder = ['CONFIRMED', 'PROCESSING', 'READY_FOR_DELIVERY', 'OUT_FOR_DELIVERY', 'DELIVERED'];
-              const currentIdx = statusOrder.indexOf(order.status);
+              const currentIdx = statusOrder.indexOf(order.status === 'PENDING_PAYMENT' ? 'CONFIRMED' : order.status);
               const stepIdx = statusOrder.indexOf(step.id);
               const isCompleted = stepIdx <= currentIdx;
               const isCurrent = stepIdx === currentIdx;
@@ -295,6 +376,10 @@ export const OrderDetailsPage = () => {
 
       {/* Dynamic Action Buttons according to Eligibility */}
       <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+        <Button variant="primary" icon={Truck} onClick={() => navigate(`/orders/${order.id}/tracking`)}>
+          🚚 Track Order
+        </Button>
+
         {canCancel && (
           <Button variant="danger" icon={XCircle} onClick={() => setIsCancelModalOpen(true)}>
             Cancel Order

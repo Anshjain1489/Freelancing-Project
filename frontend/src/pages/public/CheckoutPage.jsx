@@ -143,7 +143,9 @@ export const CheckoutPage = () => {
     await fetchPreview(selectedAddressId, '');
   };
 
-  // 3. Create Order & Get Razorpay Payload
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('RAZORPAY');
+
+  // 3. Create Order & Redirect to Order Details (Phase 21: Await Admin Approval Flow)
   const handleProceedToPayment = async () => {
     if (!selectedAddressId) {
       showError('Please select a delivery address');
@@ -154,11 +156,11 @@ export const CheckoutPage = () => {
     setError(null);
     try {
       const codeToSend = appliedCoupon?.code || preview?.coupon?.code || preview?.appliedCoupon?.code || (couponInput.trim() ? couponInput.trim().toUpperCase() : null);
-      const res = await orderService.createOrder(selectedAddressId, codeToSend);
+      const res = await orderService.createOrder(selectedAddressId, codeToSend, selectedPaymentMethod);
       const orderData = res.data?.orderId ? res.data : (res.orderId ? res : res.data || res);
       
-      setOrderDetails(orderData);
-      showSuccess('Order created! Opening secure payment portal...');
+      showSuccess(res.message || '⏳ Order placed successfully. Waiting for store confirmation.');
+      navigate(`/orders/${orderData.orderId || orderData.id}`);
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Failed to create order. Please check stock or cart.');
     } finally {
@@ -235,7 +237,47 @@ export const CheckoutPage = () => {
           )}
         </Card>
 
-        {/* 2. COUPON CODE SECTION */}
+        {/* 2. PAYMENT METHOD SELECTION */}
+        <Card padding="20px">
+          <h3 style={{ fontSize: '1.05rem', fontWeight: 800, marginBottom: '14px' }}>2. Select Payment Method 💳</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div
+              onClick={() => setSelectedPaymentMethod('RAZORPAY')}
+              style={{
+                padding: '14px',
+                borderRadius: '8px',
+                border: selectedPaymentMethod === 'RAZORPAY' ? '2px solid var(--color-primary)' : '1px solid var(--color-border)',
+                background: selectedPaymentMethod === 'RAZORPAY' ? 'var(--color-mint-light)' : '#FFF',
+                cursor: 'pointer',
+                fontWeight: 700
+              }}
+            >
+              <div>💳 Online Payment (Razorpay)</div>
+              <div style={{ fontSize: '0.78rem', color: '#666', marginTop: '4px', fontWeight: 400 }}>
+                UPI, Credit/Debit Cards, NetBanking (Pay after store confirmation)
+              </div>
+            </div>
+
+            <div
+              onClick={() => setSelectedPaymentMethod('COD')}
+              style={{
+                padding: '14px',
+                borderRadius: '8px',
+                border: selectedPaymentMethod === 'COD' ? '2px solid var(--color-primary)' : '1px solid var(--color-border)',
+                background: selectedPaymentMethod === 'COD' ? 'var(--color-mint-light)' : '#FFF',
+                cursor: 'pointer',
+                fontWeight: 700
+              }}
+            >
+              <div>💵 Cash On Delivery (COD)</div>
+              <div style={{ fontSize: '0.78rem', color: '#666', marginTop: '4px', fontWeight: 400 }}>
+                Pay cash to delivery partner when items are delivered
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* 3. COUPON CODE SECTION */}
         <Card padding="20px" style={{ background: '#FAF9FE', border: '1px solid #E2D9F3' }}>
           <h3 style={{ fontSize: '1.05rem', fontWeight: 800, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px', color: '#5A32A3' }}>
             <Tag size={18} /> 🎟️ Have a Coupon Code?
@@ -348,12 +390,12 @@ export const CheckoutPage = () => {
           )}
         </Card>
 
-        {/* 3. Order Summary & Price Breakdown */}
+        {/* 4. Order Summary & Price Breakdown */}
         {loadingPreview ? (
           <Skeleton height="200px" borderRadius="12px" />
         ) : preview ? (
           <Card padding="24px" style={{ backgroundColor: 'var(--color-surface)' }}>
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, marginBottom: '16px' }}>3. Order Summary & Price Breakdown</h3>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, marginBottom: '16px' }}>4. Order Summary & Price Breakdown</h3>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
               {preview.items.map((item, idx) => (
@@ -399,22 +441,18 @@ export const CheckoutPage = () => {
               </div>
             </div>
 
-            {/* Payment Button Actions */}
+            {/* Submit Order Action Button */}
             <div style={{ marginTop: '24px' }}>
-              {orderDetails ? (
-                <RazorpayCheckoutButton orderDetails={orderDetails} />
-              ) : (
-                <Button
-                  variant="primary"
-                  size="lg"
-                  fullWidth
-                  loading={creatingOrder}
-                  icon={ShoppingBag}
-                  onClick={handleProceedToPayment}
-                >
-                  {creatingOrder ? 'Creating secure payment...' : `Proceed to Payment (${formatCurrency(netPayable)})`}
-                </Button>
-              )}
+              <Button
+                variant="primary"
+                size="lg"
+                fullWidth
+                loading={creatingOrder}
+                icon={ShoppingBag}
+                onClick={handleProceedToPayment}
+              >
+                {creatingOrder ? 'Placing Order...' : `Place Order (${formatCurrency(netPayable)})`}
+              </Button>
             </div>
           </Card>
         ) : null}

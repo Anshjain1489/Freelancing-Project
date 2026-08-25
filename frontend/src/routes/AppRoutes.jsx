@@ -36,6 +36,7 @@ const Profile = lazy(() => import('../pages/customer/Profile').then(m => ({ defa
 const Addresses = lazy(() => import('../pages/customer/Addresses').then(m => ({ default: m.Addresses })));
 const OrdersPage = lazy(() => import('../pages/customer/OrdersPage').then(m => ({ default: m.OrdersPage })));
 const OrderDetailsPage = lazy(() => import('../pages/customer/OrderDetailsPage').then(m => ({ default: m.OrderDetailsPage })));
+const OrderTrackingPage = lazy(() => import('../pages/customer/OrderTrackingPage').then(m => ({ default: m.OrderTrackingPage })));
 const NotificationsPage = lazy(() => import('../pages/customer/NotificationsPage').then(m => ({ default: m.NotificationsPage })));
 
 // Lazy-Loaded Admin Pages (Code Splitting for Admin Bundle Isolation)
@@ -52,7 +53,9 @@ const PromotionsPage = lazy(() => import('../pages/admin/PromotionsPage').then(m
 const DeliveryAdminPage = lazy(() => import('../pages/admin/DeliveryAdminPage').then(m => ({ default: m.DeliveryAdminPage })));
 const CouponsAdminPage = lazy(() => import('../pages/admin/CouponsAdminPage').then(m => ({ default: m.CouponsAdminPage })));
 const DeliveryDashboardPage = lazy(() => import('../pages/delivery/DeliveryDashboardPage').then(m => ({ default: m.DeliveryDashboardPage })));
+const DeliveryDashboard = lazy(() => import('../pages/delivery/DeliveryDashboard').then(m => ({ default: m.DeliveryDashboard })));
 const DeliveryOrdersPage = lazy(() => import('../pages/delivery/DeliveryOrdersPage').then(m => ({ default: m.DeliveryOrdersPage })));
+const DeliveryOrderDetailsPage = lazy(() => import('../pages/delivery/DeliveryOrderDetailsPage').then(m => ({ default: m.DeliveryOrderDetailsPage })));
 
 // Lazy-Loaded Phase 18 Pages
 const MyCancellationsPage = lazy(() => import('../pages/customer/MyCancellationsPage').then(m => ({ default: m.MyCancellationsPage })));
@@ -86,7 +89,7 @@ const ProtectedDeliveryRoute = ({ children }) => {
   const { isAuthenticated, user, isLoading } = useAuth();
   if (isLoading) return <div style={{ padding: '40px', textAlign: 'center' }}><Spinner /></div>;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  if (user?.role !== 'DELIVERY_PARTNER' && user?.role !== 'ADMIN') return <Navigate to="/" replace />;
+  if (user?.role !== 'DELIVERY_PARTNER') return <Navigate to="/" replace />;
   return children;
 };
 
@@ -146,6 +149,11 @@ export const AppRoutes = () => {
               <OrdersPage />
             </ProtectedCustomerRoute>
           } />
+          <Route path="/orders/:orderId/tracking" element={
+            <ProtectedCustomerRoute>
+              <OrderTrackingPage />
+            </ProtectedCustomerRoute>
+          } />
           <Route path="/orders/:orderId" element={
             <ProtectedCustomerRoute>
               <OrderDetailsPage />
@@ -175,12 +183,17 @@ export const AppRoutes = () => {
           {/* Delivery Partner Protected Routes */}
           <Route path="/delivery/dashboard" element={
             <ProtectedDeliveryRoute>
-              <DeliveryDashboardPage />
+              <DeliveryDashboard />
             </ProtectedDeliveryRoute>
           } />
           <Route path="/delivery/orders" element={
             <ProtectedDeliveryRoute>
               <DeliveryOrdersPage />
+            </ProtectedDeliveryRoute>
+          } />
+          <Route path="/delivery/orders/:orderId" element={
+            <ProtectedDeliveryRoute>
+              <DeliveryOrderDetailsPage />
             </ProtectedDeliveryRoute>
           } />
         </Route>

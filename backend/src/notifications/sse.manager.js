@@ -320,6 +320,41 @@ const broadcastReturnPickupUpdate = (pickupUpdate) => {
   });
 };
 
+/**
+ * Broadcast real-time order tracking update to Admins and targeted order Customer
+ */
+const broadcastOrderTrackingUpdate = (trackingPayload) => {
+  const targetUserId = trackingPayload.userId || trackingPayload.user_id || trackingPayload.customerId;
+
+  sseClients.forEach((clientsSet, userId) => {
+    clientsSet.forEach(res => {
+      if (!res.writable || res.destroyed || res.writableEnded) {
+        removeClient(userId, res);
+        return;
+      }
+
+      const isTargetCustomer = targetUserId && String(userId) === String(targetUserId);
+      const isAdmin = res.userRole === 'ADMIN';
+
+      if (isAdmin || isTargetCustomer) {
+        try {
+          res.write(`data: ${JSON.stringify({
+            eventType: 'ORDER_TRACKING_UPDATED',
+            type: 'ORDER_TRACKING_UPDATED',
+            orderId: trackingPayload.orderId,
+            status: trackingPayload.status,
+            message: trackingPayload.message || 'Order tracking updated',
+            timestamp: trackingPayload.timestamp || new Date().toISOString()
+          })}\n\n`);
+        } catch (err) {
+          logger.error(`[SSE_TRACKING_BROADCAST_ERR] Failed for userId=${userId}`, err);
+          removeClient(userId, res);
+        }
+      }
+    });
+  });
+};
+
 // Send keep-alive heartbeat ping every 25 seconds for Render deployment compatibility
 setInterval(() => {
   sseClients.forEach((clientsSet, userId) => {
@@ -348,5 +383,6 @@ module.exports = {
   broadcastCancellationUpdate,
   broadcastReturnUpdate,
   broadcastReplacementUpdate,
-  broadcastReturnPickupUpdate
+  broadcastReturnPickupUpdate,
+  broadcastOrderTrackingUpdate
 };

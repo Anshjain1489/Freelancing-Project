@@ -8,6 +8,7 @@ const sseManager = require('../../notifications/sse.manager');
 const AppError = require('../../utils/AppError');
 const { HTTP_STATUS } = require('../../constants/statusCodes');
 const { getPaginationParams, formatPaginatedResponse } = require('../../utils/pagination');
+const orderTrackingService = require('../orderTracking.service');
 
 // Mock list fallback
 const mockList = [
@@ -119,10 +120,14 @@ const acceptOrder = async (adminId, orderId, req = null) => {
       throw new AppError('This order has already been processed by another administrator.', HTTP_STATUS.CONFLICT);
     }
 
+    const isCod = String(existing.payment_method || '').toUpperCase() === 'COD';
+    const isPaid = existing.payment_status === 'PAID';
+    const targetStatus = (isCod || isPaid) ? ORDER_STATUS.PROCESSING : ORDER_STATUS.PENDING_PAYMENT;
+
     // Atomic Database Update: WHERE status = 'CONFIRMED'
     let { data: updated, error } = await supabase.from('orders')
       .update({
-        status: ORDER_STATUS.PROCESSING,
+        status: targetStatus,
         accepted_by: adminId,
         accepted_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -135,7 +140,7 @@ const acceptOrder = async (adminId, orderId, req = null) => {
     if (error && error.message?.includes('schema cache')) {
       const fallbackRes = await supabase.from('orders')
         .update({
-          status: ORDER_STATUS.PROCESSING,
+          status: targetStatus,
           updated_at: new Date().toISOString()
         })
         .eq('id', existing.id)
@@ -153,8 +158,12 @@ const acceptOrder = async (adminId, orderId, req = null) => {
     await logAdminActivity(adminId, 'ADMIN_ORDER_ACCEPTED', 'order', existing.id, {
       orderNumber: existing.order_number,
       previousStatus: existing.status,
-      newStatus: ORDER_STATUS.PROCESSING
+      newStatus: targetStatus
     }, req);
+
+    const message = targetStatus === ORDER_STATUS.PENDING_PAYMENT
+      ? 'Your order has been accepted! Please complete payment.'
+      : 'Your order has been accepted and is being processed.';
 
     eventBus.emit(EVENT_TYPES.ORDER_ACCEPTED, {
       adminId,
@@ -163,22 +172,35 @@ const acceptOrder = async (adminId, orderId, req = null) => {
       orderNumber: existing.order_number,
       customerName: existing.users?.full_name,
       customerPhone: existing.users?.phone,
-      totalAmount: existing.total_amount
+      totalAmount: existing.total_amount,
+      status: targetStatus,
+      message
     });
 
     sseManager.broadcastDecision({
       orderId: existing.id,
       orderNumber: existing.order_number,
       previousStatus: existing.status,
-      status: ORDER_STATUS.PROCESSING,
+      status: targetStatus,
       action: 'ACCEPTED',
-      processedBy: adminId
+      processedBy: adminId,
+      message
+    });
+
+    await orderTrackingService.recordStatusChange({
+      orderId: existing.id,
+      previousStatus: existing.status,
+      newStatus: targetStatus,
+      changedBy: adminId,
+      changedByRole: 'ADMIN',
+      reason: message,
+      metadata: { eventType: 'ORDER_ACCEPTED', paymentMethod: existing.payment_method }
     });
 
     return {
       orderId: existing.id,
       orderNumber: existing.order_number,
-      status: ORDER_STATUS.PROCESSING,
+      status: targetStatus,
       message: 'Order accepted successfully 🎉'
     };
   }
@@ -188,22 +210,24 @@ const acceptOrder = async (adminId, orderId, req = null) => {
     if (mockOrder.status !== 'CONFIRMED') {
       throw new AppError('This order has already been processed by another administrator.', HTTP_STATUS.CONFLICT);
     }
-    mockOrder.status = ORDER_STATUS.PROCESSING;
+    const isCod = String(mockOrder.paymentMethod || mockOrder.payment_method || '').toUpperCase() === 'COD';
+    const isPaid = mockOrder.paymentStatus === 'PAID' || mockOrder.payment_status === 'PAID';
+    mockOrder.status = (isCod || isPaid) ? ORDER_STATUS.PROCESSING : ORDER_STATUS.PENDING_PAYMENT;
   }
 
-  eventBus.emit(EVENT_TYPES.ORDER_ACCEPTED, { adminId, orderId, orderNumber: orderId });
-  sseManager.broadcastDecision({ orderId, status: ORDER_STATUS.PROCESSING, action: 'ACCEPTED', processedBy: adminId });
+  const mockTarget = mockOrder ? mockOrder.status : ORDER_STATUS.PROCESSING;
+  eventBus.emit(EVENT_TYPES.ORDER_ACCEPTED, { adminId, orderId, orderNumber: orderId, status: mockTarget });
+  sseManager.broadcastDecision({ orderId, status: mockTarget, action: 'ACCEPTED', processedBy: adminId });
 
-  return { orderId, status: ORDER_STATUS.PROCESSING, message: 'Order accepted successfully 🎉' };
+  return { orderId, status: mockTarget, message: 'Order accepted successfully 🎉' };
 };
 
-const rejectOrder = async (adminId, orderId, { reason }, req = null) => {
+const rejectOrder = async (adminId, orderId, { reason } = {}, req = null) => {
   const sanitizedReason = reason ? String(reason).trim().slice(0, 500) : 'Store temporarily unable to fulfill item request';
 
   if (supabase) {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(orderId));
-    let query = supabase.from('orders')
-      .select('*, payments ( * )');
+    let query = supabase.from('orders').select('*, payments ( * )');
     
     if (isUuid) {
       query = query.eq('id', orderId);
@@ -217,11 +241,12 @@ const rejectOrder = async (adminId, orderId, { reason }, req = null) => {
       throw new AppError('Order not found', HTTP_STATUS.NOT_FOUND);
     }
 
-    if (existing.status !== ORDER_STATUS.CONFIRMED) {
-      throw new AppError('This order has already been processed by another administrator.', HTTP_STATUS.CONFLICT);
+    const allowRejectionStates = [ORDER_STATUS.CONFIRMED, ORDER_STATUS.PENDING_PAYMENT];
+    if (!allowRejectionStates.includes(existing.status)) {
+      throw new AppError('This order has already been processed or cannot be rejected.', HTTP_STATUS.CONFLICT);
     }
 
-    // Atomic Database Update: WHERE status = 'CONFIRMED'
+    // Atomic Database Update
     let { data: updated, error } = await supabase.from('orders')
       .update({
         status: ORDER_STATUS.REJECTED,
@@ -231,7 +256,7 @@ const rejectOrder = async (adminId, orderId, { reason }, req = null) => {
         updated_at: new Date().toISOString()
       })
       .eq('id', existing.id)
-      .eq('status', ORDER_STATUS.CONFIRMED)
+      .in('status', allowRejectionStates)
       .select('*')
       .maybeSingle();
 
@@ -242,7 +267,7 @@ const rejectOrder = async (adminId, orderId, { reason }, req = null) => {
           updated_at: new Date().toISOString()
         })
         .eq('id', existing.id)
-        .eq('status', ORDER_STATUS.CONFIRMED)
+        .in('status', allowRejectionStates)
         .select('*')
         .maybeSingle();
       updated = fallbackRes.data;
@@ -255,26 +280,47 @@ const rejectOrder = async (adminId, orderId, { reason }, req = null) => {
       throw new AppError('This order has already been processed by another administrator.', HTTP_STATUS.CONFLICT);
     }
 
-    // Release stock reservation immediately & atomically upon rejection (Decoupled from refund)
+    // Release stock reservation immediately & atomically upon rejection
     await inventoryService.releaseStock(null, existing.id, sanitizedReason);
 
+    await orderTrackingService.recordStatusChange({
+      orderId: existing.id,
+      previousStatus: existing.status,
+      newStatus: ORDER_STATUS.REJECTED,
+      changedBy: adminId,
+      changedByRole: 'ADMIN',
+      reason: sanitizedReason,
+      metadata: { eventType: 'ORDER_REJECTED' }
+    });
+
     // Fetch verified payment record
-    let paymentRecord = null;
     const { data: payRecords } = await supabase.from('payments')
       .select('*')
       .eq('order_id', existing.id)
       .order('created_at', { ascending: false });
 
-    if (payRecords && payRecords.length > 0) {
-      paymentRecord = payRecords.find(p => (p.status === 'PAID' || p.payment_status === 'PAID') && (p.razorpay_payment_id || p.provider_payment_id))
-        || payRecords.find(p => p.razorpay_payment_id || p.provider_payment_id)
-        || payRecords[0];
+    const paidRecord = payRecords ? payRecords.find(p => (p.status === 'PAID' || p.payment_status === 'PAID') && (p.razorpay_payment_id || p.provider_payment_id)) : null;
+
+    // Phase 21 Rule: If order was unpaid (payment_status !== PAID and no paid payment record exists), DO NOT trigger Razorpay refund API
+    if (existing.payment_status !== 'PAID' && !paidRecord) {
+      eventBus.emit(EVENT_TYPES.ORDER_REJECTED, { adminId, orderId: existing.id, orderNumber: existing.order_number, rejectionReason: sanitizedReason });
+      sseManager.broadcastDecision({ orderId: existing.id, status: ORDER_STATUS.REJECTED, action: 'REJECTED', processedBy: adminId });
+
+      return {
+        orderId: existing.id,
+        orderNumber: existing.order_number,
+        status: ORDER_STATUS.REJECTED,
+        paymentStatus: existing.payment_status || 'PENDING',
+        refundStatus: 'NOT_APPLICABLE',
+        rejectionReason: sanitizedReason,
+        message: 'Order rejected successfully. No refund needed for unpaid order.'
+      };
     }
 
-    // Trigger Crash-Safe Automated Refund Process
+    // Paid Order: Trigger Crash-Safe Automated Refund Process
     const refundResult = await refundService.processOrderRefund({
       order: updated,
-      paymentRecord,
+      paymentRecord: paidRecord || payRecords?.[0],
       adminId,
       reason: sanitizedReason,
       req
@@ -284,7 +330,7 @@ const rejectOrder = async (adminId, orderId, { reason }, req = null) => {
       orderId: existing.id,
       orderNumber: existing.order_number,
       status: ORDER_STATUS.REJECTED,
-      paymentStatus: paymentRecord?.status || paymentRecord?.payment_status || 'PAID',
+      paymentStatus: paidRecord?.status || paidRecord?.payment_status || 'PAID',
       refundStatus: refundResult.status,
       refundAmount: refundResult.amount,
       razorpayRefundId: refundResult.refundId,
@@ -295,7 +341,8 @@ const rejectOrder = async (adminId, orderId, { reason }, req = null) => {
 
   const mockOrder = mockList.find(o => o.id === orderId || o.orderNumber === orderId);
   if (mockOrder) {
-    if (mockOrder.status !== 'CONFIRMED') {
+    const allowRejectionStates = ['CONFIRMED', 'PENDING_PAYMENT'];
+    if (!allowRejectionStates.includes(mockOrder.status)) {
       throw new AppError('This order has already been processed by another administrator.', HTTP_STATUS.CONFLICT);
     }
     mockOrder.status = ORDER_STATUS.REJECTED;
@@ -307,7 +354,7 @@ const rejectOrder = async (adminId, orderId, { reason }, req = null) => {
   eventBus.emit(EVENT_TYPES.ORDER_REJECTED, { adminId, orderId, orderNumber: orderId, rejectionReason: sanitizedReason });
   sseManager.broadcastDecision({ orderId, status: ORDER_STATUS.REJECTED, action: 'REJECTED', processedBy: adminId });
 
-  return { orderId, status: ORDER_STATUS.REJECTED, rejectionReason: sanitizedReason, message: 'Order rejected' };
+  return { orderId, status: ORDER_STATUS.REJECTED, rejectionReason: sanitizedReason, refundStatus: 'NOT_APPLICABLE', message: 'Order rejected' };
 };
 
 const updateOrderStatus = async (userId, orderId, { status }, req = null) => {

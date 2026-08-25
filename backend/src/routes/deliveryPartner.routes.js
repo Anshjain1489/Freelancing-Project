@@ -14,6 +14,8 @@ router.post('/orders/:id/accept', deliveryController.acceptDelivery);
 router.post('/orders/:id/pickup', deliveryController.pickupDelivery);
 router.post('/orders/:id/start', deliveryController.startDelivery);
 router.post('/orders/:id/deliver', deliveryController.deliverOrder);
+router.post('/orders/:id/complete', deliveryController.completeDelivery);
+router.post('/orders/:id/fail', deliveryController.failDelivery);
 router.post('/orders/:id/failed', deliveryController.failDelivery);
 
 // Reverse Pickup Endpoints

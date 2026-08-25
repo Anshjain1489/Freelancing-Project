@@ -326,13 +326,45 @@ async function fixSchemaFull() {
       );
     `, 'create table whatsapp_delivery_notifications');
 
+    // Phase 22: Order Status History Table
+    await exec(`
+      CREATE TABLE IF NOT EXISTS order_status_history (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+        previous_status VARCHAR(50),
+        new_status VARCHAR(50) NOT NULL,
+        changed_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        changed_by_role VARCHAR(50),
+        reason TEXT,
+        metadata JSONB DEFAULT '{}',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `, 'create table order_status_history');
+
+    await exec('CREATE INDEX IF NOT EXISTS idx_order_status_history_order ON order_status_history(order_id);', 'idx_order_status_history_order');
+    await exec('CREATE INDEX IF NOT EXISTS idx_order_status_history_created_at ON order_status_history(created_at DESC);', 'idx_order_status_history_created_at');
+    await exec('ALTER TABLE order_status_history ADD COLUMN IF NOT EXISTS changed_by_role VARCHAR(50);', 'order_status_history.changed_by_role');
+    await exec('ALTER TABLE order_status_history ADD COLUMN IF NOT EXISTS reason TEXT;', 'order_status_history.reason');
+    await exec('ALTER TABLE order_status_history ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT \'{}\';', 'order_status_history.metadata');
+
+    // Phase 23: Delivery Partner Dashboard & Delivery Workflow Columns
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ;', 'delivery_assignments.accepted_at');
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS out_for_delivery_at TIMESTAMPTZ;', 'delivery_assignments.out_for_delivery_at');
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ;', 'delivery_assignments.delivered_at');
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS failed_at TIMESTAMPTZ;', 'delivery_assignments.failed_at');
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS failure_reason VARCHAR(100);', 'delivery_assignments.failure_reason');
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS failure_notes TEXT;', 'delivery_assignments.failure_notes');
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS cod_collected BOOLEAN DEFAULT FALSE;', 'delivery_assignments.cod_collected');
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS cod_collected_amount NUMERIC(10,2);', 'delivery_assignments.cod_collected_amount');
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS cod_collected_at TIMESTAMPTZ;', 'delivery_assignments.cod_collected_at');
+
     // Disable RLS on operational tables for backend service consistency
     const rlsTables = [
       'orders', 'payments', 'order_addresses', 'refunds', 'coupons',
       'delivery_assignments', 'notifications', 'notification_deliveries',
       'notification_preferences', 'admin_activity_logs', 'inventory_movements',
       'cancellation_requests', 'returns', 'return_items', 'replacement_requests', 'store_settings',
-      'whatsapp_delivery_notifications'
+      'whatsapp_delivery_notifications', 'order_status_history'
     ];
     for (const table of rlsTables) {
       await exec(`ALTER TABLE ${table} DISABLE ROW LEVEL SECURITY;`, `disable RLS on ${table}`);

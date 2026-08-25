@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { adminService } from '../../services/admin.service';
+import { orderService } from '../../services/order.service';
 import { useNotifications } from '../../context/NotificationContext';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -19,6 +20,26 @@ export const OrdersPage = () => {
   const [rejectingOrder, setRejectingOrder] = useState(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [processingId, setProcessingId] = useState(null);
+
+  const [selectedTimelineOrder, setSelectedTimelineOrder] = useState(null);
+  const [timelineHistory, setTimelineHistory] = useState([]);
+  const [loadingTimeline, setLoadingTimeline] = useState(false);
+
+  const handleViewTimeline = async (order) => {
+    setSelectedTimelineOrder(order);
+    setLoadingTimeline(true);
+    try {
+      const res = await adminService.getOrders({ search: order.orderNumber });
+      const fetched = res.data?.items?.[0];
+      const trackingRes = await orderService.getOrderTracking(order.id);
+      setTimelineHistory(trackingRes.data?.history || trackingRes.history || []);
+    } catch (err) {
+      console.error('Failed to load order history:', err);
+      setTimelineHistory([]);
+    } finally {
+      setLoadingTimeline(false);
+    }
+  };
 
   const { unresolvedOrders, fetchUnresolvedOrders } = useNotifications();
 
@@ -41,8 +62,11 @@ export const OrdersPage = () => {
   const handleAccept = async (orderId) => {
     setProcessingId(orderId);
     try {
-      await adminService.acceptOrder(orderId);
-      showSuccess('Order accepted! Status updated to PROCESSING.');
+      const res = await adminService.acceptOrder(orderId);
+      const updatedStatus = res.data?.status || 'PROCESSING';
+      showSuccess(updatedStatus === 'PENDING_PAYMENT' 
+        ? 'Order accepted! Status updated to PENDING_PAYMENT (Waiting for customer payment).' 
+        : 'Order accepted! Status updated to PROCESSING.');
       fetchOrders();
       fetchUnresolvedOrders();
     } catch (err) {
@@ -262,6 +286,7 @@ export const OrdersPage = () => {
               options={[
                 { value: '', label: 'All Statuses' },
                 { value: 'CONFIRMED', label: 'Confirmed (Pending)' },
+                { value: 'PENDING_PAYMENT', label: 'Pending Payment (Accepted)' },
                 { value: 'PROCESSING', label: 'Processing (Accepted)' },
                 { value: 'REJECTED', label: 'Rejected' },
                 { value: 'OUT_FOR_DELIVERY', label: 'Out for Delivery' },
@@ -352,6 +377,12 @@ export const OrdersPage = () => {
                         </div>
                       ) : (
                         <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                          <button
+                            onClick={() => handleViewTimeline(order)}
+                            style={{ padding: '4px 8px', fontSize: '0.75rem', background: '#F1F5F9', color: '#1E293B', border: '1px solid #CBD5E1', borderRadius: '4px', cursor: 'pointer', fontWeight: 700 }}
+                          >
+                            📜 Timeline
+                          </button>
                           {order.status === 'REJECTED' && order.refundStatus === 'FAILED' && (
                             <button
                               onClick={() => handleRetryRefund(order.id)}
@@ -367,6 +398,7 @@ export const OrdersPage = () => {
                             style={{ padding: '4px 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', fontSize: '0.8rem' }}
                           >
                             <option value="CONFIRMED">CONFIRMED</option>
+                            <option value="PENDING_PAYMENT">PENDING_PAYMENT</option>
                             <option value="PROCESSING">PROCESSING</option>
                             <option value="REJECTED">REJECTED</option>
                             <option value="OUT_FOR_DELIVERY">OUT_FOR_DELIVERY</option>
@@ -419,6 +451,71 @@ export const OrdersPage = () => {
               >
                 {rejectingOrder.paymentStatus === 'PAID' ? `❌ Reject & Refund ${formatCurrency(rejectingOrder.totalAmount)}` : '❌ Reject Order'}
               </button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* ADMINISTRATIVE ORDER STATUS HISTORY TIMELINE MODAL */}
+      {selectedTimelineOrder && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <Card padding="24px" style={{ width: '90%', maxWidth: '550px', maxHeight: '85vh', overflowY: 'auto', background: '#FFF' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #E2E8F0', paddingBottom: '12px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#1E293B', fontWeight: 800 }}>
+                  📜 Audit History: Order #{selectedTimelineOrder.orderNumber}
+                </h3>
+                <span style={{ fontSize: '0.78rem', color: '#64748B' }}>
+                  Complete chronological status transitions & audit records
+                </span>
+              </div>
+              <button
+                onClick={() => setSelectedTimelineOrder(null)}
+                style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#64748B' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {loadingTimeline ? (
+              <div style={{ padding: '24px', textAlign: 'center', color: '#64748B' }}>
+                Loading order history...
+              </div>
+            ) : timelineHistory.length === 0 ? (
+              <div style={{ padding: '24px', textAlign: 'center', color: '#64748B' }}>
+                No tracking history recorded for this order.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {timelineHistory.map((h, i) => (
+                  <div key={h.id || i} style={{ padding: '12px', background: '#F8FAFC', borderRadius: '8px', borderLeft: '4px solid #2563EB', fontSize: '0.82rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: '#0F172A', marginBottom: '4px' }}>
+                      <span>
+                        {h.previous_status ? `${h.previous_status} ➔ ` : ''}{h.new_status}
+                      </span>
+                      <span style={{ color: '#64748B', fontWeight: 500 }}>
+                        {new Date(h.created_at).toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div style={{ color: '#334155', marginTop: '2px' }}>
+                      <strong>Changed By:</strong> {h.changed_by_role} {h.changed_by ? `(${h.changed_by})` : ''}
+                    </div>
+
+                    {h.reason && (
+                      <div style={{ color: '#475569', marginTop: '2px', fontStyle: 'italic' }}>
+                        "{h.reason}"
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ marginTop: '20px', textAlign: 'right' }}>
+              <Button variant="outline" size="sm" onClick={() => setSelectedTimelineOrder(null)}>
+                Close
+              </Button>
             </div>
           </Card>
         </div>

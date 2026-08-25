@@ -2,8 +2,8 @@ import apiClient from '../api/client';
 import { ENDPOINTS } from '../api/endpoints';
 
 export const orderService = {
-  createOrder: async (addressId, couponCode = null) => {
-    const response = await apiClient.post(ENDPOINTS.ORDERS.CREATE, { addressId, couponCode });
+  createOrder: async (addressId, couponCode = null, paymentMethod = 'RAZORPAY') => {
+    const response = await apiClient.post(ENDPOINTS.ORDERS.CREATE, { addressId, couponCode, paymentMethod });
     return response.data;
   },
 
@@ -22,8 +22,18 @@ export const orderService = {
     return response.data;
   },
 
+  createPayment: async (id) => {
+    const response = await apiClient.post(ENDPOINTS.ORDERS.CREATE_PAYMENT(id));
+    return response.data;
+  },
+
   retryPayment: async (id) => {
     const response = await apiClient.post(ENDPOINTS.ORDERS.RETRY_PAYMENT(id));
+    return response.data;
+  },
+
+  getOrderTracking: async (id) => {
+    const response = await apiClient.get(ENDPOINTS.ORDERS.ORDER_TRACKING(id));
     return response.data;
   }
 };

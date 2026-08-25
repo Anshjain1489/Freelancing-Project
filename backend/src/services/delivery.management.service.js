@@ -2,12 +2,13 @@ const supabase = require('../config/supabase');
 const bcrypt = require('bcryptjs');
 const AppError = require('../utils/AppError');
 const { HTTP_STATUS } = require('../constants/statusCodes');
-const { ORDER_STATUS } = require('./orderStatus.service');
+const { ORDER_STATUS, PAYMENT_STATUS } = require('./orderStatus.service');
 const { logAdminActivity } = require('./adminLog.service');
 const eventBus = require('../events/eventBus');
 const EVENT_TYPES = require('../events/eventTypes');
 const sseManager = require('../notifications/sse.manager');
 const whatsappService = require('./whatsapp.service');
+const orderTrackingService = require('./orderTracking.service');
 
 const isUUID = (str) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 
@@ -28,7 +29,23 @@ const ACTIVE_DELIVERY_ASSIGNMENT_STATUSES = [
 
 function isOrderReadyForDelivery(order) {
   if (!order || !order.status) return false;
-  return DELIVERY_ELIGIBLE_ORDER_STATUSES.includes(order.status);
+
+  const validStatus =
+    order.status === ORDER_STATUS.PROCESSING ||
+    order.status === ORDER_STATUS.READY_FOR_DELIVERY;
+
+  const rawPaymentMethod = order.payment_method || order.paymentMethod;
+  const rawPaymentStatus = order.payment_status || order.paymentStatus;
+
+  const paymentStatus = rawPaymentStatus ? String(rawPaymentStatus).toUpperCase() : (rawPaymentMethod ? 'PENDING' : 'PAID');
+  const paymentMethod = rawPaymentMethod ? String(rawPaymentMethod).toUpperCase() : 'RAZORPAY';
+
+  const validPayment =
+    paymentStatus === PAYMENT_STATUS.PAID ||
+    paymentStatus === 'PAID' ||
+    paymentMethod === 'COD';
+
+  return Boolean(validStatus && validPayment);
 }
 
 function hasActiveDeliveryAssignment(assignments) {
@@ -496,6 +513,16 @@ const assignDeliveryPartner = async (adminId, orderId, partnerId, estimatedMinut
 
       eventBus.emit(EVENT_TYPES.DELIVERY_ASSIGNED, payload);
       sseManager.broadcastDeliveryUpdate(payload);
+
+      await orderTrackingService.recordStatusChange({
+        orderId: order.id,
+        previousStatus: order.status,
+        newStatus: order.status,
+        changedBy: adminId,
+        changedByRole: 'ADMIN',
+        reason: 'Delivery partner assigned by store admin',
+        metadata: { eventType: 'DELIVERY_ASSIGNED', deliveryPartnerId: partnerId, assignmentStatus: 'ASSIGNED' }
+      });
     }
   } else {
     const existingMock = mockDeliveryAssignments.find(a => String(a.order_id) === String(orderId) && a.status !== 'CANCELLED');
@@ -659,35 +686,90 @@ const reassignDeliveryPartner = async (adminId, orderId, newPartnerId, req = nul
 /**
  * 8. Delivery Partner: Dashboard Overview Stats
  */
+const ALLOWED_FAILURE_REASONS = [
+  'CUSTOMER_UNAVAILABLE',
+  'WRONG_ADDRESS',
+  'CUSTOMER_REFUSED',
+  'UNABLE_TO_CONTACT',
+  'ADDRESS_NOT_ACCESSIBLE',
+  'OTHER'
+];
+
 const getPartnerDashboard = async (partnerId) => {
+  let list = [];
+  const today = new Date().toISOString().split('T')[0];
+
   if (supabase) {
     const { data: assignments } = await supabase.from('delivery_assignments')
-      .select('*, orders(*)')
-      .eq('delivery_partner_id', partnerId);
+      .select('*, orders(*, order_items(*), order_addresses(*), users!orders_user_id_fkey(id, full_name, phone, email))')
+      .eq('delivery_partner_id', partnerId)
+      .order('updated_at', { ascending: false });
 
-    const list = assignments || [];
-    const today = new Date().toISOString().split('T')[0];
-
-    const pendingCount = list.filter(a => a.status === 'ASSIGNED').length;
-    const activeCount = list.filter(a => ['ACCEPTED', 'PICKED_UP', 'OUT_FOR_DELIVERY'].includes(a.status)).length;
-    const completedToday = list.filter(a => a.status === 'DELIVERED' && a.delivered_at && a.delivered_at.startsWith(today)).length;
-    const totalDelivered = list.filter(a => a.status === 'DELIVERED').length;
-    const failedCount = list.filter(a => a.status === 'FAILED_DELIVERY').length;
-
-    return {
-      pendingAssignments: pendingCount,
-      activeDeliveries: activeCount,
-      deliveredToday: completedToday,
-      totalDelivered,
-      failedDeliveries: failedCount
-    };
+    list = assignments || [];
+  } else {
+    list = mockDeliveryAssignments.filter(a => String(a.delivery_partner_id) === String(partnerId));
   }
 
-  return { pendingAssignments: 0, activeDeliveries: 0, deliveredToday: 0, totalDelivered: 0, failedDeliveries: 0 };
+  const assignedCount = list.filter(a => a.status === 'ASSIGNED').length;
+  const acceptedCount = list.filter(a => a.status === 'ACCEPTED').length;
+  const outForDeliveryCount = list.filter(a => ['OUT_FOR_DELIVERY', 'PICKED_UP'].includes(a.status)).length;
+
+  const codPendingCount = list.filter(a => {
+    const isFinished = ['DELIVERED', 'FAILED', 'FAILED_DELIVERY', 'CANCELLED'].includes(a.status);
+    const isCod = String(a.orders?.payment_method || a.payment_method || '').toUpperCase() === 'COD';
+    const isCollected = a.cod_collected === true;
+    return !isFinished && isCod && !isCollected;
+  }).length;
+
+  const failedCount = list.filter(a => ['FAILED', 'FAILED_DELIVERY'].includes(a.status)).length;
+  const deliveredTodayCount = list.filter(a => a.status === 'DELIVERED' && a.delivered_at && a.delivered_at.startsWith(today)).length;
+
+  const activeDeliveriesList = list
+    .filter(a => ['ASSIGNED', 'ACCEPTED', 'OUT_FOR_DELIVERY', 'PICKED_UP'].includes(a.status))
+    .map(a => {
+      const rawAddr = a.orders?.order_addresses?.[0] || null;
+      const deliveryAddress = parseDeliveryAddress(rawAddr) || defaultDeliveryAddress;
+      const customerPhone = a.orders?.users?.phone || '9876543210';
+
+      return {
+        assignmentId: a.id,
+        orderId: a.orders?.id || a.order_id,
+        orderNumber: a.orders?.order_number || `CKS-DEL-${a.order_id}`,
+        orderStatus: a.orders?.status || 'PROCESSING',
+        deliveryStatus: a.status,
+        customerName: a.orders?.users?.full_name || 'Customer',
+        customerPhone,
+        callUrl: generateCallUrl(customerPhone),
+        googleMapsUrl: generateGoogleMapsUrl(deliveryAddress),
+        deliveryAddress,
+        itemCount: a.orders?.order_items?.length || 0,
+        items: (a.orders?.order_items || []).map(i => ({ name: i.product_name, quantity: i.quantity, price: parseFloat(i.unit_price) })),
+        subtotal: parseFloat(a.orders?.subtotal || 0),
+        totalAmount: parseFloat(a.orders?.total_amount || 0),
+        paymentMethod: String(a.orders?.payment_method || 'RAZORPAY').toUpperCase(),
+        paymentStatus: a.orders?.payment_status || 'PAID',
+        deliveryInstructions: a.delivery_notes || a.notes || null,
+        estimatedDeliveryAt: a.estimated_delivery_at,
+        assignedAt: a.assigned_at
+      };
+    });
+
+  return {
+    success: true,
+    summary: {
+      assigned: assignedCount,
+      accepted: acceptedCount,
+      outForDelivery: outForDeliveryCount,
+      codPending: codPendingCount,
+      failed: failedCount,
+      deliveredToday: deliveredTodayCount
+    },
+    activeDeliveries: activeDeliveriesList
+  };
 };
 
 /**
- * 9. Delivery Partner: Get Assigned Orders (Strict Ownership Isolation & Call/Maps URLs)
+ * 9. Delivery Partner: Get Assigned Orders (Strict Ownership Isolation)
  */
 const getPartnerOrders = async (partnerId, queryParams = {}) => {
   if (supabase) {
@@ -725,7 +807,7 @@ const getPartnerOrders = async (partnerId, queryParams = {}) => {
           items: (a.orders?.order_items || []).map(i => ({ name: i.product_name, quantity: i.quantity, price: parseFloat(i.unit_price) })),
           subtotal: parseFloat(a.orders?.subtotal || 0),
           totalAmount: parseFloat(a.orders?.total_amount || 0),
-          paymentMethod: a.orders?.payment_method || 'RAZORPAY',
+          paymentMethod: String(a.orders?.payment_method || 'RAZORPAY').toUpperCase(),
           paymentStatus: a.orders?.payment_status || 'PAID',
           estimatedDeliveryAt: a.estimated_delivery_at,
           assignedAt: a.assigned_at,
@@ -745,7 +827,7 @@ const getPartnerOrders = async (partnerId, queryParams = {}) => {
       assignmentId: a.id,
       orderId: a.order_id,
       orderNumber: `CKS-DEL-${a.order_id}`,
-      orderStatus: a.status === 'DELIVERED' ? 'DELIVERED' : a.status === 'PICKED_UP' ? 'OUT_FOR_DELIVERY' : 'READY_FOR_DELIVERY',
+      orderStatus: a.status === 'DELIVERED' ? 'DELIVERED' : a.status === 'PICKED_UP' || a.status === 'OUT_FOR_DELIVERY' ? 'OUT_FOR_DELIVERY' : 'READY_FOR_DELIVERY',
       deliveryStatus: a.status,
       customer: { name: 'Valued Customer', phone: '9876543210', email: 'customer@example.com' },
       customerName: 'Valued Customer',
@@ -762,9 +844,11 @@ const getPartnerOrders = async (partnerId, queryParams = {}) => {
 };
 
 /**
- * 10. Delivery Partner: Get Specific Order Details (Strict Ownership Check: 403 Forbidden)
+ * 10. Delivery Partner: Get Specific Order Details (Strict Ownership Isolation: 403 Forbidden)
  */
 const getPartnerOrderById = async (partnerId, orderId) => {
+  let assignment = null;
+
   if (supabase) {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(orderId));
     let query = supabase.from('delivery_assignments')
@@ -776,323 +860,417 @@ const getPartnerOrderById = async (partnerId, orderId) => {
       query = query.eq('orders.order_number', orderId);
     }
 
-    const { data: assignment, error } = await query.maybeSingle();
-
-    if (!error && assignment) {
-      if (String(assignment.delivery_partner_id) !== String(partnerId)) {
-        throw new AppError('Forbidden: You are not authorized to view this delivery assignment', HTTP_STATUS.FORBIDDEN);
-      }
-
-      const rawAddr = assignment.orders?.order_addresses?.[0] || null;
-      const deliveryAddress = parseDeliveryAddress(rawAddr) || defaultDeliveryAddress;
-      const customerPhone = assignment.orders?.users?.phone || '9876543210';
-
-      return {
-        assignmentId: assignment.id,
-        orderId: assignment.orders?.id || assignment.order_id,
-        orderNumber: assignment.orders?.order_number || `CKS-DEL-${assignment.order_id}`,
-        orderStatus: assignment.orders?.status,
-        deliveryStatus: assignment.status,
-        customer: {
-          id: assignment.orders?.users?.id,
-          name: assignment.orders?.users?.full_name || 'Customer',
-          phone: customerPhone,
-          email: assignment.orders?.users?.email || 'customer@example.com'
-        },
-        customerName: assignment.orders?.users?.full_name || 'Customer',
-        customerPhone,
-        customerEmail: assignment.orders?.users?.email || '',
-        callUrl: generateCallUrl(customerPhone),
-        googleMapsUrl: generateGoogleMapsUrl(deliveryAddress),
-        deliveryAddress,
-        address: rawAddr,
-        items: (assignment.orders?.order_items || []).map(i => ({ name: i.product_name, quantity: i.quantity, price: parseFloat(i.unit_price) })),
-        subtotal: parseFloat(assignment.orders?.subtotal || 0),
-        totalAmount: parseFloat(assignment.orders?.total_amount || 0),
-        paymentStatus: assignment.orders?.payment_status || 'PAID',
-        paymentMethod: assignment.orders?.payment_method || 'RAZORPAY',
-        estimatedDeliveryAt: assignment.estimated_delivery_at,
-        assignedAt: assignment.assigned_at,
-        acceptedAt: assignment.accepted_at,
-        pickedUpAt: assignment.picked_up_at,
-        deliveredAt: assignment.delivered_at,
-        failedAt: assignment.failed_at,
-        failureReason: assignment.failure_reason
-      };
-    }
+    const { data, error } = await query.maybeSingle();
+    if (!error && data) assignment = data;
   }
 
-  const foundMock = mockDeliveryAssignments.find(a => String(a.order_id) === String(orderId));
-  if (foundMock) {
-    if (String(foundMock.delivery_partner_id) !== String(partnerId)) {
-      throw new AppError('Forbidden: You are not authorized to view this delivery assignment', HTTP_STATUS.FORBIDDEN);
-    }
-    return {
-      assignmentId: foundMock.id,
-      orderId: foundMock.order_id,
-      orderNumber: `CKS-DEL-${foundMock.order_id}`,
-      deliveryStatus: foundMock.status,
-      customerName: 'Valued Customer',
-      customerPhone: '9876543210',
-      callUrl: 'tel:+919876543210',
-      googleMapsUrl: 'https://www.google.com/maps/search/?api=1&query=Mahruni',
-      deliveryAddress: defaultDeliveryAddress
-    };
+  if (!assignment) {
+    const foundMock = mockDeliveryAssignments.find(a => String(a.order_id) === String(orderId));
+    if (foundMock) assignment = foundMock;
   }
 
-  throw new AppError('Assigned delivery order not found', HTTP_STATUS.NOT_FOUND);
+  if (!assignment) {
+    throw new AppError('Assigned delivery order not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  if (String(assignment.delivery_partner_id) !== String(partnerId)) {
+    throw new AppError('Forbidden: You are not authorized to view this delivery assignment', HTTP_STATUS.FORBIDDEN);
+  }
+
+  const rawAddr = assignment.orders?.order_addresses?.[0] || null;
+  const deliveryAddress = parseDeliveryAddress(rawAddr) || defaultDeliveryAddress;
+  const customerPhone = assignment.orders?.users?.phone || '9876543210';
+
+  return {
+    assignmentId: assignment.id,
+    orderId: assignment.orders?.id || assignment.order_id,
+    orderNumber: assignment.orders?.order_number || `CKS-DEL-${assignment.order_id}`,
+    orderStatus: assignment.orders?.status || 'PROCESSING',
+    deliveryStatus: assignment.status,
+    customer: {
+      id: assignment.orders?.users?.id,
+      name: assignment.orders?.users?.full_name || 'Customer',
+      phone: customerPhone,
+      email: assignment.orders?.users?.email || 'customer@example.com'
+    },
+    customerName: assignment.orders?.users?.full_name || 'Customer',
+    customerPhone,
+    customerEmail: assignment.orders?.users?.email || '',
+    callUrl: generateCallUrl(customerPhone),
+    googleMapsUrl: generateGoogleMapsUrl(deliveryAddress),
+    deliveryAddress,
+    address: rawAddr,
+    items: (assignment.orders?.order_items || []).map(i => ({ name: i.product_name, quantity: i.quantity, price: parseFloat(i.unit_price) })),
+    subtotal: parseFloat(assignment.orders?.subtotal || 0),
+    totalAmount: parseFloat(assignment.orders?.total_amount || 0),
+    paymentStatus: assignment.orders?.payment_status || 'PAID',
+    paymentMethod: String(assignment.orders?.payment_method || 'RAZORPAY').toUpperCase(),
+    deliveryInstructions: assignment.delivery_notes || assignment.notes || null,
+    estimatedDeliveryAt: assignment.estimated_delivery_at,
+    assignedAt: assignment.assigned_at,
+    acceptedAt: assignment.accepted_at,
+    pickedUpAt: assignment.picked_up_at,
+    deliveredAt: assignment.delivered_at,
+    failedAt: assignment.failed_at,
+    failureReason: assignment.failure_reason
+  };
 };
 
 /**
  * 11. Delivery Partner: Accept Assigned Delivery
  */
 const acceptDelivery = async (partnerId, orderId) => {
+  let existing = null;
+
   if (supabase) {
-    const { data: updated, error } = await supabase.from('delivery_assignments')
-      .update({
-        status: 'ACCEPTED',
-        accepted_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .eq('order_id', orderId)
-      .eq('delivery_partner_id', partnerId)
-      .eq('status', 'ASSIGNED')
+    const { data } = await supabase.from('delivery_assignments')
       .select('*, orders(user_id, order_number)')
+      .eq('order_id', orderId)
       .maybeSingle();
 
-    if (!error && updated) {
-      const payload = {
-        eventType: EVENT_TYPES.DELIVERY_ACCEPTED,
-        orderId,
-        orderNumber: updated.orders?.order_number,
-        deliveryPartnerId: partnerId,
-        customerId: updated.orders?.user_id,
-        deliveryStatus: 'ACCEPTED',
-        updatedAt: new Date().toISOString()
-      };
-
-      eventBus.emit(EVENT_TYPES.DELIVERY_ACCEPTED, payload);
-      sseManager.broadcastDeliveryUpdate(payload);
-
-      return { success: true, message: 'Delivery assignment accepted successfully!' };
-    }
+    if (data) existing = data;
   }
 
-  const foundMock = mockDeliveryAssignments.find(a => String(a.order_id) === String(orderId) && String(a.delivery_partner_id) === String(partnerId));
-  if (foundMock) {
-    if (foundMock.status !== 'ASSIGNED') {
-      throw new AppError('This delivery assignment has already been accepted or modified.', HTTP_STATUS.CONFLICT);
-    }
-    foundMock.status = 'ACCEPTED';
-    foundMock.accepted_at = new Date().toISOString();
+  if (!existing) {
+    existing = mockDeliveryAssignments.find(a => String(a.order_id) === String(orderId));
   }
+
+  if (!existing) {
+    throw new AppError('Assigned delivery order not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  if (String(existing.delivery_partner_id) !== String(partnerId)) {
+    throw new AppError('Forbidden: You are not authorized to accept this delivery assignment', HTTP_STATUS.FORBIDDEN);
+  }
+
+  if (existing.status !== 'ASSIGNED') {
+    throw new AppError('This delivery assignment has already been accepted or modified.', HTTP_STATUS.CONFLICT);
+  }
+
+  const nowIso = new Date().toISOString();
+
+  if (supabase) {
+    await supabase.from('delivery_assignments')
+      .update({
+        status: 'ACCEPTED',
+        accepted_at: nowIso,
+        updated_at: nowIso
+      })
+      .eq('id', existing.id);
+  }
+
+  existing.status = 'ACCEPTED';
+  existing.accepted_at = nowIso;
 
   const payload = {
     eventType: EVENT_TYPES.DELIVERY_ACCEPTED,
     orderId,
+    orderNumber: existing.orders?.order_number,
     deliveryPartnerId: partnerId,
+    customerId: existing.orders?.user_id,
     deliveryStatus: 'ACCEPTED',
-    updatedAt: new Date().toISOString()
+    updatedAt: nowIso
   };
 
   eventBus.emit(EVENT_TYPES.DELIVERY_ACCEPTED, payload);
   sseManager.broadcastDeliveryUpdate(payload);
 
-  return { success: true, message: 'Delivery assignment accepted' };
+  await orderTrackingService.recordStatusChange({
+    orderId,
+    previousStatus: 'PROCESSING',
+    newStatus: 'PROCESSING',
+    changedBy: partnerId,
+    changedByRole: 'DELIVERY_PARTNER',
+    reason: 'Delivery partner accepted assignment',
+    metadata: { eventType: 'DELIVERY_ACCEPTED', deliveryPartnerId: partnerId, assignmentStatus: 'ACCEPTED' }
+  });
+
+  return { success: true, message: 'Delivery assignment accepted successfully!' };
 };
 
 /**
- * 12. Delivery Partner: Mark Order Picked Up
+ * 12. Delivery Partner: Start Delivery (ACCEPTED -> OUT_FOR_DELIVERY)
  */
-const pickupDelivery = async (partnerId, orderId) => {
+const startDelivery = async (partnerId, orderId) => {
+  let existing = null;
+
   if (supabase) {
-    const { data: updated, error } = await supabase.from('delivery_assignments')
-      .update({
-        status: 'PICKED_UP',
-        picked_up_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
+    const { data } = await supabase.from('delivery_assignments')
+      .select('*, orders(id, user_id, order_number, status)')
       .eq('order_id', orderId)
-      .eq('delivery_partner_id', partnerId)
-      .in('status', ['ASSIGNED', 'ACCEPTED'])
-      .select('*, orders(user_id, order_number)')
       .maybeSingle();
 
-    if (!error && updated) {
-      await supabase.from('orders')
-        .update({ status: ORDER_STATUS.OUT_FOR_DELIVERY, updated_at: new Date().toISOString() })
-        .eq('id', orderId);
-
-      const payload = {
-        eventType: EVENT_TYPES.ORDER_PICKED_UP,
-        orderId,
-        orderNumber: updated.orders?.order_number,
-        deliveryPartnerId: partnerId,
-        customerId: updated.orders?.user_id,
-        deliveryStatus: 'PICKED_UP',
-        orderStatus: ORDER_STATUS.OUT_FOR_DELIVERY,
-        updatedAt: new Date().toISOString()
-      };
-
-      eventBus.emit(EVENT_TYPES.ORDER_PICKED_UP, payload);
-      sseManager.broadcastDeliveryUpdate(payload);
-
-      return { success: true, message: 'Order marked as picked up! Status changed to Out For Delivery.' };
-    }
+    if (data) existing = data;
   }
 
-  const foundMock = mockDeliveryAssignments.find(a => String(a.order_id) === String(orderId) && String(a.delivery_partner_id) === String(partnerId));
-  if (foundMock) {
-    foundMock.status = 'PICKED_UP';
+  if (!existing) {
+    existing = mockDeliveryAssignments.find(a => String(a.order_id) === String(orderId));
   }
+
+  if (!existing) {
+    throw new AppError('Assigned delivery order not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  if (String(existing.delivery_partner_id) !== String(partnerId)) {
+    throw new AppError('Forbidden: You are not authorized to start this delivery', HTTP_STATUS.FORBIDDEN);
+  }
+
+  if (!['ACCEPTED', 'ASSIGNED'].includes(existing.status)) {
+    throw new AppError('This delivery cannot be started because its status is not ACCEPTED.', HTTP_STATUS.CONFLICT);
+  }
+
+  const nowIso = new Date().toISOString();
+
+  if (supabase) {
+    await supabase.from('delivery_assignments')
+      .update({
+        status: 'OUT_FOR_DELIVERY',
+        out_for_delivery_at: nowIso,
+        picked_up_at: nowIso,
+        updated_at: nowIso
+      })
+      .eq('id', existing.id);
+
+    await supabase.from('orders')
+      .update({ status: ORDER_STATUS.OUT_FOR_DELIVERY, updated_at: nowIso })
+      .eq('id', orderId);
+  }
+
+  existing.status = 'OUT_FOR_DELIVERY';
+  existing.out_for_delivery_at = nowIso;
+  existing.picked_up_at = nowIso;
 
   const payload = {
     eventType: EVENT_TYPES.ORDER_PICKED_UP,
     orderId,
+    orderNumber: existing.orders?.order_number,
     deliveryPartnerId: partnerId,
-    deliveryStatus: 'PICKED_UP',
+    customerId: existing.orders?.user_id,
+    deliveryStatus: 'OUT_FOR_DELIVERY',
     orderStatus: ORDER_STATUS.OUT_FOR_DELIVERY,
-    updatedAt: new Date().toISOString()
+    updatedAt: nowIso
   };
 
   eventBus.emit(EVENT_TYPES.ORDER_PICKED_UP, payload);
   sseManager.broadcastDeliveryUpdate(payload);
 
-  return { success: true, message: 'Order picked up' };
+  await orderTrackingService.recordStatusChange({
+    orderId,
+    previousStatus: ORDER_STATUS.PROCESSING,
+    newStatus: ORDER_STATUS.OUT_FOR_DELIVERY,
+    changedBy: partnerId,
+    changedByRole: 'DELIVERY_PARTNER',
+    reason: 'Order is out for delivery',
+    metadata: { eventType: 'OUT_FOR_DELIVERY', deliveryPartnerId: partnerId, assignmentStatus: 'OUT_FOR_DELIVERY' }
+  });
+
+  return { success: true, message: 'Delivery started! Order is now Out For Delivery.' };
 };
 
+const pickupDelivery = startDelivery;
+
 /**
- * 13. Delivery Partner: Mark Order Delivered
+ * 13. Delivery Partner: Mark Order Delivered (OUT_FOR_DELIVERY -> DELIVERED)
  */
 const inventoryService = require('./inventory.service');
 
-const deliverOrder = async (partnerId, orderId) => {
+const completeDelivery = async (partnerId, orderId, { codCollected = false, collectedAmount = 0 } = {}) => {
+  let existing = null;
+
   if (supabase) {
-    const { data: existing } = await supabase.from('delivery_assignments')
-      .select('status')
+    const { data } = await supabase.from('delivery_assignments')
+      .select('*, orders(id, user_id, order_number, status, total_amount, payment_method, payment_status)')
       .eq('order_id', orderId)
-      .eq('delivery_partner_id', partnerId)
       .maybeSingle();
 
-    if (existing && existing.status === 'DELIVERED') {
-      throw new AppError('This order has already been marked as delivered', HTTP_STATUS.CONFLICT);
+    if (data) existing = data;
+  }
+
+  if (!existing) {
+    existing = mockDeliveryAssignments.find(a => String(a.order_id) === String(orderId));
+  }
+
+  if (!existing) {
+    throw new AppError('Assigned delivery order not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  if (String(existing.delivery_partner_id) !== String(partnerId)) {
+    throw new AppError('Forbidden: You are not authorized to complete this delivery', HTTP_STATUS.FORBIDDEN);
+  }
+
+  if (existing.status === 'DELIVERED') {
+    throw new AppError('This order has already been marked as delivered', HTTP_STATUS.CONFLICT);
+  }
+
+  if (!['PICKED_UP', 'OUT_FOR_DELIVERY'].includes(existing.status)) {
+    throw new AppError('Cannot mark order as delivered before starting delivery', HTTP_STATUS.CONFLICT);
+  }
+
+  const orderTotal = parseFloat(existing.orders?.total_amount || existing.totalAmount || 500);
+  const paymentMethod = String(existing.orders?.payment_method || existing.paymentMethod || 'RAZORPAY').toUpperCase();
+  const paymentStatus = existing.orders?.payment_status || existing.paymentStatus || 'PENDING';
+
+  if (paymentMethod !== 'COD') {
+    if (paymentStatus !== 'PAID') {
+      throw new AppError('Cannot complete delivery for unpaid prepaid order', HTTP_STATUS.BAD_REQUEST);
     }
-
-    if (existing && !['PICKED_UP', 'OUT_FOR_DELIVERY'].includes(existing.status)) {
-      throw new AppError('Cannot mark order as delivered before pickup', HTTP_STATUS.BAD_REQUEST);
+  } else {
+    if (!codCollected) {
+      throw new AppError('COD collection confirmation is required to complete COD delivery', HTTP_STATUS.BAD_REQUEST);
     }
-
-    const { data: updated, error } = await supabase.from('delivery_assignments')
-      .update({
-        status: 'DELIVERED',
-        delivered_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .eq('order_id', orderId)
-      .eq('delivery_partner_id', partnerId)
-      .in('status', ['PICKED_UP', 'OUT_FOR_DELIVERY'])
-      .select('*, orders(user_id, order_number)')
-      .maybeSingle();
-
-    if (!error && updated) {
-      await supabase.from('orders')
-        .update({ status: ORDER_STATUS.DELIVERED, updated_at: new Date().toISOString() })
-        .eq('id', orderId);
-
-      await inventoryService.consumeStock(null, orderId);
-
-      const payload = {
-        eventType: EVENT_TYPES.ORDER_DELIVERED,
-        orderId,
-        orderNumber: updated.orders?.order_number,
-        deliveryPartnerId: partnerId,
-        customerId: updated.orders?.user_id,
-        deliveryStatus: 'DELIVERED',
-        orderStatus: ORDER_STATUS.DELIVERED,
-        updatedAt: new Date().toISOString()
-      };
-
-      eventBus.emit(EVENT_TYPES.ORDER_DELIVERED, payload);
-      sseManager.broadcastDeliveryUpdate(payload);
-
-      return { success: true, message: 'Order delivered successfully! 🎉' };
+    const numCollected = Number(collectedAmount);
+    if (isNaN(numCollected) || Math.abs(numCollected - orderTotal) >= 0.01) {
+      throw new AppError(`Collected cash amount (₹${numCollected}) must equal total order amount (₹${orderTotal})`, HTTP_STATUS.BAD_REQUEST);
     }
   }
 
-  const foundMock = mockDeliveryAssignments.find(a => String(a.order_id) === String(orderId) && String(a.delivery_partner_id) === String(partnerId));
-  if (foundMock) {
-    if (foundMock.status === 'DELIVERED') {
-      throw new AppError('This order has already been marked as delivered', HTTP_STATUS.CONFLICT);
+  const nowIso = new Date().toISOString();
+
+  if (supabase) {
+    const updatePayload = {
+      status: 'DELIVERED',
+      delivered_at: nowIso,
+      updated_at: nowIso
+    };
+
+    if (paymentMethod === 'COD') {
+      updatePayload.cod_collected = true;
+      updatePayload.cod_collected_amount = Number(collectedAmount);
+      updatePayload.cod_collected_at = nowIso;
     }
-    if (!['PICKED_UP', 'OUT_FOR_DELIVERY'].includes(foundMock.status)) {
-      throw new AppError('Cannot mark order as delivered before pickup', HTTP_STATUS.BAD_REQUEST);
-    }
-    foundMock.status = 'DELIVERED';
-    foundMock.delivered_at = new Date().toISOString();
-    return { success: true, message: 'Order delivered' };
+
+    await supabase.from('delivery_assignments')
+      .update(updatePayload)
+      .eq('id', existing.id);
+
+    await supabase.from('orders')
+      .update({ status: ORDER_STATUS.DELIVERED, updated_at: nowIso })
+      .eq('id', orderId);
+
+    await inventoryService.consumeStock(null, orderId);
   }
 
+  existing.status = 'DELIVERED';
+  existing.delivered_at = nowIso;
+  if (paymentMethod === 'COD') {
+    existing.cod_collected = true;
+    existing.cod_collected_amount = Number(collectedAmount);
+    existing.cod_collected_at = nowIso;
+  }
+
+  const payload = {
+    eventType: EVENT_TYPES.ORDER_DELIVERED,
+    orderId,
+    orderNumber: existing.orders?.order_number,
+    deliveryPartnerId: partnerId,
+    customerId: existing.orders?.user_id,
+    deliveryStatus: 'DELIVERED',
+    orderStatus: ORDER_STATUS.DELIVERED,
+    updatedAt: nowIso
+  };
+
+  eventBus.emit(EVENT_TYPES.ORDER_DELIVERED, payload);
+  sseManager.broadcastDeliveryUpdate(payload);
+
+  await orderTrackingService.recordStatusChange({
+    orderId,
+    previousStatus: ORDER_STATUS.OUT_FOR_DELIVERY,
+    newStatus: ORDER_STATUS.DELIVERED,
+    changedBy: partnerId,
+    changedByRole: 'DELIVERY_PARTNER',
+    reason: 'Order delivered successfully to customer',
+    metadata: { eventType: 'DELIVERED', deliveryPartnerId: partnerId, assignmentStatus: 'DELIVERED' }
+  });
+
+  return { success: true, message: 'Order delivered successfully! 🎉' };
 };
+
+const deliverOrder = completeDelivery;
 
 /**
  * 14. Delivery Partner: Mark Delivery Failed
  */
-const failDelivery = async (partnerId, orderId, failureReason) => {
+const failDelivery = async (partnerId, orderId, failureReason, notes = null) => {
   if (!failureReason || !String(failureReason).trim()) {
     throw new AppError('Failure reason is required when marking a delivery as failed.', HTTP_STATUS.BAD_REQUEST);
   }
 
+  const cleanReason = String(failureReason).trim().toUpperCase();
+  if (!ALLOWED_FAILURE_REASONS.includes(cleanReason)) {
+    throw new AppError(`Invalid failure reason. Must be one of: ${ALLOWED_FAILURE_REASONS.join(', ')}`, HTTP_STATUS.BAD_REQUEST);
+  }
+
+  let existing = null;
+
   if (supabase) {
-    const { data: updated, error } = await supabase.from('delivery_assignments')
-      .update({
-        status: 'FAILED_DELIVERY',
-        failure_reason: String(failureReason).trim(),
-        failed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
+    const { data } = await supabase.from('delivery_assignments')
+      .select('*, orders(id, user_id, order_number, status)')
       .eq('order_id', orderId)
-      .eq('delivery_partner_id', partnerId)
-      .select('*, orders(user_id, order_number, status)')
       .maybeSingle();
 
-    if (!error && updated) {
-      const payload = {
-        eventType: EVENT_TYPES.DELIVERY_FAILED,
-        orderId,
-        orderNumber: updated.orders?.order_number,
-        deliveryPartnerId: partnerId,
-        customerId: updated.orders?.user_id,
-        deliveryStatus: 'FAILED_DELIVERY',
-        failureReason: String(failureReason).trim(),
-        updatedAt: new Date().toISOString()
-      };
-
-      eventBus.emit(EVENT_TYPES.DELIVERY_FAILED, payload);
-      sseManager.broadcastDeliveryUpdate(payload);
-
-      return { success: true, message: 'Delivery attempt recorded as failed. Admin notified.' };
-    }
+    if (data) existing = data;
   }
 
-  const foundMock = mockDeliveryAssignments.find(a => String(a.order_id) === String(orderId) && String(a.delivery_partner_id) === String(partnerId));
-  if (foundMock) {
-    foundMock.status = 'FAILED_DELIVERY';
-    foundMock.failure_reason = failureReason;
+  if (!existing) {
+    existing = mockDeliveryAssignments.find(a => String(a.order_id) === String(orderId));
   }
+
+  if (!existing) {
+    throw new AppError('Assigned delivery order not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  if (String(existing.delivery_partner_id) !== String(partnerId)) {
+    throw new AppError('Forbidden: You are not authorized to report failure for this delivery', HTTP_STATUS.FORBIDDEN);
+  }
+
+  if (['DELIVERED', 'FAILED', 'FAILED_DELIVERY'].includes(existing.status)) {
+    throw new AppError('Cannot fail a delivery that is already finished or delivered.', HTTP_STATUS.CONFLICT);
+  }
+
+  const nowIso = new Date().toISOString();
+
+  if (supabase) {
+    await supabase.from('delivery_assignments')
+      .update({
+        status: 'FAILED',
+        failure_reason: cleanReason,
+        failure_notes: notes || null,
+        failed_at: nowIso,
+        updated_at: nowIso
+      })
+      .eq('id', existing.id);
+  }
+
+  existing.status = 'FAILED';
+  existing.failure_reason = cleanReason;
+  existing.failure_notes = notes || null;
+  existing.failed_at = nowIso;
 
   const payload = {
     eventType: EVENT_TYPES.DELIVERY_FAILED,
     orderId,
+    orderNumber: existing.orders?.order_number,
     deliveryPartnerId: partnerId,
-    deliveryStatus: 'FAILED_DELIVERY',
-    failureReason: String(failureReason).trim(),
-    updatedAt: new Date().toISOString()
+    customerId: existing.orders?.user_id,
+    deliveryStatus: 'FAILED',
+    failureReason: cleanReason,
+    updatedAt: nowIso
   };
 
   eventBus.emit(EVENT_TYPES.DELIVERY_FAILED, payload);
   sseManager.broadcastDeliveryUpdate(payload);
 
-  return { success: true, message: 'Delivery marked as failed' };
+  await orderTrackingService.recordStatusChange({
+    orderId,
+    previousStatus: existing.orders?.status || ORDER_STATUS.OUT_FOR_DELIVERY,
+    newStatus: existing.orders?.status || ORDER_STATUS.OUT_FOR_DELIVERY,
+    changedBy: partnerId,
+    changedByRole: 'DELIVERY_PARTNER',
+    reason: cleanReason,
+    metadata: { eventType: 'FAILED_DELIVERY', deliveryPartnerId: partnerId, assignmentStatus: 'FAILED' }
+  });
+
+  return { success: true, message: 'Delivery attempt recorded as failed. Admin notified.' };
 };
 
 module.exports = {
@@ -1112,6 +1290,8 @@ module.exports = {
   getPartnerOrderById,
   acceptDelivery,
   pickupDelivery,
+  startDelivery,
   deliverOrder,
+  completeDelivery,
   failDelivery
 };

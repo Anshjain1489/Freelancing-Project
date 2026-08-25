@@ -57,7 +57,9 @@ export const ENDPOINTS = {
     LIST: '/orders',
     BY_ID: (id) => `/orders/${id}`,
     CANCEL: (id) => `/orders/${id}/cancel`,
-    RETRY_PAYMENT: (id) => `/orders/${id}/payment/retry`
+    CREATE_PAYMENT: (id) => `/orders/${id}/create-payment`,
+    RETRY_PAYMENT: (id) => `/orders/${id}/payment/retry`,
+    ORDER_TRACKING: (id) => `/orders/${id}/tracking`
   },
 
   DELIVERY: {
@@ -68,6 +70,8 @@ export const ENDPOINTS = {
     PICKUP: (id) => `/delivery/orders/${id}/pickup`,
     START: (id) => `/delivery/orders/${id}/start`,
     DELIVER: (id) => `/delivery/orders/${id}/deliver`,
+    COMPLETE: (id) => `/delivery/orders/${id}/complete`,
+    FAIL: (id) => `/delivery/orders/${id}/fail`,
     FAILED: (id) => `/delivery/orders/${id}/failed`
   },
 

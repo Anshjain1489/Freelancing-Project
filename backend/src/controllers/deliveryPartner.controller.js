@@ -4,8 +4,13 @@ const deliveryService = require('../services/delivery.management.service');
 const { HTTP_STATUS } = require('../constants/statusCodes');
 
 const getPartnerDashboard = asyncHandler(async (req, res) => {
-  const stats = await deliveryService.getPartnerDashboard(req.user.id);
-  return ApiResponse.success(res, HTTP_STATUS.OK, 'Delivery Partner dashboard stats retrieved', stats);
+  const result = await deliveryService.getPartnerDashboard(req.user.id);
+  return res.status(HTTP_STATUS.OK).json({
+    success: true,
+    message: 'Delivery Partner dashboard stats retrieved',
+    summary: result.summary,
+    activeDeliveries: result.activeDeliveries
+  });
 });
 
 const getPartnerOrders = asyncHandler(async (req, res) => {
@@ -24,22 +29,32 @@ const acceptDelivery = asyncHandler(async (req, res) => {
 });
 
 const pickupDelivery = asyncHandler(async (req, res) => {
-  const result = await deliveryService.pickupDelivery(req.user.id, req.params.id);
+  const result = await deliveryService.startDelivery(req.user.id, req.params.id);
   return ApiResponse.success(res, HTTP_STATUS.OK, result.message, result);
 });
 
 const startDelivery = asyncHandler(async (req, res) => {
-  const result = await deliveryService.pickupDelivery(req.user.id, req.params.id);
+  const result = await deliveryService.startDelivery(req.user.id, req.params.id);
   return ApiResponse.success(res, HTTP_STATUS.OK, result.message, result);
 });
 
 const deliverOrder = asyncHandler(async (req, res) => {
-  const result = await deliveryService.deliverOrder(req.user.id, req.params.id);
+  const result = await deliveryService.completeDelivery(req.user.id, req.params.id, {
+    codCollected: req.body?.codCollected,
+    collectedAmount: req.body?.collectedAmount
+  });
   return ApiResponse.success(res, HTTP_STATUS.OK, result.message, result);
 });
 
+const completeDelivery = deliverOrder;
+
 const failDelivery = asyncHandler(async (req, res) => {
-  const result = await deliveryService.failDelivery(req.user.id, req.params.id, req.body.reason || req.body.failureReason);
+  const result = await deliveryService.failDelivery(
+    req.user.id,
+    req.params.id,
+    req.body?.reason || req.body?.failureReason,
+    req.body?.notes
+  );
   return ApiResponse.success(res, HTTP_STATUS.OK, result.message, result);
 });
 
@@ -74,6 +89,7 @@ module.exports = {
   pickupDelivery,
   startDelivery,
   deliverOrder,
+  completeDelivery,
   failDelivery,
   getReturnPickups,
   acceptReturnPickup,

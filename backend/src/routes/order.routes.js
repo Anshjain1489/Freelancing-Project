@@ -10,8 +10,10 @@ router.use(authenticate);
 
 router.post('/', validate(createOrderSchema), orderController.createOrder);
 router.get('/', orderController.getUserOrders);
+router.get('/:id/tracking', orderController.getOrderTracking);
 router.get('/:id', orderController.getOrderById);
 router.post('/:id/cancel', validate(cancelOrderSchema), orderController.cancelOrder);
+router.post('/:id/create-payment', orderController.createOrderPayment);
 router.post('/:id/payment/retry', orderController.retryOrderPayment);
 
 module.exports = router;
