@@ -4,6 +4,7 @@ const cors = require('cors');
 const morgan = require('morgan');
 const corsOptions = require('./config/cors');
 const requestIdMiddleware = require('./middleware/requestId.middleware');
+const performanceMiddleware = require('./middleware/performance.middleware');
 const { generalLimiter } = require('./middleware/rateLimiter.middleware');
 const { notFound } = require('./middleware/error.middleware');
 const errorMonitoringMiddleware = require('./middleware/errorMonitoring.middleware');
@@ -13,6 +14,9 @@ const app = express();
 
 // Request ID assignment for correlation tracing
 app.use(requestIdMiddleware);
+
+// Performance latency monitoring & X-Response-Time header
+app.use(performanceMiddleware);
 
 // Security Headers
 app.use(helmet());

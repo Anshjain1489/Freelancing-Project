@@ -98,6 +98,7 @@ const broadcastToAdmins = (payload) => {
  * Broadcast notification payload to matching SSE clients
  */
 const broadcastNotification = (notification) => {
+  if (!notification || typeof notification !== 'object') return;
   const targetUserId = notification.userId || notification.user_id;
 
   sseClients.forEach((clientsSet, userId) => {
@@ -290,12 +291,17 @@ const getStats = () => {
   };
 };
 
+const clearForTests = () => {
+  sseClients.clear();
+};
+
 module.exports = {
   addClient,
   removeClient,
   sendToUser,
   broadcastToAdmins,
   getStats,
+  clearForTests,
   broadcastNotification,
   broadcastDecision,
   broadcastOrderStatusUpdate,
