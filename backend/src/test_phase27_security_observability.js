@@ -6,7 +6,7 @@ const { redactSensitiveData, logSecurityEvent, SECURITY_EVENTS } = require('./se
 async function runPhase27SecurityTests() {
   console.log('====================================================');
   console.log('  RUNNING PHASE 27 AUTOMATED SECURITY & OBSERVABILITY SUITE');
-  console.log('  Rate Limiting, X-Request-ID, Diagnostics & Audit Redaction (20 Assertions)');
+  console.log('  Rate Limiting, X-Request-ID, Diagnostics & Audit Redaction (12 Assertions)');
   console.log('====================================================\n');
 
   let passed = 0;

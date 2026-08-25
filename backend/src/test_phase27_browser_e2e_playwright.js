@@ -9,8 +9,8 @@ const { HTTP_STATUS } = require('./constants/statusCodes');
 
 async function runPhase27BrowserE2ETests() {
   console.log('====================================================');
-  console.log('  RUNNING PHASE 27 BROWSER-LEVEL PRODUCTION E2E TEST SUITE');
-  console.log('  Isolated E2E Identities: Success Path & Failure Recovery Workflow (25 Assertions)');
+  console.log('  RUNNING PHASE 27 AUTOMATED E2E WORKFLOW SUITE');
+  console.log('  Isolated E2E Identities: Success Path & Failure Recovery Workflow (14 Assertions)');
   console.log('====================================================\n');
 
   let passed = 0;
@@ -103,7 +103,7 @@ async function runPhase27BrowserE2ETests() {
     }
   });
 
-  await runTest('Assertion 3: Admin assigns Partner 1 to Order 1 (PROCESSING -> ASSIGNED)', async () => {
+  await runTest('Assertion 3: Admin assigns Partner 1 to Order 1 (orders.status remains PROCESSING, assignment.status = ASSIGNED)', async () => {
     if (supabase) {
       const res = await deliveryService.assignDeliveryPartner(e2eAdminId, order1Id, e2ePartner1Id, 30);
       assert.strictEqual(res.success, true);
@@ -112,7 +112,7 @@ async function runPhase27BrowserE2ETests() {
     }
   });
 
-  await runTest('Assertion 4: Partner 1 accepts & starts delivery (ASSIGNED -> OUT_FOR_DELIVERY)', async () => {
+  await runTest('Assertion 4: Partner 1 accepts (assignment.status = ACCEPTED) & starts delivery (orders.status = OUT_FOR_DELIVERY)', async () => {
     if (supabase) {
       await deliveryService.acceptDelivery(e2ePartner1Id, order1Id);
       const res = await deliveryService.startDelivery(e2ePartner1Id, order1Id);
