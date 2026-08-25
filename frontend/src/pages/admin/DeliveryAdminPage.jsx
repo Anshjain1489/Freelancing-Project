@@ -19,10 +19,11 @@ export const DeliveryAdminPage = () => {
   const [partners, setPartners] = useState([]);
   const [unassignedOrders, setUnassignedOrders] = useState([]);
   const [assignedDeliveries, setAssignedDeliveries] = useState([]);
+  const [failedDeliveries, setFailedDeliveries] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Active Tab for Delivery Management Sections
-  const [adminTab, setAdminTab] = useState('UNASSIGNED'); // 'UNASSIGNED' | 'ASSIGNED' | 'FLEET'
+  const [adminTab, setAdminTab] = useState('UNASSIGNED'); // 'UNASSIGNED' | 'ASSIGNED' | 'FAILED' | 'FLEET'
 
   // Modal State for Registering New Partner
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
@@ -44,11 +45,12 @@ export const DeliveryAdminPage = () => {
   const fetchDeliveryData = async () => {
     setLoading(true);
     try {
-      const [dashRes, partnersRes, unassignedRes, assignedRes] = await Promise.allSettled([
+      const [dashRes, partnersRes, unassignedRes, assignedRes, failedRes] = await Promise.allSettled([
         deliveryPartnerService.getAdminDeliveryDashboard(),
         deliveryPartnerService.getDeliveryPartners(),
         deliveryPartnerService.getUnassignedOrders(),
-        deliveryPartnerService.getAssignedDeliveries()
+        deliveryPartnerService.getAssignedDeliveries(),
+        deliveryPartnerService.getFailedDeliveries()
       ]);
 
       if (dashRes.status === 'fulfilled') {
@@ -63,11 +65,46 @@ export const DeliveryAdminPage = () => {
       if (assignedRes.status === 'fulfilled') {
         setAssignedDeliveries(assignedRes.value.data?.items || []);
       }
+      if (failedRes.status === 'fulfilled') {
+        setFailedDeliveries(failedRes.value.data?.items || []);
+      }
     } catch (err) {
       console.error('Failed to load delivery management data:', err);
       showError('Failed to load delivery dashboard data.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRetryDelivery = async (orderId) => {
+    try {
+      const res = await deliveryPartnerService.retryFailedDelivery(orderId);
+      showSuccess(res.message || 'Delivery retry initiated successfully!');
+      fetchDeliveryData();
+    } catch (err) {
+      showError(err.response?.data?.message || err.message || 'Failed to retry delivery');
+    }
+  };
+
+  const handleReturnToStore = async (orderId) => {
+    try {
+      const res = await deliveryPartnerService.returnOrderToStore(orderId);
+      showSuccess(res.message || 'Order marked as returned to store.');
+      fetchDeliveryData();
+    } catch (err) {
+      showError(err.response?.data?.message || err.message || 'Failed to mark return to store');
+    }
+  };
+
+  const handleCancelAfterFailure = async (orderId) => {
+    const reason = window.prompt('Enter cancellation reason:', 'Delivery attempt unsuccessful');
+    if (reason === null) return;
+    try {
+      const res = await deliveryPartnerService.cancelOrderAfterDeliveryFailure(orderId, reason);
+      showSuccess(res.message || 'Order cancelled after delivery failure.');
+      fetchDeliveryData();
+    } catch (err) {
+      showError(err.response?.data?.message || err.message || 'Failed to cancel order');
     }
   };
 
@@ -242,6 +279,14 @@ export const DeliveryAdminPage = () => {
           onClick={() => setAdminTab('ASSIGNED')}
         >
           Assigned Deliveries ({assignedDeliveries.length})
+        </Button>
+
+        <Button
+          variant={adminTab === 'FAILED' ? 'primary' : 'outline'}
+          size="sm"
+          onClick={() => setAdminTab('FAILED')}
+        >
+          ⚠️ Failed Deliveries ({failedDeliveries.length})
         </Button>
 
         <Button
@@ -468,6 +513,105 @@ export const DeliveryAdminPage = () => {
                         Reassign Partner
                       </Button>
                     )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* 3.5 Failed Deliveries Section */}
+      {adminTab === 'FAILED' && (
+        <Card padding="20px">
+          <h3 style={{ fontSize: '1.05rem', fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <AlertTriangle size={18} color="#C0392B" /> ⚠️ Failed Deliveries Awaiting Admin Action ({failedDeliveries.length})
+          </h3>
+
+          {loading ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {[1, 2].map(i => <TableRowSkeleton key={i} />)}
+            </div>
+          ) : failedDeliveries.length === 0 ? (
+            <div style={{ padding: '32px', textAlign: 'center', color: 'var(--color-text-secondary)', fontSize: '0.9rem' }}>
+              🟢 No failed deliveries recorded. All delivery operations are running smoothly!
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {failedDeliveries.map(failed => (
+                <div
+                  key={failed.orderId}
+                  style={{
+                    padding: '18px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid #FADBD8',
+                    backgroundColor: '#FDEDEC',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', borderBottom: '1px solid #F5B7B1', paddingBottom: '10px' }}>
+                    <div>
+                      <span style={{ fontWeight: 900, fontSize: '1rem', color: '#78281F' }}>
+                        Order #{failed.orderNumber}
+                      </span>
+                      <span style={{ marginLeft: '10px', padding: '3px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 800, background: '#78281F', color: '#FFF' }}>
+                        REASON: {failed.failureReason}
+                      </span>
+                      <span style={{ marginLeft: '8px', padding: '3px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 800, background: '#EBF5FB', color: '#1B4F72' }}>
+                        Attempt #{failed.deliveryAttemptCount || 1}
+                      </span>
+                    </div>
+
+                    <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#78281F' }}>
+                      {formatCurrency(failed.totalAmount)}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                    {/* Customer */}
+                    <div>
+                      <div style={{ fontSize: '0.78rem', color: '#666', fontWeight: 800, textTransform: 'uppercase', marginBottom: '4px' }}>Customer Contact</div>
+                      <div style={{ fontWeight: 800 }}>{failed.customerName}</div>
+                      <div style={{ fontSize: '0.85rem', color: '#333', marginTop: '2px' }}>📞 <strong>{failed.customerPhone}</strong></div>
+                    </div>
+
+                    {/* Delivery Address */}
+                    <div>
+                      <div style={{ fontSize: '0.78rem', color: '#666', fontWeight: 800, textTransform: 'uppercase', marginBottom: '4px' }}>Delivery Address</div>
+                      <div style={{ fontSize: '0.85rem', color: '#2C3E50' }}>
+                        📍 {failed.deliveryAddress?.fullAddressLine || 'Customer Address'}
+                      </div>
+                    </div>
+
+                    {/* Previous Partner */}
+                    <div>
+                      <div style={{ fontSize: '0.78rem', color: '#666', fontWeight: 800, textTransform: 'uppercase', marginBottom: '4px' }}>Previous Delivery Partner</div>
+                      <div style={{ fontWeight: 800, color: '#C0392B' }}>🛵 {failed.previousPartnerName || 'Assigned Partner'}</div>
+                      <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '2px' }}>
+                        Payment: <strong>{failed.paymentMethod}</strong> ({failed.paymentStatus})
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Admin Actions for Failed Delivery */}
+                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap', borderTop: '1px solid #F5B7B1', paddingTop: '12px' }}>
+                    <Button variant="outline" size="sm" onClick={() => setViewDetailsOrder(failed)}>
+                      View Details
+                    </Button>
+                    <Button variant="primary" size="sm" icon={Truck} onClick={() => handleOpenAssignModal(failed, true)}>
+                      🔄 Reassign Partner
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={() => handleRetryDelivery(failed.orderId)}>
+                      🔁 Retry Delivery
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => handleReturnToStore(failed.orderId)}>
+                      🏪 Return to Store
+                    </Button>
+                    <Button variant="danger" size="sm" style={{ background: '#C0392B', borderColor: '#C0392B', color: '#FFF' }} onClick={() => handleCancelAfterFailure(failed.orderId)}>
+                      ❌ Cancel Order
+                    </Button>
                   </div>
                 </div>
               ))}

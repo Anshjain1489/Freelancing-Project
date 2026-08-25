@@ -81,11 +81,16 @@ router.get('/deliveries/unassigned', deliveryAdminController.getUnassignedOrders
 router.get('/delivery/orders/assigned', deliveryAdminController.getAssignedDeliveries);
 router.get('/deliveries/orders/assigned', deliveryAdminController.getAssignedDeliveries);
 router.get('/deliveries/assigned', deliveryAdminController.getAssignedDeliveries);
+router.get('/deliveries/failed', deliveryAdminController.getFailedDeliveries);
+router.get('/delivery/orders/failed', deliveryAdminController.getFailedDeliveries);
 router.post('/orders/:orderId/assign-delivery', deliveryAdminController.assignDeliveryPartner);
 router.post('/deliveries/:orderId/assign', deliveryAdminController.assignDeliveryPartner);
 router.post('/orders/:orderId/reassign-delivery', deliveryAdminController.reassignDeliveryPartner);
 router.patch('/orders/:orderId/reassign-delivery', deliveryAdminController.reassignDeliveryPartner);
-router.post('/deliveries/:orderId/reassign', deliveryAdminController.reassignDeliveryPartner);
+router.post('/deliveries/:orderId/reassign', deliveryAdminController.reassignFailedDelivery);
+router.post('/deliveries/:orderId/retry', deliveryAdminController.retryFailedDelivery);
+router.post('/deliveries/:orderId/return-to-store', deliveryAdminController.returnOrderToStore);
+router.post('/deliveries/:orderId/cancel-after-failure', deliveryAdminController.cancelOrderAfterDeliveryFailure);
 router.post('/deliveries/:orderId/whatsapp-link', deliveryAdminController.getWhatsAppClickToChatLink);
 router.post('/deliveries/:orderId/whatsapp/resend', deliveryAdminController.getWhatsAppClickToChatLink);
 router.get('/deliveries/:orderId/notifications', deliveryAdminController.getWhatsAppClickToChatLink);

@@ -97,5 +97,30 @@ export const deliveryPartnerService = {
   getDeliveryNotifications: async (orderId) => {
     const response = await apiClient.get(ENDPOINTS.ADMIN.DELIVERY_NOTIFICATIONS(orderId));
     return response.data;
+  },
+
+  getFailedDeliveries: async () => {
+    const response = await apiClient.get(ENDPOINTS.ADMIN.FAILED_DELIVERY_ORDERS);
+    return response.data;
+  },
+
+  reassignFailedDelivery: async (orderId, newPartnerId) => {
+    const response = await apiClient.post(ENDPOINTS.ADMIN.REASSIGN_FAILED_DELIVERY(orderId), { newPartnerId, deliveryPartnerId: newPartnerId });
+    return response.data;
+  },
+
+  retryFailedDelivery: async (orderId) => {
+    const response = await apiClient.post(ENDPOINTS.ADMIN.RETRY_FAILED_DELIVERY(orderId));
+    return response.data;
+  },
+
+  returnOrderToStore: async (orderId) => {
+    const response = await apiClient.post(ENDPOINTS.ADMIN.RETURN_ORDER_TO_STORE(orderId));
+    return response.data;
+  },
+
+  cancelOrderAfterDeliveryFailure: async (orderId, reason = 'Cancelled after delivery failure') => {
+    const response = await apiClient.post(ENDPOINTS.ADMIN.CANCEL_AFTER_FAILURE(orderId), { reason });
+    return response.data;
   }
 };

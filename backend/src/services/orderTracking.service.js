@@ -221,7 +221,8 @@ async function getCustomerOrderTracking(userId, userRole, orderId) {
   const isDelivered = order.status === ORDER_STATUS.DELIVERED;
   const isRejected = order.status === ORDER_STATUS.REJECTED;
   const isCancelled = order.status === ORDER_STATUS.CANCELLED;
-  const isDeliveryFailed = deliveryAssignment?.status === 'FAILED';
+  const isDeliveryFailed = order.status === ORDER_STATUS.DELIVERY_FAILED || deliveryAssignment?.status === 'FAILED';
+  const isReturnToStore = order.status === ORDER_STATUS.RETURN_TO_STORE || deliveryAssignment?.status === 'RETURN_TO_STORE';
 
   const timeline = [
     {
@@ -260,10 +261,10 @@ async function getCustomerOrderTracking(userId, userRole, orderId) {
       title: 'Preparing Order',
       description: (isProcessing || isReady) && !deliveryAssignment
         ? 'Store is packing and preparing your items.'
-        : ((isProcessing || isReady || isOut || isDelivered) ? 'Order prepared.' : 'Will start once payment is confirmed.'),
+        : ((isProcessing || isReady || isOut || isDelivered) ? 'Order prepared.' : (isDeliveryFailed ? 'Store is re-arranging your delivery.' : 'Will start once payment is confirmed.')),
       state: (isProcessing || isReady) && !deliveryAssignment
         ? 'ACTIVE'
-        : ((isProcessing || isReady || isOut || isDelivered) ? 'COMPLETED' : (isRejected || isCancelled ? 'TERMINATED' : 'UPCOMING')),
+        : ((isProcessing || isReady || isOut || isDelivered) ? 'COMPLETED' : (isDeliveryFailed ? 'ACTIVE' : (isRejected || isCancelled ? 'TERMINATED' : 'UPCOMING'))),
       createdAt: order.updated_at
     },
     {
@@ -271,10 +272,10 @@ async function getCustomerOrderTracking(userId, userRole, orderId) {
       title: 'Delivery Partner Assigned',
       description: deliveryPartnerName
         ? `Assigned to ${deliveryPartnerName}.`
-        : 'Assigning a nearby delivery partner.',
-      state: deliveryAssignment
+        : (isDeliveryFailed ? 'Re-assigning a delivery partner...' : 'Assigning a nearby delivery partner.'),
+      state: deliveryAssignment && !isDeliveryFailed
         ? 'COMPLETED'
-        : ((isOut || isDelivered) ? 'COMPLETED' : (isRejected || isCancelled ? 'TERMINATED' : 'UPCOMING')),
+        : ((isOut || isDelivered) ? 'COMPLETED' : (isDeliveryFailed ? 'UPCOMING' : (isRejected || isCancelled ? 'TERMINATED' : 'UPCOMING'))),
       createdAt: deliveryAssignment?.assigned_at || order.updated_at
     },
     {
@@ -282,10 +283,10 @@ async function getCustomerOrderTracking(userId, userRole, orderId) {
       title: 'Out for Delivery',
       description: isOut
         ? 'Your order is on the way!'
-        : (isDelivered ? 'Order picked up and delivered.' : (isDeliveryFailed ? 'Delivery attempt failed.' : 'Order will be picked up soon.')),
+        : (isDelivered ? 'Order picked up and delivered.' : (isReturnToStore ? 'Order is being returned to the store.' : (isDeliveryFailed ? 'Delivery attempt was unsuccessful. Re-arranging delivery...' : 'Order will be picked up soon.'))),
       state: isOut
         ? 'ACTIVE'
-        : (isDelivered ? 'COMPLETED' : (isDeliveryFailed ? 'FAILED' : (isRejected || isCancelled ? 'TERMINATED' : 'UPCOMING'))),
+        : (isDelivered ? 'COMPLETED' : (isDeliveryFailed || isReturnToStore ? 'FAILED' : (isRejected || isCancelled ? 'TERMINATED' : 'UPCOMING'))),
       createdAt: deliveryAssignment?.picked_up_at || deliveryAssignment?.assigned_at
     },
     {
@@ -293,10 +294,10 @@ async function getCustomerOrderTracking(userId, userRole, orderId) {
       title: 'Delivered',
       description: isDelivered
         ? 'Order delivered successfully. Enjoy your purchase!'
-        : (isDeliveryFailed ? 'We could not complete this delivery. Please contact store.' : 'Order pending delivery.'),
+        : (isReturnToStore ? 'Order could not be delivered and has been returned to the store.' : (isDeliveryFailed ? 'Delivery attempt failed. Store team is reviewing options.' : 'Order pending delivery.')),
       state: isDelivered
         ? 'COMPLETED'
-        : (isDeliveryFailed ? 'FAILED' : (isRejected || isCancelled ? 'TERMINATED' : 'UPCOMING')),
+        : (isDeliveryFailed || isReturnToStore ? 'FAILED' : (isRejected || isCancelled ? 'TERMINATED' : 'UPCOMING')),
       createdAt: deliveryAssignment?.delivered_at
     }
   ];

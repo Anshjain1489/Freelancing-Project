@@ -358,6 +358,31 @@ async function fixSchemaFull() {
     await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS cod_collected_amount NUMERIC(10,2);', 'delivery_assignments.cod_collected_amount');
     await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS cod_collected_at TIMESTAMPTZ;', 'delivery_assignments.cod_collected_at');
 
+    // Phase 24: Delivery Failure Recovery, Reassignment & Return-to-Store Columns & Indexes
+    try {
+      await exec("ALTER TYPE order_status_enum ADD VALUE IF NOT EXISTS 'DELIVERY_FAILED';", "enum DELIVERY_FAILED");
+      await exec("ALTER TYPE order_status_enum ADD VALUE IF NOT EXISTS 'RETURN_TO_STORE';", "enum RETURN_TO_STORE");
+    } catch {}
+    try {
+      await exec("ALTER TABLE order_status_history ALTER COLUMN new_status TYPE TEXT;", "order_status_history.new_status TEXT");
+      await exec("ALTER TABLE order_status_history ALTER COLUMN previous_status TYPE TEXT;", "order_status_history.previous_status TEXT");
+    } catch {}
+
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS returned_to_store_at TIMESTAMPTZ;', 'delivery_assignments.returned_to_store_at');
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS returned_to_store_by UUID;', 'delivery_assignments.returned_to_store_by');
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS reassignment_count INTEGER DEFAULT 0;', 'delivery_assignments.reassignment_count');
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;', 'delivery_assignments.revoked_at');
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS revoked_by UUID;', 'delivery_assignments.revoked_by');
+    await exec('ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS revocation_reason TEXT;', 'delivery_assignments.revocation_reason');
+
+    await exec('ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_attempt_count INTEGER DEFAULT 0;', 'orders.delivery_attempt_count');
+    await exec('ALTER TABLE orders ADD COLUMN IF NOT EXISTS last_delivery_failure_at TIMESTAMPTZ;', 'orders.last_delivery_failure_at');
+
+    await exec('CREATE INDEX IF NOT EXISTS idx_delivery_assignments_failed_at ON delivery_assignments(failed_at);', 'idx_delivery_assignments_failed_at');
+    await exec('CREATE INDEX IF NOT EXISTS idx_delivery_assignments_status ON delivery_assignments(status);', 'idx_delivery_assignments_status');
+    await exec('CREATE INDEX IF NOT EXISTS idx_delivery_assignments_partner_status ON delivery_assignments(delivery_partner_id, status);', 'idx_delivery_assignments_partner_status');
+    await exec('CREATE INDEX IF NOT EXISTS idx_orders_delivery_attempt_count ON orders(delivery_attempt_count);', 'idx_orders_delivery_attempt_count');
+
     // Disable RLS on operational tables for backend service consistency
     const rlsTables = [
       'orders', 'payments', 'order_addresses', 'refunds', 'coupons',

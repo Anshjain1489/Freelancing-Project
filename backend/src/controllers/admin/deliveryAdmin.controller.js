@@ -59,6 +59,48 @@ const getWhatsAppClickToChatLink = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, HTTP_STATUS.OK, 'WhatsApp Click-to-Chat link generated', result);
 });
 
+const getFailedDeliveries = asyncHandler(async (req, res) => {
+  const orders = await deliveryService.getFailedDeliveries();
+  return ApiResponse.success(res, HTTP_STATUS.OK, 'Failed delivery orders retrieved', { items: orders });
+});
+
+const reassignFailedDelivery = asyncHandler(async (req, res) => {
+  const { newPartnerId, deliveryPartnerId } = req.body;
+  const targetPartnerId = newPartnerId || deliveryPartnerId;
+  const result = await deliveryService.reassignFailedDelivery(
+    req.user.id,
+    req.params.orderId || req.body.orderId,
+    targetPartnerId
+  );
+  return ApiResponse.success(res, HTTP_STATUS.OK, result.message, result);
+});
+
+const retryFailedDelivery = asyncHandler(async (req, res) => {
+  const result = await deliveryService.retryFailedDelivery(
+    req.user.id,
+    req.params.orderId || req.body.orderId
+  );
+  return ApiResponse.success(res, HTTP_STATUS.OK, result.message, result);
+});
+
+const returnOrderToStore = asyncHandler(async (req, res) => {
+  const result = await deliveryService.returnOrderToStore(
+    req.user.id,
+    req.params.orderId || req.body.orderId
+  );
+  return ApiResponse.success(res, HTTP_STATUS.OK, result.message, result);
+});
+
+const cancelOrderAfterDeliveryFailure = asyncHandler(async (req, res) => {
+  const { reason } = req.body || {};
+  const result = await deliveryService.cancelOrderAfterDeliveryFailure(
+    req.user.id,
+    req.params.orderId || req.body.orderId,
+    reason
+  );
+  return ApiResponse.success(res, HTTP_STATUS.OK, result.message, result);
+});
+
 module.exports = {
   getDeliveryPartners,
   createDeliveryPartner,
@@ -69,5 +111,10 @@ module.exports = {
   reassignDeliveryPartner,
   getWhatsAppClickToChatLink,
   resendWhatsAppNotification: getWhatsAppClickToChatLink,
-  getDeliveryNotifications: getWhatsAppClickToChatLink
+  getDeliveryNotifications: getWhatsAppClickToChatLink,
+  getFailedDeliveries,
+  reassignFailedDelivery,
+  retryFailedDelivery,
+  returnOrderToStore,
+  cancelOrderAfterDeliveryFailure
 };

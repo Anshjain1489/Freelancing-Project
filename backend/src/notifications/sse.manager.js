@@ -149,11 +149,23 @@ const broadcastDeliveryUpdate = (deliveryUpdate) => {
 
       if (isAdmin || isAssignedPartner || isTargetCustomer) {
         try {
-          res.write(`data: ${JSON.stringify({
+          const payload = {
             eventType: deliveryUpdate.eventType || 'DELIVERY_UPDATED',
             type: 'DELIVERY_UPDATED',
             ...deliveryUpdate
-          })}\n\n`);
+          };
+
+          // Privacy Sanitization: Omit internal failure notes & secrets for non-admin streams
+          if (!isAdmin) {
+            delete payload.failure_notes;
+            delete payload.failureNotes;
+            delete payload.admin_notes;
+            delete payload.adminNotes;
+            delete payload.internal_notes;
+            delete payload.secrets;
+          }
+
+          res.write(`data: ${JSON.stringify(payload)}\n\n`);
         } catch (err) {
           logger.error(`[SSE_DELIVERY_BROADCAST_ERR] Failed for userId=${userId}`, err);
           removeClient(userId, res);

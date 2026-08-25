@@ -926,6 +926,8 @@ const acceptDelivery = async (partnerId, orderId) => {
     const { data } = await supabase.from('delivery_assignments')
       .select('*, orders(user_id, order_number)')
       .eq('order_id', orderId)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (data) existing = data;
@@ -939,7 +941,7 @@ const acceptDelivery = async (partnerId, orderId) => {
     throw new AppError('Assigned delivery order not found', HTTP_STATUS.NOT_FOUND);
   }
 
-  if (String(existing.delivery_partner_id) !== String(partnerId)) {
+  if (String(existing.delivery_partner_id) !== String(partnerId) || existing.status === 'REVOKED') {
     throw new AppError('Forbidden: You are not authorized to accept this delivery assignment', HTTP_STATUS.FORBIDDEN);
   }
 
@@ -998,6 +1000,8 @@ const startDelivery = async (partnerId, orderId) => {
     const { data } = await supabase.from('delivery_assignments')
       .select('*, orders(id, user_id, order_number, status)')
       .eq('order_id', orderId)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (data) existing = data;
@@ -1011,7 +1015,7 @@ const startDelivery = async (partnerId, orderId) => {
     throw new AppError('Assigned delivery order not found', HTTP_STATUS.NOT_FOUND);
   }
 
-  if (String(existing.delivery_partner_id) !== String(partnerId)) {
+  if (String(existing.delivery_partner_id) !== String(partnerId) || existing.status === 'REVOKED') {
     throw new AppError('Forbidden: You are not authorized to start this delivery', HTTP_STATUS.FORBIDDEN);
   }
 
@@ -1081,6 +1085,8 @@ const completeDelivery = async (partnerId, orderId, { codCollected = false, coll
     const { data } = await supabase.from('delivery_assignments')
       .select('*, orders(id, user_id, order_number, status, total_amount, payment_method, payment_status)')
       .eq('order_id', orderId)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (data) existing = data;
@@ -1204,8 +1210,9 @@ const failDelivery = async (partnerId, orderId, failureReason, notes = null) => 
 
   if (supabase) {
     const { data } = await supabase.from('delivery_assignments')
-      .select('*, orders(id, user_id, order_number, status)')
+      .select('*, orders(id, user_id, order_number, status, payment_method, payment_status, delivery_attempt_count)')
       .eq('order_id', orderId)
+      .order('created_at', { ascending: false })
       .maybeSingle();
 
     if (data) existing = data;
@@ -1219,15 +1226,21 @@ const failDelivery = async (partnerId, orderId, failureReason, notes = null) => 
     throw new AppError('Assigned delivery order not found', HTTP_STATUS.NOT_FOUND);
   }
 
-  if (String(existing.delivery_partner_id) !== String(partnerId)) {
+  if (String(existing.delivery_partner_id) !== String(partnerId) || existing.status === 'REVOKED') {
     throw new AppError('Forbidden: You are not authorized to report failure for this delivery', HTTP_STATUS.FORBIDDEN);
   }
 
-  if (['DELIVERED', 'FAILED', 'FAILED_DELIVERY'].includes(existing.status)) {
-    throw new AppError('Cannot fail a delivery that is already finished or delivered.', HTTP_STATUS.CONFLICT);
+  if (existing.status !== 'OUT_FOR_DELIVERY' && existing.status !== 'PICKED_UP') {
+    throw new AppError('Cannot fail a delivery that is not currently OUT_FOR_DELIVERY.', HTTP_STATUS.CONFLICT);
+  }
+
+  const currentOrderStatus = existing.orders?.status || ORDER_STATUS.OUT_FOR_DELIVERY;
+  if (currentOrderStatus !== ORDER_STATUS.OUT_FOR_DELIVERY) {
+    throw new AppError('Cannot fail a delivery unless order is in OUT_FOR_DELIVERY status.', HTTP_STATUS.CONFLICT);
   }
 
   const nowIso = new Date().toISOString();
+  const newAttemptCount = (existing.orders?.delivery_attempt_count || 0) + 1;
 
   if (supabase) {
     await supabase.from('delivery_assignments')
@@ -1239,12 +1252,23 @@ const failDelivery = async (partnerId, orderId, failureReason, notes = null) => 
         updated_at: nowIso
       })
       .eq('id', existing.id);
+
+    await supabase.from('orders')
+      .update({
+        status: ORDER_STATUS.DELIVERY_FAILED,
+        delivery_attempt_count: newAttemptCount,
+        last_delivery_failure_at: nowIso,
+        updated_at: nowIso
+      })
+      .eq('id', orderId);
   }
 
   existing.status = 'FAILED';
   existing.failure_reason = cleanReason;
   existing.failure_notes = notes || null;
   existing.failed_at = nowIso;
+
+  // COD Safety: cod_collected remains false, payment_status remains PENDING if unpaid
 
   const payload = {
     eventType: EVENT_TYPES.DELIVERY_FAILED,
@@ -1253,24 +1277,577 @@ const failDelivery = async (partnerId, orderId, failureReason, notes = null) => 
     deliveryPartnerId: partnerId,
     customerId: existing.orders?.user_id,
     deliveryStatus: 'FAILED',
+    orderStatus: ORDER_STATUS.DELIVERY_FAILED,
     failureReason: cleanReason,
+    deliveryAttemptCount: newAttemptCount,
     updatedAt: nowIso
   };
 
   eventBus.emit(EVENT_TYPES.DELIVERY_FAILED, payload);
   sseManager.broadcastDeliveryUpdate(payload);
+  sseManager.broadcastOrderStatusUpdate({
+    type: EVENT_TYPES.ORDER_STATUS_UPDATED,
+    orderId,
+    orderNumber: existing.orders?.order_number,
+    userId: existing.orders?.user_id,
+    previousStatus: currentOrderStatus,
+    newStatus: ORDER_STATUS.DELIVERY_FAILED,
+    updatedAt: nowIso
+  });
 
   await orderTrackingService.recordStatusChange({
     orderId,
-    previousStatus: existing.orders?.status || ORDER_STATUS.OUT_FOR_DELIVERY,
-    newStatus: existing.orders?.status || ORDER_STATUS.OUT_FOR_DELIVERY,
+    previousStatus: currentOrderStatus,
+    newStatus: ORDER_STATUS.DELIVERY_FAILED,
     changedBy: partnerId,
     changedByRole: 'DELIVERY_PARTNER',
-    reason: cleanReason,
-    metadata: { eventType: 'FAILED_DELIVERY', deliveryPartnerId: partnerId, assignmentStatus: 'FAILED' }
+    reason: `Delivery attempt failed: ${cleanReason}`,
+    metadata: { eventType: 'FAILED_DELIVERY', deliveryPartnerId: partnerId, assignmentStatus: 'FAILED', failureReason: cleanReason }
   });
 
-  return { success: true, message: 'Delivery attempt recorded as failed. Admin notified.' };
+  return { success: true, message: 'Delivery attempt recorded as failed. Admin notified.', deliveryAttemptCount: newAttemptCount };
+};
+
+/**
+ * 15. Admin: Get Failed Deliveries List
+ */
+const getFailedDeliveries = async () => {
+  let list = [];
+  if (supabase) {
+    const { data, error } = await supabase.from('orders')
+      .select('*, order_items(*), order_addresses(*), users!orders_user_id_fkey(id, full_name, phone, email), delivery_assignments(*, users!delivery_assignments_delivery_partner_id_fkey(full_name, phone))')
+      .eq('status', ORDER_STATUS.DELIVERY_FAILED)
+      .order('updated_at', { ascending: false });
+
+    if (!error && data) {
+      list = data;
+    }
+  }
+
+  return list.map(o => {
+    const rawAddr = o.order_addresses?.[0] || null;
+    const deliveryAddress = parseDeliveryAddress(rawAddr) || defaultDeliveryAddress;
+    const sortedAssignments = (o.delivery_assignments || []).sort((a, b) => new Date(b.created_at || b.assigned_at) - new Date(a.created_at || a.assigned_at));
+    const latestAssignment = sortedAssignments[0] || null;
+
+    return {
+      orderId: o.id,
+      orderNumber: o.order_number,
+      orderStatus: o.status,
+      customerId: o.user_id,
+      customerName: o.users?.full_name || 'Customer',
+      customerPhone: o.users?.phone || '9876543210',
+      customerEmail: o.users?.email || '',
+      deliveryAddress,
+      totalAmount: parseFloat(o.total_amount || 0),
+      paymentMethod: String(o.payment_method || 'RAZORPAY').toUpperCase(),
+      paymentStatus: o.payment_status || 'PENDING',
+      deliveryAttemptCount: o.delivery_attempt_count || 1,
+      reassignmentCount: latestAssignment?.reassignment_count || 0,
+      latestAssignmentId: latestAssignment?.id || null,
+      previousPartnerId: latestAssignment?.delivery_partner_id || null,
+      previousPartnerName: latestAssignment?.users?.full_name || 'Delivery Partner',
+      failureReason: latestAssignment?.failure_reason || 'OTHER',
+      failedAt: latestAssignment?.failed_at || o.last_delivery_failure_at || o.updated_at,
+      createdAt: o.created_at,
+      updatedAt: o.updated_at
+    };
+  });
+};
+
+/**
+ * 16. Admin: Reassign Failed Delivery to New Partner
+ */
+const reassignFailedDelivery = async (adminId, orderId, newPartnerId) => {
+  if (!newPartnerId) {
+    throw new AppError('New delivery partner ID is required for reassignment', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  let order = null;
+  let prevAssignment = null;
+
+  if (supabase) {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(orderId));
+    let query = supabase.from('orders').select('*, order_addresses(*), users!orders_user_id_fkey(full_name, phone)');
+    if (isUuid) query = query.eq('id', orderId);
+    else query = query.eq('order_number', orderId);
+
+    const { data: foundOrder } = await query.maybeSingle();
+    if (foundOrder) order = foundOrder;
+  }
+
+  if (!order) {
+    throw new AppError('Order not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  if (order.status !== ORDER_STATUS.DELIVERY_FAILED) {
+    throw new AppError(`Cannot reassign order with status "${order.status}". Order must be in DELIVERY_FAILED status.`, HTTP_STATUS.CONFLICT);
+  }
+
+  // Validate new partner
+  let newPartner = null;
+  if (supabase) {
+    const { data: partnerUser } = await supabase.from('users')
+      .select('id, full_name, phone, role, is_active')
+      .eq('id', newPartnerId)
+      .maybeSingle();
+
+    if (partnerUser) newPartner = partnerUser;
+  } else {
+    newPartner = mockPartners.find(p => String(p.id) === String(newPartnerId));
+  }
+
+  if (!newPartner || newPartner.role !== 'DELIVERY_PARTNER' || newPartner.is_active === false) {
+    throw new AppError('Invalid or inactive delivery partner selected for reassignment.', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  const nowIso = new Date().toISOString();
+
+  if (supabase) {
+    const { data: assignments } = await supabase.from('delivery_assignments')
+      .select('*')
+      .eq('order_id', order.id)
+      .order('created_at', { ascending: false });
+
+    if (assignments && assignments.length > 0) {
+      prevAssignment = assignments[0];
+    }
+  }
+
+  const prevReassignmentCount = prevAssignment?.reassignment_count || 0;
+  const newReassignmentCount = prevReassignmentCount + 1;
+
+  if (supabase) {
+    // 1. Revoke previous active/failed assignment
+    if (prevAssignment) {
+      await supabase.from('delivery_assignments')
+        .update({
+          status: 'REVOKED',
+          revoked_at: nowIso,
+          revoked_by: isUUID(adminId) ? adminId : null,
+          revocation_reason: 'REASSIGNED_AFTER_FAILURE',
+          updated_at: nowIso
+        })
+        .eq('id', prevAssignment.id);
+    }
+
+    // 2. Create NEW assignment with status ASSIGNED
+    await supabase.from('delivery_assignments').insert([{
+      order_id: order.id,
+      delivery_partner_id: newPartnerId,
+      assigned_by: isUUID(adminId) ? adminId : null,
+      status: 'ASSIGNED',
+      assigned_at: nowIso,
+      reassignment_count: newReassignmentCount
+    }]);
+
+    // 3. Update orders.status back to PROCESSING
+    await supabase.from('orders')
+      .update({
+        status: ORDER_STATUS.PROCESSING,
+        updated_at: nowIso
+      })
+      .eq('id', order.id);
+  }
+
+  await logAdminActivity(adminId, 'DELIVERY_REASSIGNED', 'order', order.id, {
+    orderNumber: order.order_number,
+    newPartnerId,
+    newPartnerName: newPartner.full_name,
+    reassignmentCount: newReassignmentCount
+  });
+
+  await orderTrackingService.recordStatusChange({
+    orderId: order.id,
+    previousStatus: ORDER_STATUS.DELIVERY_FAILED,
+    newStatus: ORDER_STATUS.PROCESSING,
+    changedBy: adminId,
+    changedByRole: 'ADMIN',
+    reason: `Order reassigned to delivery partner ${newPartner.full_name}`,
+    metadata: { eventType: 'DELIVERY_REASSIGNED', newPartnerId, reassignmentCount: newReassignmentCount }
+  });
+
+  // Generate WhatsApp Click-to-Chat link for the new partner only
+  let whatsappLink = null;
+  try {
+    const waResult = await whatsappService.getWhatsAppClickToChatLink(adminId, order.id, newPartnerId);
+    whatsappLink = waResult.whatsappClickToChatUrl || waResult.whatsappLink || null;
+  } catch {}
+
+  const payload = {
+    eventType: 'DELIVERY_REASSIGNED',
+    orderId: order.id,
+    orderNumber: order.order_number,
+    orderStatus: ORDER_STATUS.PROCESSING,
+    newPartnerId,
+    reassignmentCount: newReassignmentCount,
+    updatedAt: nowIso
+  };
+
+  eventBus.emit('DELIVERY_REASSIGNED', payload);
+  sseManager.broadcastDeliveryUpdate(payload);
+  sseManager.broadcastOrderStatusUpdate({
+    type: EVENT_TYPES.ORDER_STATUS_UPDATED,
+    orderId: order.id,
+    orderNumber: order.order_number,
+    userId: order.user_id,
+    previousStatus: ORDER_STATUS.DELIVERY_FAILED,
+    newStatus: ORDER_STATUS.PROCESSING,
+    updatedAt: nowIso
+  });
+
+  return {
+    success: true,
+    message: `Order successfully reassigned to ${newPartner.full_name}`,
+    orderId: order.id,
+    orderStatus: ORDER_STATUS.PROCESSING,
+    assignmentStatus: 'ASSIGNED',
+    newPartnerId,
+    reassignmentCount: newReassignmentCount,
+    whatsappLink
+  };
+};
+
+/**
+ * 17. Admin: Retry Failed Delivery with Same Partner
+ */
+const retryFailedDelivery = async (adminId, orderId) => {
+  let order = null;
+  let prevAssignment = null;
+
+  if (supabase) {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(orderId));
+    let query = supabase.from('orders').select('*');
+    if (isUuid) query = query.eq('id', orderId);
+    else query = query.eq('order_number', orderId);
+
+    const { data: foundOrder } = await query.maybeSingle();
+    if (foundOrder) order = foundOrder;
+  }
+
+  if (!order) {
+    throw new AppError('Order not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  if (order.status !== ORDER_STATUS.DELIVERY_FAILED) {
+    throw new AppError(`Cannot retry order with status "${order.status}". Order must be in DELIVERY_FAILED status.`, HTTP_STATUS.CONFLICT);
+  }
+
+  if (supabase) {
+    const { data: assignments } = await supabase.from('delivery_assignments')
+      .select('*')
+      .eq('order_id', order.id)
+      .order('created_at', { ascending: false });
+
+    if (assignments && assignments.length > 0) {
+      prevAssignment = assignments[0];
+    }
+  }
+
+  const partnerIdToReuse = prevAssignment?.delivery_partner_id;
+  if (!partnerIdToReuse) {
+    throw new AppError('No previous delivery partner found for retry. Please reassign to a new partner.', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  let partnerUser = null;
+  if (supabase) {
+    const { data: p } = await supabase.from('users').select('id, full_name, is_active, role').eq('id', partnerIdToReuse).maybeSingle();
+    if (p) partnerUser = p;
+  } else {
+    partnerUser = mockPartners.find(p => String(p.id) === String(partnerIdToReuse));
+  }
+
+  if (!partnerUser || partnerUser.is_active === false) {
+    throw new AppError('Previous delivery partner is no longer active. Please reassign to another partner.', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  const nowIso = new Date().toISOString();
+  const prevReassignmentCount = prevAssignment?.reassignment_count || 0;
+
+  if (supabase) {
+    // 1. Revoke previous failed assignment
+    if (prevAssignment) {
+      await supabase.from('delivery_assignments')
+        .update({
+          status: 'REVOKED',
+          revoked_at: nowIso,
+          revoked_by: isUUID(adminId) ? adminId : null,
+          revocation_reason: 'RETRY_AFTER_FAILURE',
+          updated_at: nowIso
+        })
+        .eq('id', prevAssignment.id);
+    }
+
+    // 2. Create NEW assignment
+    await supabase.from('delivery_assignments').insert([{
+      order_id: order.id,
+      delivery_partner_id: partnerIdToReuse,
+      assigned_by: isUUID(adminId) ? adminId : null,
+      status: 'ASSIGNED',
+      assigned_at: nowIso,
+      reassignment_count: prevReassignmentCount
+    }]);
+
+    // 3. Update orders.status -> PROCESSING
+    await supabase.from('orders')
+      .update({
+        status: ORDER_STATUS.PROCESSING,
+        updated_at: nowIso
+      })
+      .eq('id', order.id);
+  }
+
+  await logAdminActivity(adminId, 'DELIVERY_RETRY_INITIATED', 'order', order.id, {
+    orderNumber: order.order_number,
+    partnerId: partnerIdToReuse
+  });
+
+  await orderTrackingService.recordStatusChange({
+    orderId: order.id,
+    previousStatus: ORDER_STATUS.DELIVERY_FAILED,
+    newStatus: ORDER_STATUS.PROCESSING,
+    changedBy: adminId,
+    changedByRole: 'ADMIN',
+    reason: 'Delivery retry initiated by administrator',
+    metadata: { eventType: 'DELIVERY_RETRY', partnerId: partnerIdToReuse }
+  });
+
+  const payload = {
+    eventType: 'DELIVERY_RETRY',
+    orderId: order.id,
+    orderNumber: order.order_number,
+    orderStatus: ORDER_STATUS.PROCESSING,
+    partnerId: partnerIdToReuse,
+    updatedAt: nowIso
+  };
+
+  eventBus.emit('DELIVERY_RETRY', payload);
+  sseManager.broadcastDeliveryUpdate(payload);
+  sseManager.broadcastOrderStatusUpdate({
+    type: EVENT_TYPES.ORDER_STATUS_UPDATED,
+    orderId: order.id,
+    orderNumber: order.order_number,
+    userId: order.user_id,
+    previousStatus: ORDER_STATUS.DELIVERY_FAILED,
+    newStatus: ORDER_STATUS.PROCESSING,
+    updatedAt: nowIso
+  });
+
+  return {
+    success: true,
+    message: 'Delivery retry initiated. Partner reassigned.',
+    orderId: order.id,
+    orderStatus: ORDER_STATUS.PROCESSING,
+    assignmentStatus: 'ASSIGNED'
+  };
+};
+
+/**
+ * 18. Admin: Return Order To Store
+ */
+const returnOrderToStore = async (adminId, orderId) => {
+  let order = null;
+  let latestAssignment = null;
+
+  if (supabase) {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(orderId));
+    let query = supabase.from('orders').select('*');
+    if (isUuid) query = query.eq('id', orderId);
+    else query = query.eq('order_number', orderId);
+
+    const { data: foundOrder } = await query.maybeSingle();
+    if (foundOrder) order = foundOrder;
+  }
+
+  if (!order) {
+    throw new AppError('Order not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  if (order.status !== ORDER_STATUS.DELIVERY_FAILED) {
+    throw new AppError(`Cannot mark return to store for order in status "${order.status}". Order must be in DELIVERY_FAILED status.`, HTTP_STATUS.CONFLICT);
+  }
+
+  const nowIso = new Date().toISOString();
+
+  if (supabase) {
+    await supabase.from('orders')
+      .update({
+        status: ORDER_STATUS.RETURN_TO_STORE,
+        updated_at: nowIso
+      })
+      .eq('id', order.id);
+
+    const { data: assignments } = await supabase.from('delivery_assignments')
+      .select('*')
+      .eq('order_id', order.id)
+      .order('created_at', { ascending: false });
+
+    if (assignments && assignments.length > 0) {
+      latestAssignment = assignments[0];
+      await supabase.from('delivery_assignments')
+        .update({
+          status: 'RETURN_TO_STORE',
+          returned_to_store_at: nowIso,
+          returned_to_store_by: isUUID(adminId) ? adminId : null,
+          updated_at: nowIso
+        })
+        .eq('id', latestAssignment.id);
+    }
+  }
+
+  await logAdminActivity(adminId, 'RETURN_TO_STORE_INITIATED', 'order', order.id, {
+    orderNumber: order.order_number
+  });
+
+  await orderTrackingService.recordStatusChange({
+    orderId: order.id,
+    previousStatus: ORDER_STATUS.DELIVERY_FAILED,
+    newStatus: ORDER_STATUS.RETURN_TO_STORE,
+    changedBy: adminId,
+    changedByRole: 'ADMIN',
+    reason: 'Order returned to store after unsuccessful delivery',
+    metadata: { eventType: 'RETURN_TO_STORE' }
+  });
+
+  const payload = {
+    eventType: 'RETURN_TO_STORE',
+    orderId: order.id,
+    orderNumber: order.order_number,
+    orderStatus: ORDER_STATUS.RETURN_TO_STORE,
+    updatedAt: nowIso
+  };
+
+  eventBus.emit('RETURN_TO_STORE', payload);
+  sseManager.broadcastDeliveryUpdate(payload);
+  sseManager.broadcastOrderStatusUpdate({
+    type: EVENT_TYPES.ORDER_STATUS_UPDATED,
+    orderId: order.id,
+    orderNumber: order.order_number,
+    userId: order.user_id,
+    previousStatus: ORDER_STATUS.DELIVERY_FAILED,
+    newStatus: ORDER_STATUS.RETURN_TO_STORE,
+    updatedAt: nowIso
+  });
+
+  return {
+    success: true,
+    message: 'Order marked as returned to store.',
+    orderId: order.id,
+    orderStatus: ORDER_STATUS.RETURN_TO_STORE
+  };
+};
+
+/**
+ * 19. Admin: Cancel Order After Delivery Failure
+ */
+const refundService = require('./refund.service');
+
+const cancelOrderAfterDeliveryFailure = async (adminId, orderId, reason = 'Cancelled after delivery failure') => {
+  let order = null;
+
+  if (supabase) {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(orderId));
+    let query = supabase.from('orders').select('*, order_items(*)');
+    if (isUuid) query = query.eq('id', orderId);
+    else query = query.eq('order_number', orderId);
+
+    const { data: foundOrder } = await query.maybeSingle();
+    if (foundOrder) order = foundOrder;
+  }
+
+  if (!order) {
+    throw new AppError('Order not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  if (order.status === ORDER_STATUS.CANCELLED) {
+    throw new AppError('This order is already cancelled', HTTP_STATUS.CONFLICT);
+  }
+
+  if (![ORDER_STATUS.DELIVERY_FAILED, ORDER_STATUS.RETURN_TO_STORE].includes(order.status)) {
+    throw new AppError(`Cannot cancel order in status "${order.status}". Order must be in DELIVERY_FAILED or RETURN_TO_STORE status.`, HTTP_STATUS.CONFLICT);
+  }
+
+  const nowIso = new Date().toISOString();
+  const prevStatus = order.status;
+
+  // 1. Payment & Refund Handling (Prepaid Paid -> refund; COD -> no refund, payment_status remains PENDING)
+  let refundResult = null;
+  const isCod = String(order.payment_method || '').toUpperCase() === 'COD';
+  const isPaid = order.payment_status === 'PAID';
+
+  if (!isCod && isPaid) {
+    let paymentRecord = null;
+    if (supabase) {
+      const { data: pay } = await supabase.from('payments').select('*').eq('order_id', order.id).maybeSingle();
+      paymentRecord = pay;
+    }
+    refundResult = await refundService.processOrderRefund({
+      order,
+      paymentRecord,
+      adminId,
+      reason: `Cancelled after delivery failure: ${reason}`
+    });
+  }
+
+  // 2. Inventory Handling: Release reserved stock idempotently
+  const orderItems = (order.order_items || []).map(i => ({ productId: i.product_id, quantity: i.quantity }));
+  await inventoryService.releaseStock(orderItems, order.id, `CANCELLED_AFTER_DELIVERY_FAILURE: ${reason}`);
+
+  // 3. Update orders table -> CANCELLED
+  if (supabase) {
+    await supabase.from('orders')
+      .update({
+        status: ORDER_STATUS.CANCELLED,
+        cancellation_reason: reason,
+        cancelled_at: nowIso,
+        updated_at: nowIso
+      })
+      .eq('id', order.id);
+  }
+
+  await logAdminActivity(adminId, 'ORDER_CANCELLED_AFTER_DELIVERY_FAILURE', 'order', order.id, {
+    orderNumber: order.order_number,
+    reason,
+    refundResult
+  });
+
+  await orderTrackingService.recordStatusChange({
+    orderId: order.id,
+    previousStatus: prevStatus,
+    newStatus: ORDER_STATUS.CANCELLED,
+    changedBy: adminId,
+    changedByRole: 'ADMIN',
+    reason: `Order cancelled after delivery failure: ${reason}`,
+    metadata: { eventType: 'ORDER_CANCELLED_AFTER_DELIVERY_FAILURE', refundResult }
+  });
+
+  const payload = {
+    eventType: 'ORDER_CANCELLED_AFTER_DELIVERY_FAILURE',
+    orderId: order.id,
+    orderNumber: order.order_number,
+    orderStatus: ORDER_STATUS.CANCELLED,
+    updatedAt: nowIso
+  };
+
+  eventBus.emit('ORDER_CANCELLED_AFTER_DELIVERY_FAILURE', payload);
+  sseManager.broadcastDeliveryUpdate(payload);
+  sseManager.broadcastOrderStatusUpdate({
+    type: EVENT_TYPES.ORDER_STATUS_UPDATED,
+    orderId: order.id,
+    orderNumber: order.order_number,
+    userId: order.user_id,
+    previousStatus: prevStatus,
+    newStatus: ORDER_STATUS.CANCELLED,
+    updatedAt: nowIso
+  });
+
+  return {
+    success: true,
+    message: 'Order cancelled successfully following delivery failure.',
+    orderId: order.id,
+    orderStatus: ORDER_STATUS.CANCELLED,
+    refundStatus: refundResult?.status || 'NOT_REQUIRED'
+  };
 };
 
 module.exports = {
@@ -1293,5 +1870,10 @@ module.exports = {
   startDelivery,
   deliverOrder,
   completeDelivery,
-  failDelivery
+  failDelivery,
+  getFailedDeliveries,
+  reassignFailedDelivery,
+  retryFailedDelivery,
+  returnOrderToStore,
+  cancelOrderAfterDeliveryFailure
 };

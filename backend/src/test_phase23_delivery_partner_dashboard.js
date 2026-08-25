@@ -342,6 +342,8 @@ async function runPhase23Tests() {
   });
 
   await test('31. Valid failure reason (CUSTOMER_UNAVAILABLE) succeeds with internal notes', async () => {
+    await deliveryService.acceptDelivery(partner1Id, order3Id);
+    await deliveryService.startDelivery(partner1Id, order3Id);
     const res = await deliveryService.failDelivery(partner1Id, order3Id, 'CUSTOMER_UNAVAILABLE', 'Door locked, tried calling 3 times');
     assert.strictEqual(res.success, true);
   });
@@ -395,7 +397,11 @@ async function runPhase23Tests() {
   console.log(`📊 PHASE 23 TEST RESULTS: ${passed} PASSED, ${failed} FAILED (TOTAL ${passed + failed} TESTS)`);
   console.log('====================================================\n');
 
-  if (failed > 0) process.exit(1);
+  if (failed > 0) {
+    process.exit(1);
+  } else {
+    process.exit(0);
+  }
 }
 
 runPhase23Tests().catch(err => {
