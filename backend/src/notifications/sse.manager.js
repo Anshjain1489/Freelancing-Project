@@ -390,9 +390,21 @@ setInterval(() => {
   });
 }, 25000);
 
+const getStats = () => {
+  let totalConnectionsCount = 0;
+  sseClients.forEach(set => {
+    totalConnectionsCount += set.size;
+  });
+  return {
+    activeUsersCount: sseClients.size,
+    totalConnectionsCount
+  };
+};
+
 module.exports = {
   addClient,
   removeClient,
+  getStats,
   broadcastNotification,
   broadcastDecision,
   broadcastOrderStatusUpdate,

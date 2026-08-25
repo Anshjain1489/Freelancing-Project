@@ -3,11 +3,16 @@ const helmet = require('helmet');
 const cors = require('cors');
 const morgan = require('morgan');
 const corsOptions = require('./config/cors');
+const requestIdMiddleware = require('./middleware/requestId.middleware');
 const { generalLimiter } = require('./middleware/rateLimiter.middleware');
-const { notFound, errorHandler } = require('./middleware/error.middleware');
+const { notFound } = require('./middleware/error.middleware');
+const errorMonitoringMiddleware = require('./middleware/errorMonitoring.middleware');
 const apiRoutes = require('./routes');
 
 const app = express();
+
+// Request ID assignment for correlation tracing
+app.use(requestIdMiddleware);
 
 // Security Headers
 app.use(helmet());
@@ -15,13 +20,14 @@ app.use(helmet());
 // Cross-Origin Resource Sharing
 app.use(cors(corsOptions));
 
-// HTTP Request Logging (Sanitize sensitive tokens in query params)
+// HTTP Request Logging (Sanitize sensitive tokens in query params and include requestId)
 morgan.token('clean-url', (req) => {
   const url = req.originalUrl || req.url || '';
   return url.replace(/([?&]token=)[^&]+/, '$1[REDACTED]');
 });
+morgan.token('req-id', (req) => req.id || '-');
 
-app.use(morgan(':method :clean-url :status :response-time ms - :res[content-length]'));
+app.use(morgan('[:req-id] :method :clean-url :status :response-time ms - :res[content-length]'));
 
 // Rate Limiting for General Requests
 app.use('/api', generalLimiter);
@@ -41,7 +47,7 @@ app.use('/api/v1', apiRoutes);
 // Root Health Fallback
 app.get('/', (req, res) => {
   res.json({
-    success: true,
+    status: 'ok',
     message: 'Welcome to Chaudhary Kirana Store API Server',
     healthCheck: '/api/v1/health'
   });
@@ -49,6 +55,6 @@ app.get('/', (req, res) => {
 
 // 404 & Global Error Handling
 app.use(notFound);
-app.use(errorHandler);
+app.use(errorMonitoringMiddleware);
 
 module.exports = app;
