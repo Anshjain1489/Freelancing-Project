@@ -28,7 +28,11 @@ const errorHandler = (err, req, res, next) => {
     message = 'Authentication token expired';
   }
 
-  logger.error(`${req.method} ${req.originalUrl} - ${statusCode} - ${message}`);
+  if (statusCode >= 500) {
+    logger.error(`${req.method} ${req.originalUrl} - ${statusCode} - ${message}`);
+  } else {
+    logger.warn(`${req.method} ${req.originalUrl} - ${statusCode} - ${message}`);
+  }
 
   res.status(statusCode).json({
     success: false,

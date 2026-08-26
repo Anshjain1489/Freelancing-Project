@@ -11,7 +11,7 @@ const API_BASE_URL = rawApiUrl.endsWith('/') ? rawApiUrl.slice(0, -1) : rawApiUr
 export const NotificationContext = createContext();
 
 export const NotificationProvider = ({ children }) => {
-  const { isAuthenticated, user } = useContext(AuthContext);
+  const { isAuthenticated, user, isLoading } = useContext(AuthContext);
 
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -28,7 +28,7 @@ export const NotificationProvider = ({ children }) => {
   } = soundHook;
 
   const fetchUnreadCount = useCallback(async () => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || isLoading) {
       setUnreadCount(0);
       return;
     }
@@ -38,10 +38,10 @@ export const NotificationProvider = ({ children }) => {
     } catch (err) {
       console.warn('[NOTIFICATIONS_UNREAD_COUNT_FAIL]', err?.message || err);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isLoading]);
 
   const fetchUnresolvedOrders = useCallback(async () => {
-    if (!isAuthenticated || user?.role !== 'ADMIN') {
+    if (!isAuthenticated || isLoading || user?.role !== 'ADMIN') {
       setUnresolvedOrders([]);
       syncPendingOrderAlerts([]);
       return;
@@ -54,10 +54,10 @@ export const NotificationProvider = ({ children }) => {
     } catch (err) {
       console.warn('[NOTIFICATIONS_UNRESOLVED_ORDERS_FAIL]', err?.message || err);
     }
-  }, [isAuthenticated, user?.role, syncPendingOrderAlerts]);
+  }, [isAuthenticated, isLoading, user?.role, syncPendingOrderAlerts]);
 
   const fetchNotifications = useCallback(async () => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || isLoading) {
       setNotifications([]);
       return;
     }
@@ -83,11 +83,11 @@ export const NotificationProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated, markBatchProcessed]);
+  }, [isAuthenticated, isLoading, markBatchProcessed]);
 
   // Initial fetch & fallback 30s polling
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || isLoading) {
       setNotifications([]);
       setUnreadCount(0);
       setUnresolvedOrders([]);
@@ -110,11 +110,11 @@ export const NotificationProvider = ({ children }) => {
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [isAuthenticated, user?.role, fetchUnreadCount, fetchNotifications, fetchUnresolvedOrders, syncPendingOrderAlerts]);
+  }, [isAuthenticated, isLoading, user?.role, fetchUnreadCount, fetchNotifications, fetchUnresolvedOrders, syncPendingOrderAlerts]);
 
   // Single SSE EventSource Listener per authenticated session
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || isLoading) return;
 
     const token = localStorage.getItem('accessToken') || localStorage.getItem('cks_auth_token');
     if (!token || token === 'undefined' || token === 'null') return;

@@ -16,10 +16,32 @@ const getValidInitialToken = () => {
   }
 };
 
+export const AUTH_STATES = {
+  INITIALIZING: 'INITIALIZING',
+  AUTHENTICATED: 'AUTHENTICATED',
+  UNAUTHENTICATED: 'UNAUTHENTICATED',
+  SESSION_EXPIRED: 'SESSION_EXPIRED'
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(getValidInitialToken());
+  const [authStatus, setAuthStatus] = useState(AUTH_STATES.INITIALIZING);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Global Session Expiration Event Listener
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      setUser(null);
+      setToken(null);
+      setAuthStatus(AUTH_STATES.SESSION_EXPIRED);
+      setIsLoading(false);
+      showError('Session expired. Please log in again.');
+    };
+
+    window.addEventListener('cks_auth_session_expired', handleSessionExpired);
+    return () => window.removeEventListener('cks_auth_session_expired', handleSessionExpired);
+  }, []);
 
   // Initialize Auth state on mount
   useEffect(() => {
@@ -33,13 +55,17 @@ export const AuthProvider = ({ children }) => {
           const userData = res?.data?.user || res?.user || res?.data;
           if (userData && isMounted) {
             setUser(userData);
+            setAuthStatus(AUTH_STATES.AUTHENTICATED);
           } else {
-            localStorage.removeItem('accessToken');
-            localStorage.removeItem('refreshToken');
-            localStorage.removeItem('cks_auth_token');
+            try {
+              localStorage.removeItem('accessToken');
+              localStorage.removeItem('refreshToken');
+              localStorage.removeItem('cks_auth_token');
+            } catch {}
             if (isMounted) {
               setToken(null);
               setUser(null);
+              setAuthStatus(AUTH_STATES.UNAUTHENTICATED);
             }
           }
         } else {
@@ -51,6 +77,7 @@ export const AuthProvider = ({ children }) => {
           if (isMounted) {
             setToken(null);
             setUser(null);
+            setAuthStatus(AUTH_STATES.UNAUTHENTICATED);
           }
         }
       } catch (err) {
@@ -63,6 +90,7 @@ export const AuthProvider = ({ children }) => {
         if (isMounted) {
           setToken(null);
           setUser(null);
+          setAuthStatus(AUTH_STATES.UNAUTHENTICATED);
         }
       } finally {
         if (isMounted) {
@@ -96,6 +124,7 @@ export const AuthProvider = ({ children }) => {
 
       setToken(accessToken);
       setUser(userData);
+      setAuthStatus(AUTH_STATES.AUTHENTICATED);
       showSuccess(`Welcome back, ${userData.fullName || 'User'}! 👋`);
       return userData;
     } catch (err) {
@@ -124,6 +153,7 @@ export const AuthProvider = ({ children }) => {
 
       setToken(accessToken);
       setUser(userData);
+      setAuthStatus(AUTH_STATES.AUTHENTICATED);
       showSuccess('Registration successful! Welcome to Chaudhary Kirana Store 🎉');
       return userData;
     } catch (err) {
@@ -152,6 +182,7 @@ export const AuthProvider = ({ children }) => {
 
       setToken(accessToken);
       setUser(userData);
+      setAuthStatus(AUTH_STATES.AUTHENTICATED);
       showSuccess(`Welcome, ${userData.fullName || 'User'}! 👋`);
       return userData;
     } catch (err) {
@@ -166,8 +197,10 @@ export const AuthProvider = ({ children }) => {
     await authService.logout();
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
+    localStorage.removeItem('cks_auth_token');
     setToken(null);
     setUser(null);
+    setAuthStatus(AUTH_STATES.UNAUTHENTICATED);
     showSuccess('Logged out successfully');
   };
 
@@ -176,7 +209,8 @@ export const AuthProvider = ({ children }) => {
       value={{
         user,
         token,
-        isAuthenticated: !!user,
+        authStatus,
+        isAuthenticated: !!user && authStatus === AUTH_STATES.AUTHENTICATED,
         isLoading,
         login,
         register,
