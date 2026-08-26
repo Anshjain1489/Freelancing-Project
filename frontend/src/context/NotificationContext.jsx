@@ -136,7 +136,9 @@ export const NotificationProvider = ({ children }) => {
             const targetId = data.orderId;
             setUnresolvedOrders(prev => prev.filter(o => String(o.id) !== String(targetId) && String(o.orderNumber) !== String(targetId)));
             stopIncomingOrderAlert(targetId);
-            fetchUnresolvedOrders();
+            if (user?.role === 'ADMIN') {
+              fetchUnresolvedOrders();
+            }
             window.dispatchEvent(new CustomEvent('cks_order_status_updated', { detail: data }));
             window.dispatchEvent(new CustomEvent('cks_delivery_updated', { detail: data }));
             return;
