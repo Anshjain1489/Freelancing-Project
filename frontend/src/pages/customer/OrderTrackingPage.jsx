@@ -18,10 +18,7 @@ import {
   UserCheck,
   MapPin,
   ArrowLeft,
-  RefreshCw,
-  Key,
-  ShieldAlert,
-  Lock
+  RefreshCw
 } from 'lucide-react';
 
 export const OrderTrackingPage = () => {
@@ -47,31 +44,14 @@ export const OrderTrackingPage = () => {
           setTrackingData(tData);
           setError(null);
 
-          if (tData.order?.status === 'OUT_FOR_DELIVERY') {
-            fetchOtp();
-          }
+          setLastRefreshed(new Date());
         }
       }
-      setLastRefreshed(new Date());
     } catch (err) {
       console.error('Failed to load tracking data:', err);
       setError(err.response?.data?.message || 'Failed to load order tracking details.');
     } finally {
       if (showSkeleton) setLoading(false);
-    }
-  }, [orderId]);
-
-  const fetchOtp = useCallback(async () => {
-    setOtpLoading(true);
-    try {
-      const res = await orderService.getDeliveryOtp(orderId);
-      if (res.data || res.otp) {
-        setOtpData(res.data || res);
-      }
-    } catch (err) {
-      console.error('Failed to fetch delivery OTP:', err);
-    } finally {
-      setOtpLoading(false);
     }
   }, [orderId]);
 
@@ -105,10 +85,6 @@ export const OrderTrackingPage = () => {
     }
   }, [orderId, fetchTracking]);
 
-  const handleOtpAvailable = useCallback(() => {
-    fetchOtp();
-  }, [fetchOtp]);
-
   const handleFocus = useCallback(() => {
     fetchTracking(false);
   }, [fetchTracking]);
@@ -119,17 +95,15 @@ export const OrderTrackingPage = () => {
     window.addEventListener('cks_order_tracking_updated', handleRealtimeUpdate);
     window.addEventListener('cks_order_status_updated', handleRealtimeUpdate);
     window.addEventListener('cks_delivery_updated', handleRealtimeUpdate);
-    window.addEventListener('cks_delivery_otp_available', handleOtpAvailable);
     window.addEventListener('focus', handleFocus);
 
     return () => {
       window.removeEventListener('cks_order_tracking_updated', handleRealtimeUpdate);
       window.removeEventListener('cks_order_status_updated', handleRealtimeUpdate);
       window.removeEventListener('cks_delivery_updated', handleRealtimeUpdate);
-      window.removeEventListener('cks_delivery_otp_available', handleOtpAvailable);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [orderId, fetchTracking, handleRealtimeUpdate, handleOtpAvailable, handleFocus]);
+  }, [orderId, fetchTracking, handleRealtimeUpdate, handleFocus]);
 
   // Fallback Polling (30s Interval) for Active Orders
   useEffect(() => {
@@ -254,46 +228,6 @@ export const OrderTrackingPage = () => {
           </div>
         )}
       </Card>
-
-      {/* DELIVERY OTP CARD (Only when OUT_FOR_DELIVERY) */}
-      {order.status === 'OUT_FOR_DELIVERY' && (
-        <Card padding="24px" style={{ background: 'linear-gradient(135deg, #1E1B4B 0%, #312E81 100%)', color: '#FFFFFF', borderRadius: '16px', border: '2px solid #6366F1' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                <Key size={22} color="#818CF8" />
-                <h3 style={{ fontSize: '1.2rem', fontWeight: 900, margin: 0, color: '#EEF2FF' }}>Delivery Verification OTP</h3>
-              </div>
-              <p style={{ fontSize: '0.85rem', color: '#C7D2FE', margin: 0 }}>
-                Share this 6-digit code with your delivery partner <strong>only upon receiving your items</strong>.
-              </p>
-            </div>
-
-            <div style={{ background: 'rgba(255, 255, 255, 0.1)', padding: '12px 24px', borderRadius: '12px', textAlign: 'center', letterSpacing: '6px' }}>
-              {otpLoading ? (
-                <span style={{ fontSize: '1.6rem', fontWeight: 900, color: '#A5B4FC' }}>••• •••</span>
-              ) : otpData?.otp ? (
-                <span style={{ fontSize: '2rem', fontWeight: 900, color: '#38BDF8', fontFamily: 'monospace' }}>
-                  {otpData.otp}
-                </span>
-              ) : otpData?.verified ? (
-                <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#4ADE80', letterSpacing: 'normal' }}>✓ Verified</span>
-              ) : (
-                <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#F87171', letterSpacing: 'normal' }}>OTP Expired / Unavailable</span>
-              )}
-            </div>
-          </div>
-
-          <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', fontSize: '0.8rem', color: '#A5B4FC' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <ShieldAlert size={14} color="#FBBF24" /> Do not share this OTP over phone or prior to item receipt.
-            </span>
-            <Button size="sm" variant="ghost" icon={RefreshCw} onClick={fetchOtp} style={{ color: '#818CF8', padding: '2px 8px' }}>
-              Refresh Code
-            </Button>
-          </div>
-        </Card>
-      )}
 
       {/* VISUAL TIMELINE CARD */}
       <Card padding="28px">

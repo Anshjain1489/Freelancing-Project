@@ -3,7 +3,6 @@ const supabase = require('./config/supabase');
 const orderService = require('./services/order.service');
 const orderAdminService = require('./services/admin/orderAdmin.service');
 const deliveryService = require('./services/delivery.management.service');
-const deliveryOtpService = require('./services/deliveryOtp.service');
 const orderTrackingService = require('./services/orderTracking.service');
 const sseManager = require('./notifications/sse.manager');
 const { HTTP_STATUS } = require('./constants/statusCodes');
@@ -11,7 +10,7 @@ const { HTTP_STATUS } = require('./constants/statusCodes');
 async function runPhase26E2EWorkflowTests() {
   console.log('====================================================');
   console.log('  RUNNING PHASE 26 AUTOMATED E2E LIVE WORKFLOW TEST SUITE');
-  console.log('  Full Customer -> Admin -> Fleet -> OTP -> Failure Recovery Journey (30 Assertions)');
+  console.log('  Full Customer -> Admin -> Fleet -> Failure Recovery Journey (30 Assertions)');
   console.log('====================================================\n');
 
   let passed = 0;
@@ -133,35 +132,28 @@ async function runPhase26E2EWorkflowTests() {
     }
   });
 
-  console.log('\n--- STAGE 4: Encrypted OTP Generation & Customer Access ---');
+  console.log('\n--- STAGE 4: Customer Live Tracking & Fleet Authorization ---');
 
-  await runTest('Assertion 8: Delivery start generates 6-digit OTP stored as SHA-256 hash & AES-256-GCM cipher', async () => {
-    if (supabase) {
-      const { data: asgn } = await supabase.from('delivery_assignments').select('delivery_otp_hash, delivery_otp_encrypted').eq('order_id', e2eOrderId).single();
-      assert.notStrictEqual(asgn.delivery_otp_hash, null);
-      assert.notStrictEqual(asgn.delivery_otp_encrypted, null);
-    } else {
-      assert.strictEqual(true, true);
-    }
+  await runTest('Assertion 8: Customer retrieves order tracking status via HTTPS API', async () => {
+    const tracking = await orderTrackingService.getCustomerOrderTracking(customerId, 'CUSTOMER', e2eOrderId);
+    assert.strictEqual(tracking.success, true);
   });
 
-  await runTest('Assertion 9: Customer retrieves raw OTP via HTTPS API', async () => {
-    const otpRes = await deliveryOtpService.getDeliveryOtpForCustomer(customerId, 'CUSTOMER', e2eOrderId);
-    assert.strictEqual(otpRes.success, true);
-    assert.strictEqual(typeof otpRes.otp, 'string');
-    assert.strictEqual(otpRes.otp.length, 6);
+  await runTest('Assertion 9: Customer receives real-time OUT_FOR_DELIVERY status', async () => {
+    const tracking = await orderTrackingService.getCustomerOrderTracking(customerId, 'CUSTOMER', e2eOrderId);
+    assert.strictEqual(tracking.order?.status || tracking.status, 'OUT_FOR_DELIVERY');
   });
 
-  await runTest('Assertion 10: Delivery partner receiving 403 Forbidden attempting raw OTP HTTPS endpoint', async () => {
+  await runTest('Assertion 10: Unauthorized user receiving 403 Forbidden attempting delivery completion endpoint', async () => {
     try {
-      await deliveryOtpService.getDeliveryOtpForCustomer(partner1Id, 'DELIVERY_PARTNER', e2eOrderId);
+      await deliveryService.completeDelivery('unauthorized_user_99', e2eOrderId, { codCollected: true, collectedAmount: 850.00 });
       assert.fail('Should have thrown 403 Forbidden');
     } catch (err) {
-      assert.strictEqual(err.statusCode, HTTP_STATUS.FORBIDDEN);
+      assert.ok(err.statusCode === 403 || err.statusCode === 404 || err.message?.includes('Forbidden'));
     }
   });
 
-  console.log('\n--- STAGE 5: Failure, Reassignment & OTP Invalidation Journey ---');
+  console.log('\n--- STAGE 5: Failure, Reassignment & Fleet Delivery Completion Journey ---');
 
   await runTest('Assertion 11: Partner 1 reports delivery failure (CUSTOMER_UNAVAILABLE)', async () => {
     if (supabase) {
@@ -187,25 +179,18 @@ async function runPhase26E2EWorkflowTests() {
     }
   });
 
-  await runTest('Assertion 13: Partner 2 accepts & starts delivery, generating new active OTP', async () => {
+  await runTest('Assertion 13: Partner 2 accepts & starts delivery for reassigned order', async () => {
     if (supabase) {
       await deliveryService.acceptDelivery(partner2Id, e2eOrderId);
-      await deliveryService.startDelivery(partner2Id, e2eOrderId);
-
-      const otpRes = await deliveryOtpService.getDeliveryOtpForCustomer(customerId, 'CUSTOMER', e2eOrderId);
-      assert.strictEqual(otpRes.success, true);
-      assert.strictEqual(typeof otpRes.otp, 'string');
+      const startRes = await deliveryService.startDelivery(partner2Id, e2eOrderId);
+      assert.strictEqual(startRes.success, true);
     } else {
       assert.strictEqual(true, true);
     }
   });
 
-  await runTest('Assertion 14: Partner 2 verifies OTP & completes COD delivery with exact cash collection', async () => {
+  await runTest('Assertion 14: Partner 2 completes COD delivery with exact cash collection', async () => {
     if (supabase) {
-      const otpRes = await deliveryOtpService.getDeliveryOtpForCustomer(customerId, 'CUSTOMER', e2eOrderId);
-      const vRes = await deliveryOtpService.verifyDeliveryOtp(partner2Id, e2eOrderId, otpRes.otp);
-      assert.strictEqual(vRes.success, true);
-
       const compRes = await deliveryService.completeDelivery(partner2Id, e2eOrderId, {
         codCollected: true,
         collectedAmount: 850.00,

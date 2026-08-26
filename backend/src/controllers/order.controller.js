@@ -36,7 +36,6 @@ const retryOrderPayment = asyncHandler(async (req, res) => {
 });
 
 const orderTrackingService = require('../services/orderTracking.service');
-const deliveryOtpService = require('../services/deliveryOtp.service');
 
 const getOrderTracking = asyncHandler(async (req, res) => {
   const result = await orderTrackingService.getCustomerOrderTracking(
@@ -47,15 +46,6 @@ const getOrderTracking = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, HTTP_STATUS.OK, 'Order tracking retrieved successfully', result);
 });
 
-const getDeliveryOtp = asyncHandler(async (req, res) => {
-  const result = await deliveryOtpService.getDeliveryOtpForCustomer(
-    req.user.id,
-    req.user.role,
-    req.params.id
-  );
-  return ApiResponse.success(res, HTTP_STATUS.OK, 'Delivery OTP retrieved successfully', result);
-});
-
 module.exports = {
   createOrder,
   getUserOrders,
@@ -63,6 +53,5 @@ module.exports = {
   cancelOrder,
   createOrderPayment,
   retryOrderPayment,
-  getOrderTracking,
-  getDeliveryOtp
+  getOrderTracking
 };

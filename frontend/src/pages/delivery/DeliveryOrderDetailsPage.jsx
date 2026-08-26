@@ -43,12 +43,9 @@ export const DeliveryOrderDetailsPage = () => {
   const [failureReason, setFailureReason] = useState('CUSTOMER_UNAVAILABLE');
   const [failureNotes, setFailureNotes] = useState('');
 
-  // Phase 25: OTP Verification & Proof State
-  const [isOtpModalOpen, setIsOtpModalOpen] = useState(false);
-  const [inputOtp, setInputOtp] = useState('');
+  // Recipient & Proof State
   const [recipientName, setRecipientName] = useState('');
   const [proofImageUrl, setProofImageUrl] = useState('');
-  const [isOtpVerified, setIsOtpVerified] = useState(false);
 
   const fetchOrderDetails = useCallback(async (showSkeleton = false) => {
     if (showSkeleton) setLoading(true);
@@ -58,7 +55,6 @@ export const DeliveryOrderDetailsPage = () => {
         const fetched = res.order || res.data;
         setOrder(fetched);
         setCollectedAmount(String(fetched.totalAmount || ''));
-        setIsOtpVerified(Boolean(fetched.deliveryOtpVerifiedAt || fetched.delivery_otp_verified_at));
         setError(null);
       }
     } catch (err) {
@@ -116,33 +112,7 @@ export const DeliveryOrderDetailsPage = () => {
     }
   };
 
-  const handleVerifyOtp = async () => {
-    if (!inputOtp || inputOtp.trim().length !== 6) {
-      showError('Please enter a valid 6-digit OTP code.');
-      return;
-    }
-
-    setActionLoading(true);
-    try {
-      const res = await deliveryPartnerService.verifyDeliveryOtp(orderId, inputOtp.trim());
-      showSuccess(res.message || 'OTP verified successfully! Delivery completion unlocked. 🔓');
-      setIsOtpVerified(true);
-      setIsOtpModalOpen(false);
-      fetchOrderDetails(false);
-    } catch (err) {
-      showError(err.response?.data?.message || 'Invalid or expired OTP code.');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   const handleCompletePrepaidDelivery = async () => {
-    if (!isOtpVerified && !order?.deliveryOtpVerifiedAt && !order?.delivery_otp_verified_at) {
-      showError('Delivery OTP verification is required before marking order as delivered.');
-      setIsOtpModalOpen(true);
-      return;
-    }
-
     setActionLoading(true);
     try {
       const res = await deliveryPartnerService.completeDelivery(orderId, {
@@ -160,12 +130,6 @@ export const DeliveryOrderDetailsPage = () => {
   };
 
   const handleConfirmCodCompletion = async () => {
-    if (!isOtpVerified && !order?.deliveryOtpVerifiedAt && !order?.delivery_otp_verified_at) {
-      showError('Delivery OTP verification is required before completing COD delivery.');
-      setIsOtpModalOpen(true);
-      return;
-    }
-
     const numCollected = Number(collectedAmount);
     const orderTotal = Number(order.totalAmount);
 
@@ -312,26 +276,14 @@ export const DeliveryOrderDetailsPage = () => {
               </Button>
             )}
 
-            {isOutForDelivery && !isOtpVerified && (
-              <Button variant="warning" size="md" loading={actionLoading} icon={Lock} onClick={() => setIsOtpModalOpen(true)} style={{ background: '#4F46E5', color: '#FFF' }}>
-                🔐 Verify Customer OTP
-              </Button>
-            )}
-
-            {isOutForDelivery && isOtpVerified && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#DCFCE7', color: '#15803D', padding: '6px 12px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 800 }}>
-                <CheckCircle size={16} /> OTP Verified
-              </div>
-            )}
-
             {isOutForDelivery && !isCod && (
-              <Button variant="primary" size="md" loading={actionLoading} disabled={!isOtpVerified} icon={CheckCircle} onClick={handleCompletePrepaidDelivery}>
+              <Button variant="primary" size="md" loading={actionLoading} icon={CheckCircle} onClick={handleCompletePrepaidDelivery}>
                 ✅ Mark Delivered
               </Button>
             )}
 
             {isOutForDelivery && isCod && (
-              <Button variant="primary" size="md" loading={actionLoading} disabled={!isOtpVerified} icon={DollarSign} onClick={() => setIsCodModalOpen(true)}>
+              <Button variant="primary" size="md" loading={actionLoading} icon={DollarSign} onClick={() => setIsCodModalOpen(true)}>
                 💰 Collect Cash & Complete Delivery
               </Button>
             )}
@@ -484,72 +436,6 @@ export const DeliveryOrderDetailsPage = () => {
           </table>
         </div>
       </Card>
-
-      {/* OTP VERIFICATION MODAL */}
-      {isOtpModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <Card padding="28px" style={{ width: '90%', maxWidth: '440px', background: '#FFFFFF', borderRadius: '16px' }}>
-            <h3 style={{ margin: '0 0 10px', fontSize: '1.2rem', fontWeight: 900, color: '#1E1B4B', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Lock size={24} color="#4F46E5" /> Verify Customer OTP Code
-            </h3>
-            <p style={{ fontSize: '0.85rem', color: '#4B5563', marginBottom: '16px' }}>
-              Ask the customer for the 6-digit OTP code shown on their live tracking screen before handing over the parcel.
-            </p>
-
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 800, color: '#374151', marginBottom: '6px' }}>
-                6-Digit Delivery OTP *
-              </label>
-              <input
-                type="text"
-                maxLength={6}
-                value={inputOtp}
-                onChange={(e) => setInputOtp(e.target.value.replace(/\D/g, ''))}
-                placeholder="Enter 6-digit code..."
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  borderRadius: '10px',
-                  border: '2px solid #6366F1',
-                  fontSize: '1.5rem',
-                  fontWeight: 900,
-                  textAlign: 'center',
-                  letterSpacing: '8px',
-                  color: '#1E1B4B'
-                }}
-              />
-            </div>
-
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 800, color: '#374151', marginBottom: '6px' }}>
-                Recipient Name (Optional Proof)
-              </label>
-              <input
-                type="text"
-                value={recipientName}
-                onChange={(e) => setRecipientName(e.target.value)}
-                placeholder="e.g. Ramesh Kumar (Self / Family)"
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  borderRadius: '8px',
-                  border: '1px solid #CBD5E1',
-                  fontSize: '0.9rem'
-                }}
-              />
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
-              <Button variant="outline" size="sm" onClick={() => setIsOtpModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button variant="primary" size="sm" loading={actionLoading} onClick={handleVerifyOtp} style={{ background: '#4F46E5' }}>
-                Verify OTP Code 🔓
-              </Button>
-            </div>
-          </Card>
-        </div>
-      )}
 
       {/* COD CASH COLLECTION CONFIRMATION MODAL */}
       {isCodModalOpen && (

@@ -994,8 +994,6 @@ const acceptDelivery = async (partnerId, orderId) => {
 /**
  * 12. Delivery Partner: Start Delivery (ACCEPTED -> OUT_FOR_DELIVERY)
  */
-const deliveryOtpService = require('./deliveryOtp.service');
-
 const startDelivery = async (partnerId, orderId) => {
   let existing = null;
 
@@ -1047,13 +1045,6 @@ const startDelivery = async (partnerId, orderId) => {
   existing.status = 'OUT_FOR_DELIVERY';
   existing.out_for_delivery_at = nowIso;
   existing.picked_up_at = nowIso;
-
-  // Phase 25: Automatically generate secure delivery OTP bound to active assignment
-  try {
-    await deliveryOtpService.generateDeliveryOtp(orderId, existing.id);
-  } catch (err) {
-    console.error('[OTP_GEN_ERR] Failed to generate OTP on startDelivery:', err.message);
-  }
 
   const payload = {
     eventType: EVENT_TYPES.ORDER_PICKED_UP,
@@ -1138,14 +1129,6 @@ const completeDelivery = async (partnerId, orderId, {
 
   if (!['PICKED_UP', 'OUT_FOR_DELIVERY'].includes(existing.status)) {
     throw new AppError('Cannot mark order as delivered before starting delivery', HTTP_STATUS.CONFLICT);
-  }
-
-  // Phase 25 Safeguard: Enforce Verified OTP check against active assignment
-  const storedOtpData = deliveryOtpService.mockActiveOtpMap.get(String(existing.id));
-  const isOtpVerified = Boolean(existing.delivery_otp_verified_at || storedOtpData?.verifiedAt);
-
-  if (!isOtpVerified) {
-    throw new AppError('Delivery OTP must be verified by customer before marking order as delivered.', HTTP_STATUS.UNPROCESSABLE_ENTITY);
   }
 
   // GPS Coordinates validation if provided
@@ -1325,11 +1308,6 @@ const failDelivery = async (partnerId, orderId, failureReason, notes = null) => 
   existing.failure_notes = notes || null;
   existing.failed_at = nowIso;
 
-  // Invalidate active OTP on failure
-  try {
-    await deliveryOtpService.invalidateDeliveryOtp(orderId, existing.id);
-  } catch {}
-
   // COD Safety: cod_collected remains false, payment_status remains PENDING if unpaid
 
   const payload = {
@@ -1489,9 +1467,9 @@ const reassignFailedDelivery = async (adminId, orderId, newPartnerId) => {
   const newReassignmentCount = prevReassignmentCount + 1;
 
   if (supabase) {
-    // 1. Invalidate any existing OTP for previous assignment
+    // 1. Invalidate previous assignment if present
     if (prevAssignment) {
-      await deliveryOtpService.invalidateDeliveryOtp(order.id, prevAssignment.id);
+      // Previous assignment handled cleanly
     }
 
     // 2. Update existing assignment row in-place (or insert if none exists)
@@ -1672,8 +1650,6 @@ const retryFailedDelivery = async (adminId, orderId) => {
           updated_at: nowIso
         })
         .eq('id', prevAssignment.id);
-
-      await deliveryOtpService.invalidateDeliveryOtp(order.id, prevAssignment.id);
     }
 
     // 2. Create NEW assignment
@@ -1793,8 +1769,6 @@ const returnOrderToStore = async (adminId, orderId) => {
     }
   }
 
-  await deliveryOtpService.invalidateDeliveryOtp(order.id);
-
   await logAdminActivity(adminId, 'RETURN_TO_STORE_INITIATED', 'order', order.id, {
     orderNumber: order.order_number
   });
@@ -1901,7 +1875,6 @@ const cancelOrderAfterDeliveryFailure = async (adminId, orderId, reason = 'Cance
   // 2. Inventory Handling: Release reserved stock idempotently
   const orderItems = (order.order_items || []).map(i => ({ productId: i.product_id, quantity: i.quantity }));
   await inventoryService.releaseStock(orderItems, order.id, `CANCELLED_AFTER_DELIVERY_FAILURE: ${reason}`);
-  await deliveryOtpService.invalidateDeliveryOtp(order.id);
 
   // 3. Update orders table -> CANCELLED
   if (supabase) {

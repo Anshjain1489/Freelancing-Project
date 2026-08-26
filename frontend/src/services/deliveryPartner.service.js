@@ -33,11 +33,6 @@ export const deliveryPartnerService = {
     return response.data;
   },
 
-  verifyDeliveryOtp: async (id, otp) => {
-    const response = await apiClient.post(ENDPOINTS.DELIVERY.VERIFY_OTP(id), { otp });
-    return response.data;
-  },
-
   deliverOrder: async (id, payload = {}) => {
     const response = await apiClient.post(ENDPOINTS.DELIVERY.COMPLETE(id), payload);
     return response.data;

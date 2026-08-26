@@ -11,7 +11,6 @@ router.use(authenticate);
 router.post('/', validate(createOrderSchema), orderController.createOrder);
 router.get('/', orderController.getUserOrders);
 router.get('/:id/tracking', orderController.getOrderTracking);
-router.get('/:id/delivery-otp', orderController.getDeliveryOtp);
 router.get('/:id', orderController.getOrderById);
 router.post('/:id/cancel', validate(cancelOrderSchema), orderController.cancelOrder);
 router.post('/:id/create-payment', orderController.createOrderPayment);

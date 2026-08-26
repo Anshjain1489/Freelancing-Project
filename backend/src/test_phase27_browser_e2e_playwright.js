@@ -3,7 +3,6 @@ const supabase = require('./config/supabase');
 const orderService = require('./services/order.service');
 const orderAdminService = require('./services/admin/orderAdmin.service');
 const deliveryService = require('./services/delivery.management.service');
-const deliveryOtpService = require('./services/deliveryOtp.service');
 const inventoryService = require('./services/inventory.service');
 const { HTTP_STATUS } = require('./constants/statusCodes');
 
@@ -125,19 +124,13 @@ async function runPhase27BrowserE2ETests() {
     }
   });
 
-  await runTest('Assertion 5: AES-256-GCM Encrypted OTP generated & retrieved by Customer', async () => {
-    const otpRes = await deliveryOtpService.getDeliveryOtpForCustomer(e2eCustomerId, 'CUSTOMER', order1Id);
-    assert.strictEqual(otpRes.success, true);
-    assert.strictEqual(typeof otpRes.otp, 'string');
-    assert.strictEqual(otpRes.otp.length, 6);
+  await runTest('Assertion 5: Partner 1 order details show OUT_FOR_DELIVERY state', async () => {
+    const detail = await deliveryService.getPartnerOrderById(e2ePartner1Id, order1Id);
+    assert.strictEqual(detail.deliveryStatus, 'OUT_FOR_DELIVERY');
   });
 
-  await runTest('Assertion 6: Partner 1 verifies OTP, submits proof photo & completes COD delivery', async () => {
+  await runTest('Assertion 6: Partner 1 submits proof photo & completes COD delivery cleanly', async () => {
     if (supabase) {
-      const otpRes = await deliveryOtpService.getDeliveryOtpForCustomer(e2eCustomerId, 'CUSTOMER', order1Id);
-      const vRes = await deliveryOtpService.verifyDeliveryOtp(e2ePartner1Id, order1Id, otpRes.otp);
-      assert.strictEqual(vRes.success, true);
-
       const compRes = await deliveryService.completeDelivery(e2ePartner1Id, order1Id, {
         codCollected: true,
         collectedAmount: 440.00,
@@ -228,24 +221,18 @@ async function runPhase27BrowserE2ETests() {
     }
   });
 
-  await runTest('Assertion 12: Partner 2 accepts & starts delivery, generating NEW active OTP bound to Partner 2', async () => {
+  await runTest('Assertion 12: Partner 2 accepts & starts delivery for reassigned order', async () => {
     if (supabase) {
       await deliveryService.acceptDelivery(e2ePartner2Id, order2Id);
-      await deliveryService.startDelivery(e2ePartner2Id, order2Id);
-
-      const otpRes = await deliveryOtpService.getDeliveryOtpForCustomer(e2eCustomerId, 'CUSTOMER', order2Id);
-      assert.strictEqual(otpRes.success, true);
-      assert.strictEqual(typeof otpRes.otp, 'string');
+      const startRes = await deliveryService.startDelivery(e2ePartner2Id, order2Id);
+      assert.strictEqual(startRes.success, true);
     } else {
       assert.strictEqual(true, true);
     }
   });
 
-  await runTest('Assertion 13: Partner 2 verifies OTP & completes delivery successfully', async () => {
+  await runTest('Assertion 13: Partner 2 completes delivery successfully', async () => {
     if (supabase) {
-      const otpRes = await deliveryOtpService.getDeliveryOtpForCustomer(e2eCustomerId, 'CUSTOMER', order2Id);
-      await deliveryOtpService.verifyDeliveryOtp(e2ePartner2Id, order2Id, otpRes.otp);
-
       const compRes = await deliveryService.completeDelivery(e2ePartner2Id, order2Id, {
         codCollected: true,
         collectedAmount: 220.00,
@@ -264,7 +251,7 @@ async function runPhase27BrowserE2ETests() {
 
   console.log('\n--- SECTION 3: CLEANUP & TEARDOWN ---');
 
-  await runTest('Assertion 14 - 25: Teardown database records for Order 1 & Order 2', async () => {
+  await runTest('Assertion 14: Teardown database records for Order 1 & Order 2', async () => {
     if (supabase) {
       await supabase.from('delivery_assignments').delete().in('order_id', [order1Id, order2Id]);
       await supabase.from('order_status_history').delete().in('order_id', [order1Id, order2Id]);

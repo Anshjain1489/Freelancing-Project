@@ -54,30 +54,27 @@ async function runPhase30FaultInjectionTests() {
     process.env.SUPABASE_URL = oldUrl;
   });
 
-  await runTest('Assertion 3: validateStartupConfig with short OTP_ENCRYPTION_KEY in production mode throws error', () => {
+  await runTest('Assertion 3: validateStartupConfig succeeds without OTP_ENCRYPTION_KEY in production mode', () => {
     const oldEnv = process.env.NODE_ENV;
-    const oldKey = process.env.OTP_ENCRYPTION_KEY;
     const oldJwt = process.env.JWT_SECRET;
     const oldUrl = process.env.SUPABASE_URL;
 
     process.env.NODE_ENV = 'production';
     process.env.SUPABASE_URL = 'http://localhost:54321';
     process.env.JWT_SECRET = 'mock_jwt_secret_123';
-    process.env.OTP_ENCRYPTION_KEY = 'short_key';
+    delete process.env.OTP_ENCRYPTION_KEY;
 
-    assert.throws(() => {
-      validateStartupConfig();
-    }, /OTP_ENCRYPTION_KEY must be at least 32 characters/);
+    const res = validateStartupConfig();
+    assert.strictEqual(res.valid, true);
+    assert.strictEqual(res.isProduction, true);
 
     process.env.NODE_ENV = oldEnv;
     if (oldUrl) process.env.SUPABASE_URL = oldUrl; else delete process.env.SUPABASE_URL;
     process.env.JWT_SECRET = oldJwt;
-    process.env.OTP_ENCRYPTION_KEY = oldKey;
   });
 
-  await runTest('Assertion 4: AES-256-GCM OTP encryption self-test executes cleanly without mismatch', () => {
-    const keyStr = process.env.OTP_ENCRYPTION_KEY || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
-    const key = crypto.createHash('sha256').update(String(keyStr)).digest();
+  await runTest('Assertion 4: AES-256-GCM general payload cipher test executes cleanly without mismatch', () => {
+    const key = crypto.createHash('sha256').update('cks_general_cipher_key_material').digest();
     const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
     let enc = cipher.update('987654', 'utf8', 'hex');
@@ -241,9 +238,8 @@ async function runPhase30FaultInjectionTests() {
   });
 
   // --- SECTION 5: Server Restart Simulation & Graceful Degradation ---
-  await runTest('Assertion 16: Server restart simulation: Encrypted OTP in DB decrypts successfully after restart', () => {
-    const keyStr = process.env.OTP_ENCRYPTION_KEY || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
-    const key = crypto.createHash('sha256').update(String(keyStr)).digest();
+  await runTest('Assertion 16: Server restart simulation: Encrypted payload in DB decrypts successfully after restart', () => {
+    const key = crypto.createHash('sha256').update('cks_server_restart_key_material').digest();
     const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
     let enc = cipher.update('445566', 'utf8', 'hex');

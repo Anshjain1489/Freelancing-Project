@@ -13,8 +13,8 @@ const config = {
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || ''
   },
   jwt: {
-    accessSecret: process.env.JWT_ACCESS_SECRET || 'fallback_secret_key_chaudhary_kirana_2026',
-    refreshSecret: process.env.JWT_REFRESH_SECRET || 'fallback_refresh_secret_chaudhary_2026'
+    accessSecret: process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'fallback_secret_key_chaudhary_kirana_2026',
+    refreshSecret: process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || 'fallback_refresh_secret_chaudhary_2026'
   },
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID || ''
