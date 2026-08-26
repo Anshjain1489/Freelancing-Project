@@ -30,21 +30,25 @@ To prevent `[STARTUP_FATAL]` startup validation failures on Render, ensure all r
 | `SUPABASE_URL` | Yes | Supabase PostgreSQL project URL | Copy from Supabase API settings |
 | `SUPABASE_ANON_KEY` | Yes | Supabase public anon key | Copy from Supabase API settings |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase admin service role key | Copy from Supabase API settings |
-| `JWT_SECRET` | Yes | JWT signing & verification secret | `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"` |
+| `JWT_SECRET` (or `JWT_ACCESS_SECRET`) | Yes | JWT signing & verification secret (min 32 chars) | `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"` |
 | `RAZORPAY_KEY_ID` | Optional | Razorpay payment gateway Key ID | Copy from Razorpay Dashboard |
 | `RAZORPAY_KEY_SECRET` | Optional | Razorpay payment gateway Key Secret | Copy from Razorpay Dashboard |
 
-### Steps to Configure in Render Dashboard
+### Steps to Configure Render JWT Environment Variables
 
 1. Open [Render Dashboard](https://dashboard.render.com/).
 2. Select your backend web service (e.g., `chaudhary-kirana-backend`).
-3. Click on **Environment** in the left sidebar.
-4. Add or update each key-value pair listed in the table above.
-5. Click **Save Changes**.
-6. Trigger a redeploy (or wait for automatic Git push deployment).
-7. Verify operational readiness endpoints:
+3. Navigate to **Environment Variables** in the left sidebar.
+4. Add either `JWT_SECRET` or `JWT_ACCESS_SECRET`.
+5. Generate a 64-byte secure secret:
+   ```powershell
+   node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+   ```
+6. Save environment changes.
+7. Trigger a redeploy (or push to `main` branch).
+8. Verify system health & readiness:
    - `GET /api/v1/health`
-   - `GET /api/v1/health/ready`
+   - `GET /api/v1/health/ready` (Expected: HTTP 200, `operationalState: ACTIVE`)
 
 > [!WARNING]
 > Never commit actual secret values (`JWT_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`) into Git or public repositories. Use Render Environment Variables or `.env` files locally.

@@ -36,6 +36,9 @@ async function runPhase31StartupValidationFixTests() {
   // Helper to run with temporary env overrides
   const withEnv = (envOverrides, fn) => {
     const backup = { ...process.env };
+    delete process.env.JWT_SECRET;
+    delete process.env.JWT_ACCESS_SECRET;
+    delete process.env.JWT_REFRESH_SECRET;
     Object.assign(process.env, envOverrides);
     try {
       return fn();
