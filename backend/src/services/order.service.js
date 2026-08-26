@@ -37,8 +37,9 @@ const createOrder = async (userId, addressId, couponCode = null, paymentMethod =
     throw new AppError(`Minimum order value for delivery is ₹${minOrderVal}. Please add ₹${shortage} more items to your cart.`, HTTP_STATUS.BAD_REQUEST, ERROR_CODES.BAD_REQUEST);
   }
 
-  // 3. Calculate Delivery Charge (Phase 16 & 16.1)
+  // 3. Calculate Delivery Charge (Phase 16 & 33)
   let deliveryCharge = 0;
+  let distanceKm = 0;
   if (supabase && addressId) {
     const { data: address } = await supabase.from('addresses').select('*').eq('id', addressId).single();
     if (address) {
@@ -47,6 +48,7 @@ const createOrder = async (userId, addressId, couponCode = null, paymentMethod =
         throw new AppError(deliveryInfo.reason || `Address is outside maximum delivery radius.`, HTTP_STATUS.BAD_REQUEST, ERROR_CODES.BAD_REQUEST);
       }
       deliveryCharge = deliveryInfo.deliveryCharge || 0;
+      distanceKm = deliveryInfo.distanceKm || 0;
     }
   }
 
@@ -83,6 +85,7 @@ const createOrder = async (userId, addressId, couponCode = null, paymentMethod =
         order_number: orderNumber,
         subtotal: cart.subtotal,
         delivery_charge: deliveryCharge,
+        distance_km: distanceKm,
         coupon_id: coupon ? coupon.id : null,
         coupon_code: coupon ? coupon.code : null,
         discount_amount: discountAmount,

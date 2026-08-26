@@ -418,7 +418,7 @@ export const CheckoutPage = () => {
                   <span>Delivery Charge ({preview.delivery?.distanceKm || 0} KM)</span>
                 </div>
                 <span style={{ fontWeight: 700, color: deliveryFee === 0 ? 'var(--color-success)' : 'var(--color-text-primary)' }}>
-                  {deliveryFee === 0 ? 'FREE (≤ 1 KM)' : formatCurrency(deliveryFee)}
+                  {deliveryFee === 0 ? 'FREE (0 KM)' : formatCurrency(deliveryFee)}
                 </span>
               </div>
 

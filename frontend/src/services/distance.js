@@ -1,24 +1,22 @@
 export const calculateDeliveryFee = (
   distanceKm,
-  freeRadiusKm = 0.0,
-  extraKmRate = 10.0
+  ratePerKm = 10.0
 ) => {
   const distance = Math.max(0, Number(distanceKm) || 0);
 
-  if (freeRadiusKm > 0 && distance <= freeRadiusKm) {
+  if (distance === 0) {
     return {
       deliveryCharge: 0,
       isFree: true,
-      message: `FREE delivery (Within ${freeRadiusKm} KM radius)`
+      message: 'FREE delivery (0 KM)'
     };
   }
 
-  const chargeableKm = Math.max(1, Math.ceil(distance));
-  const deliveryCharge = chargeableKm * extraKmRate;
+  const deliveryCharge = Math.round(distance * ratePerKm);
 
   return {
     deliveryCharge,
-    isFree: false,
-    message: `₹${deliveryCharge} delivery charge applied (${chargeableKm} KM @ ₹${extraKmRate}/KM)`
+    isFree: deliveryCharge === 0,
+    message: `₹${deliveryCharge} delivery charge applied (${distance.toFixed(1)} KM @ ₹${ratePerKm}/KM)`
   };
 };

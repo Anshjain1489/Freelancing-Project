@@ -17,16 +17,15 @@ const calculateHaversineDistance = (lat1, lon1, lat2, lon2) => {
   return Math.round(distance * 100) / 100; // Round to 2 decimal places
 };
 
+const deliveryDistanceService = require('./deliveryDistance.service');
+
 /**
  * Calculates delivery charge based on exact distance.
- * Rule:
- * ₹10 per KM (ceil(distance) * 10, minimum ₹10).
- * Maximum delivery radius: 15.0 KM.
+ * New Rule: Delivery Charge = Math.round(distanceKm * 10)
+ * Maximum delivery radius: 50.0 KM.
  */
 const calculateDeliveryFee = (distanceKm) => {
-  const freeRadius = config.store.freeDeliveryRadiusKm || 0;
-  const ratePerKm = config.store.deliveryChargePerExtraKm || 10.0;
-  const maxRadius = config.store.maxDeliveryRadiusKm || 15.0;
+  const maxRadius = config.store.maxDeliveryRadiusKm || 50.0;
 
   if (distanceKm > maxRadius) {
     return {
@@ -37,24 +36,11 @@ const calculateDeliveryFee = (distanceKm) => {
     };
   }
 
-  if (freeRadius > 0 && distanceKm <= freeRadius) {
-    return {
-      isDeliverable: true,
-      distanceKm,
-      freeDeliveryRadiusKm: freeRadius,
-      additionalDistanceKm: 0,
-      deliveryCharge: 0
-    };
-  }
-
-  const chargeableKm = Math.max(1, Math.ceil(distanceKm));
-  const deliveryCharge = chargeableKm * ratePerKm;
+  const deliveryCharge = deliveryDistanceService.calculateDeliveryCharge(distanceKm);
 
   return {
     isDeliverable: true,
     distanceKm,
-    freeDeliveryRadiusKm: freeRadius,
-    additionalDistanceKm: chargeableKm,
     deliveryCharge
   };
 };
