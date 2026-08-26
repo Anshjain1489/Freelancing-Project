@@ -148,6 +148,7 @@ const deliveryActionLimiter = rateLimit({
 
 module.exports = {
   generalLimiter,
+  apiLimiter: generalLimiter,
   loginLimiter,
   registerLimiter,
   passwordResetLimiter,
