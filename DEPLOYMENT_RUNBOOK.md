@@ -34,21 +34,25 @@ To prevent `[STARTUP_FATAL]` startup validation failures on Render, ensure all r
 | `RAZORPAY_KEY_ID` | Optional | Razorpay payment gateway Key ID | Copy from Razorpay Dashboard |
 | `RAZORPAY_KEY_SECRET` | Optional | Razorpay payment gateway Key Secret | Copy from Razorpay Dashboard |
 
-### Steps to Configure Render JWT Environment Variables
+### Render JWT Environment Configuration
+
+To configure production authentication secrets on Render:
 
 1. Open [Render Dashboard](https://dashboard.render.com/).
 2. Select your backend web service (e.g., `chaudhary-kirana-backend`).
-3. Navigate to **Environment Variables** in the left sidebar.
+3. Click on **Environment** (or **Environment Variables** in sidebar).
 4. Add either `JWT_SECRET` or `JWT_ACCESS_SECRET`.
-5. Generate a 64-byte secure secret:
-   ```powershell
+5. Generate a secure secret locally:
+   ```bash
    node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
    ```
-6. Save environment changes.
-7. Trigger a redeploy (or push to `main` branch).
-8. Verify system health & readiness:
-   - `GET /api/v1/health`
-   - `GET /api/v1/health/ready` (Expected: HTTP 200, `operationalState: ACTIVE`)
+6. Paste the generated value into Render.
+7. Save environment variables.
+8. Trigger a manual redeploy if Render does not automatically restart the service.
+9. Confirm logs show successful startup (`[STARTUP_VALIDATION_SUCCESS]`) without printing secret values.
+
+> [!NOTE]
+> `OTP_ENCRYPTION_KEY` is **NOT required**. The OTP service and encryption infrastructure have been completely removed from the production codebase.
 
 > [!WARNING]
 > Never commit actual secret values (`JWT_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`) into Git or public repositories. Use Render Environment Variables or `.env` files locally.

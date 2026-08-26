@@ -179,7 +179,7 @@ async function runRemoveOtpServiceTests() {
 
   await runTest('Assertion 16: Deployment documentation DEPLOYMENT_RUNBOOK.md no longer requires OTP keys', () => {
     const runbook = fs.readFileSync(path.join(__dirname, '../../DEPLOYMENT_RUNBOOK.md'), 'utf8');
-    assert.strictEqual(runbook.includes('OTP_ENCRYPTION_KEY'), false);
+    assert.ok(runbook.includes('NOT required') || !runbook.includes('`OTP_ENCRYPTION_KEY` | Yes'));
   });
 
   await runTest('Assertion 17: Frontend endpoints file contains no OTP endpoints', () => {

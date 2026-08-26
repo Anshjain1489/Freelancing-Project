@@ -348,6 +348,7 @@ const refreshAccessToken = async (refreshToken) => {
 };
 
 module.exports = {
+  generateTokens,
   registerCustomer,
   loginUser,
   googleLogin,

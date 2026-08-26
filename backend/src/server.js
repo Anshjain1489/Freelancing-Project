@@ -1,12 +1,13 @@
-const app = require('./app');
 const config = require('./config/environment');
-const logger = require('./utils/logger');
 const { validateStartupConfig } = require('./services/startupValidation.service');
+
+// Run startup environment & configuration validation BEFORE loading Express application & dependencies
+validateStartupConfig();
+
+const app = require('./app');
+const logger = require('./utils/logger');
 const { initGracefulShutdown } = require('./services/gracefulShutdown.service');
 const jobRunner = require('./jobs/jobRunner.service');
-
-// Run startup environment & encryption validation
-validateStartupConfig();
 
 const PORT = config.port;
 
