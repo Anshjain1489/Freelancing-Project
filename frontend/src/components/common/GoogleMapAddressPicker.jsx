@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import client from '../../api/client';
 import { STORE_LOCATION } from '../../config/store.config';
 import { getCurrentPosition, reverseGeocode, validateCoordinates, calculateFrontendDeliveryCharge, calculateHaversineDistance } from '../../utils/location.utils';
-import { MapPin, Navigation, AlertTriangle, RefreshCw, CheckCircle, Search } from 'lucide-react';
+import { MapPin, Navigation, AlertTriangle, RefreshCw } from 'lucide-react';
 
 export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, initialLng, onFieldsAutoFilled }) {
   const [position, setPosition] = useState({
@@ -15,55 +15,13 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
   const [loading, setLoading] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
   const [geoError, setGeoError] = useState(null);
-  const [mapsApiLoaded, setMapsApiLoaded] = useState(false);
-  const [mapsApiFailed, setMapsApiFailed] = useState(false);
+  const [leafletLoaded, setLeafletLoaded] = useState(false);
 
-  const mapContainerRef = useRef(null);
-  const googleMapRef = useRef(null);
-  const googleMarkerRef = useRef(null);
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+  const leafletMapContainerRef = useRef(null);
+  const leafletMapRef = useRef(null);
+  const leafletMarkerRef = useRef(null);
   const debounceTimerRef = useRef(null);
-
-  const rawApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
-  const apiKey = (typeof rawApiKey === 'string' && rawApiKey.trim() && !rawApiKey.startsWith('your_') && rawApiKey !== 'undefined' && rawApiKey.trim().length > 10) ? rawApiKey.trim() : '';
-
-  // Listen for global Google Maps Auth Failure callback (gm_authFailure)
-  useEffect(() => {
-    const prevAuthFailure = window.gm_authFailure;
-    window.gm_authFailure = () => {
-      console.warn('[GOOGLE_MAPS_AUTH_FAILURE] API key invalid or unbilled. Switching to interactive location picker fallback.');
-      setMapsApiFailed(true);
-      setMapsApiLoaded(false);
-      if (typeof prevAuthFailure === 'function') prevAuthFailure();
-    };
-    return () => {
-      window.gm_authFailure = prevAuthFailure;
-    };
-  }, []);
-
-  // Monitor DOM inside mapContainerRef to catch Google's error box immediately
-  useEffect(() => {
-    if (!mapContainerRef.current) return;
-
-    const observer = new MutationObserver(() => {
-      if (!mapContainerRef.current) return;
-      const html = mapContainerRef.current.innerHTML || '';
-      const text = mapContainerRef.current.textContent || '';
-      if (
-        html.includes('gm-err') ||
-        text.includes('Oops! Something went wrong') ||
-        text.includes("didn't load Google Maps correctly") ||
-        mapContainerRef.current.querySelector('.gm-err-container') ||
-        mapContainerRef.current.querySelector('.gm-err-content')
-      ) {
-        console.warn('[GOOGLE_MAPS_DOM_ERROR_DETECTED] Google Maps error container detected. Switching to interactive fallback.');
-        setMapsApiFailed(true);
-        setMapsApiLoaded(false);
-      }
-    });
-
-    observer.observe(mapContainerRef.current, { childList: true, subtree: true });
-    return () => observer.disconnect();
-  }, [mapsApiLoaded]);
 
   // 1. Fetch server delivery distance and fee calculation
   const fetchDeliveryCalculation = useCallback(async (lat, lng) => {
@@ -99,14 +57,14 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
 
     setPosition({ lat, lng });
 
-    // Update marker on Google Map if initialized
-    if (googleMapRef.current && googleMarkerRef.current && !mapsApiFailed) {
+    // Update Leaflet marker position
+    if (leafletMapRef.current && leafletMarkerRef.current && window.L) {
       try {
-        const latLng = new window.google.maps.LatLng(lat, lng);
-        googleMarkerRef.current.setPosition(latLng);
-        googleMapRef.current.panTo(latLng);
+        const newLatLng = new window.L.LatLng(lat, lng);
+        leafletMarkerRef.current.setLatLng(newLatLng);
+        leafletMapRef.current.panTo(newLatLng);
       } catch (e) {
-        console.warn('Google Map position update failed:', e);
+        console.warn('Leaflet position update error:', e);
       }
     }
 
@@ -131,93 +89,87 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
         setGeocoding(false);
       }
     }
-  }, [fetchDeliveryCalculation, onFieldsAutoFilled, mapsApiFailed]);
+  }, [fetchDeliveryCalculation, onFieldsAutoFilled]);
 
-  // 3. Load Google Maps JS API script dynamically ONLY if valid apiKey is present
+  // 3. Load Leaflet CSS & JS SDK dynamically
   useEffect(() => {
-    if (!apiKey) {
-      setMapsApiFailed(true);
-      setMapsApiLoaded(false);
+    if (window.L) {
+      setLeafletLoaded(true);
       return;
     }
 
-    if (window.google && window.google.maps && window.google.maps.Map) {
-      setMapsApiLoaded(true);
-      return;
+    if (!document.getElementById('leaflet-css')) {
+      const link = document.createElement('link');
+      link.id = 'leaflet-css';
+      link.rel = 'stylesheet';
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(link);
     }
 
-    const scriptId = 'google-maps-js-sdk';
-    let script = document.getElementById(scriptId);
-
-    if (!script) {
-      script = document.createElement('script');
-      script.id = scriptId;
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+    if (!document.getElementById('leaflet-js')) {
+      const script = document.createElement('script');
+      script.id = 'leaflet-js';
+      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
       script.async = true;
-      script.defer = true;
-
-      script.onload = () => {
-        if (window.google && window.google.maps && window.google.maps.Map) {
-          setMapsApiLoaded(true);
-        } else {
-          setMapsApiFailed(true);
-        }
-      };
-
-      script.onerror = () => {
-        console.warn('Failed to load Google Maps API SDK');
-        setMapsApiFailed(true);
-      };
-
+      script.onload = () => setLeafletLoaded(true);
+      script.onerror = () => console.warn('Failed to load Leaflet SDK');
       document.head.appendChild(script);
     }
-  }, [apiKey]);
+  }, []);
 
-  // 4. Initialize Google Map element when API is ready
+  // 4. Initialize Leaflet Map
   useEffect(() => {
-    if (!apiKey || !mapsApiLoaded || mapsApiFailed || !mapContainerRef.current || googleMapRef.current) return;
+    if (!leafletLoaded || !leafletMapContainerRef.current || leafletMapRef.current || !window.L) return;
 
     try {
-      const initialLatLng = { lat: position.lat, lng: position.lng };
-      const map = new window.google.maps.Map(mapContainerRef.current, {
-        center: initialLatLng,
+      const L = window.L;
+      const map = L.map(leafletMapContainerRef.current, {
+        center: [position.lat, position.lng],
         zoom: 15,
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: false,
         zoomControl: true
       });
 
-      const marker = new window.google.maps.Marker({
-        position: initialLatLng,
-        map: map,
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap'
+      }).addTo(map);
+
+      // Custom delivery pin icon
+      const customIcon = L.divIcon({
+        className: 'custom-leaflet-pin',
+        html: `<div style="font-size:2.4rem;line-height:1;transform:translate(-50%,-100%);filter:drop-shadow(0 3px 6px rgba(0,0,0,0.35));">📍</div>`,
+        iconSize: [0, 0],
+        iconAnchor: [0, 0]
+      });
+
+      const marker = L.marker([position.lat, position.lng], {
         draggable: true,
-        title: 'Delivery Pin (Drag or tap map to move)',
-        animation: window.google.maps.Animation.DROP
+        icon: customIcon
+      }).addTo(map);
+
+      leafletMapRef.current = map;
+      leafletMarkerRef.current = marker;
+
+      marker.on('dragend', (e) => {
+        const targetLatLng = e.target.getLatLng();
+        handlePositionChange(targetLatLng.lat, targetLatLng.lng);
       });
 
-      googleMapRef.current = map;
-      googleMarkerRef.current = marker;
-
-      // Handle map click
-      map.addListener('click', (e) => {
-        const clickedLat = e.latLng.lat();
-        const clickedLng = e.latLng.lng();
-        handlePositionChange(clickedLat, clickedLng);
+      map.on('click', (e) => {
+        const { lat, lng } = e.latlng;
+        marker.setLatLng([lat, lng]);
+        handlePositionChange(lat, lng);
       });
 
-      // Handle marker dragend
-      marker.addListener('dragend', (e) => {
-        const draggedLat = e.latLng.lat();
-        const draggedLng = e.latLng.lng();
-        handlePositionChange(draggedLat, draggedLng);
-      });
+      // Recalculate Leaflet size when mounted inside modal
+      setTimeout(() => {
+        if (leafletMapRef.current) leafletMapRef.current.invalidateSize();
+      }, 250);
 
     } catch (err) {
-      console.warn('Google Map initialization error:', err);
-      setMapsApiFailed(true);
+      console.warn('Leaflet map initialization error:', err);
     }
-  }, [apiKey, mapsApiLoaded, mapsApiFailed, position.lat, position.lng, handlePositionChange]);
+  }, [leafletLoaded, position.lat, position.lng, handlePositionChange]);
 
   // Initial calculation on load
   useEffect(() => {
@@ -238,7 +190,7 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
     }
   }, [position.lat, position.lng, addressPreview, distanceInfo, onSelectAddress]);
 
-  // 5. Handle "📍 Use My Current Location" button click
+  // Handle "📍 Use My Current Location" button click
   const handleUseCurrentLocation = async () => {
     setGeoError(null);
     setLoading(true);
@@ -307,7 +259,7 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
         </div>
       )}
 
-      {/* Map Display Box */}
+      {/* Map Display Box - Leaflet OpenStreetMap Canvas */}
       <div style={{
         position: 'relative',
         width: '100%',
@@ -315,55 +267,10 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
         borderRadius: '10px',
         overflow: 'hidden',
         border: '1px solid var(--color-border, #CBD5E1)',
-        background: '#F1F5F9'
+        background: '#E2E8F0',
+        zIndex: 1
       }}>
-        {mapsApiLoaded && !mapsApiFailed && apiKey ? (
-          <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
-        ) : (
-          /* Clean Interactive Location Picker Fallback Canvas when Google Maps API key is missing or unauthenticated */
-          <div
-            onClick={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              const offsetX = (e.clientX - rect.left) / rect.width - 0.5;
-              const offsetY = (e.clientY - rect.top) / rect.height - 0.5;
-              handlePositionChange(position.lat - offsetY * 0.02, position.lng + offsetX * 0.02);
-            }}
-            style={{
-              width: '100%',
-              height: '100%',
-              background: 'radial-gradient(circle at center, #F8FAFC 0%, #E2E8F0 100%)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              userSelect: 'none',
-              position: 'relative',
-              padding: '16px'
-            }}
-          >
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              background: 'rgba(255, 255, 255, 0.96)',
-              padding: '14px 22px',
-              borderRadius: '14px',
-              boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
-              border: '1.5px solid #CBD5E1',
-              textAlign: 'center',
-              maxWidth: '92%'
-            }}>
-              <div style={{ fontSize: '2.6rem', lineHeight: 1, marginBottom: '6px' }}>📍</div>
-              <div style={{ fontWeight: 800, fontSize: '0.92rem', color: '#0F172A' }}>
-                Tap map canvas to adjust pin position
-              </div>
-              <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '4px' }}>
-                Click anywhere on canvas or use "Use My Current Location" button to set delivery coordinates
-              </div>
-            </div>
-          </div>
-        )}
+        <div ref={leafletMapContainerRef} style={{ width: '100%', height: '100%' }} />
 
         {/* Selected Coordinates Overlay Badge */}
         <div style={{
@@ -377,7 +284,7 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
           borderRadius: '6px',
           fontWeight: 700,
           backdropFilter: 'blur(4px)',
-          zIndex: 10
+          zIndex: 1000
         }}>
           Latitude: {position.lat.toFixed(6)} • Longitude: {position.lng.toFixed(6)}
         </div>
