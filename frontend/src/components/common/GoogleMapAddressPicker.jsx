@@ -11,7 +11,6 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
   });
 
   const [addressPreview, setAddressPreview] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
   const [distanceInfo, setDistanceInfo] = useState(null);
   const [loading, setLoading] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
@@ -24,7 +23,17 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
   const googleMarkerRef = useRef(null);
   const debounceTimerRef = useRef(null);
 
-  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+  const rawApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+  const apiKey = (rawApiKey && !rawApiKey.startsWith('your_') && rawApiKey !== 'undefined' && rawApiKey.trim().length > 10) ? rawApiKey.trim() : '';
+
+  // Listen for Google Maps Authentication Failures (gm_authFailure)
+  useEffect(() => {
+    window.gm_authFailure = () => {
+      console.warn('[GOOGLE_MAPS_AUTH_FAILURE] API key authentication failed or unbilled. Switching to interactive location picker fallback.');
+      setMapsApiFailed(true);
+      setMapsApiLoaded(false);
+    };
+  }, []);
 
   // 1. Fetch server delivery distance and fee calculation
   const fetchDeliveryCalculation = useCallback(async (lat, lng) => {
@@ -62,10 +71,14 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
     setPosition({ lat, lng });
 
     // Update marker on Google Map if loaded
-    if (googleMapRef.current && googleMarkerRef.current) {
-      const latLng = new window.google.maps.LatLng(lat, lng);
-      googleMarkerRef.current.setPosition(latLng);
-      googleMapRef.current.panTo(latLng);
+    if (googleMapRef.current && googleMarkerRef.current && !mapsApiFailed) {
+      try {
+        const latLng = new window.google.maps.LatLng(lat, lng);
+        googleMarkerRef.current.setPosition(latLng);
+        googleMapRef.current.panTo(latLng);
+      } catch (e) {
+        console.warn('Google Map position update failed:', e);
+      }
     }
 
     // Debounce distance calculation API request
@@ -89,11 +102,11 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
         setGeocoding(false);
       }
     }
-  }, [fetchDeliveryCalculation, onFieldsAutoFilled]);
+  }, [fetchDeliveryCalculation, onFieldsAutoFilled, mapsApiFailed]);
 
   // 3. Load Google Maps JS API script dynamically
   useEffect(() => {
-    if (window.google && window.google.maps) {
+    if (window.google && window.google.maps && window.google.maps.Map) {
       setMapsApiLoaded(true);
       return;
     }
@@ -104,29 +117,35 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
     }
 
     const scriptId = 'google-maps-js-sdk';
-    if (document.getElementById(scriptId)) return;
+    let script = document.getElementById(scriptId);
 
-    const script = document.createElement('script');
-    script.id = scriptId;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
-    script.async = true;
-    script.defer = true;
+    if (!script) {
+      script = document.createElement('script');
+      script.id = scriptId;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+      script.async = true;
+      script.defer = true;
 
-    script.onload = () => {
-      setMapsApiLoaded(true);
-    };
+      script.onload = () => {
+        if (window.google && window.google.maps) {
+          setMapsApiLoaded(true);
+        } else {
+          setMapsApiFailed(true);
+        }
+      };
 
-    script.onerror = () => {
-      console.warn('Failed to load Google Maps API SDK');
-      setMapsApiFailed(true);
-    };
+      script.onerror = () => {
+        console.warn('Failed to load Google Maps API SDK');
+        setMapsApiFailed(true);
+      };
 
-    document.head.appendChild(script);
+      document.head.appendChild(script);
+    }
   }, [apiKey]);
 
   // 4. Initialize Google Map element when API is ready
   useEffect(() => {
-    if (!mapsApiLoaded || !mapContainerRef.current || googleMapRef.current) return;
+    if (!mapsApiLoaded || mapsApiFailed || !mapContainerRef.current || googleMapRef.current) return;
 
     try {
       const initialLatLng = { lat: position.lat, lng: position.lng };
@@ -168,7 +187,7 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
       console.warn('Google Map initialization error:', err);
       setMapsApiFailed(true);
     }
-  }, [mapsApiLoaded, position.lat, position.lng, handlePositionChange]);
+  }, [mapsApiLoaded, mapsApiFailed, position.lat, position.lng, handlePositionChange]);
 
   // Initial calculation on load
   useEffect(() => {
@@ -282,32 +301,34 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
             style={{
               width: '100%',
               height: '100%',
-              background: 'linear-gradient(135deg, #E2E8F0 25%, #F8FAFC 25%, #F8FAFC 50%, #E2E8F0 50%, #E2E8F0 75%, #F8FAFC 75%)',
-              backgroundSize: '40px 40px',
+              background: 'radial-gradient(circle, #F1F5F9 10%, #E2E8F0 90%)',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
               cursor: 'pointer',
-              userSelect: 'none'
+              userSelect: 'none',
+              position: 'relative'
             }}
           >
             <div style={{
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              background: 'rgba(255, 255, 255, 0.92)',
-              padding: '12px 18px',
-              borderRadius: '12px',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-              border: '1px solid #CBD5E1'
+              background: 'rgba(255, 255, 255, 0.95)',
+              padding: '14px 20px',
+              borderRadius: '14px',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.12)',
+              border: '1.5px solid #CBD5E1',
+              textAlign: 'center',
+              maxWidth: '90%'
             }}>
-              <div style={{ fontSize: '2.5rem', lineHeight: 1 }}>📍</div>
-              <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#1E293B', marginTop: '4px' }}>
-                Tap map to adjust pin position
+              <div style={{ fontSize: '2.5rem', lineHeight: 1, marginBottom: '6px' }}>📍</div>
+              <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#0F172A' }}>
+                Tap map canvas to adjust pin position
               </div>
-              <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
-                Click anywhere on canvas to set delivery coordinates
+              <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '4px' }}>
+                Click anywhere on canvas or use GPS button to adjust delivery coordinates
               </div>
             </div>
           </div>
@@ -318,13 +339,14 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
           position: 'absolute',
           bottom: '8px',
           left: '8px',
-          background: 'rgba(15, 23, 42, 0.85)',
+          background: 'rgba(15, 23, 42, 0.88)',
           color: '#FFF',
           fontSize: '0.72rem',
-          padding: '4px 8px',
+          padding: '5px 10px',
           borderRadius: '6px',
-          fontWeight: 600,
-          backdropFilter: 'blur(4px)'
+          fontWeight: 700,
+          backdropFilter: 'blur(4px)',
+          zIndex: 10
         }}>
           Latitude: {position.lat.toFixed(6)} • Longitude: {position.lng.toFixed(6)}
         </div>
