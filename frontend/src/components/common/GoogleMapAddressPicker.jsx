@@ -24,16 +24,46 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
   const debounceTimerRef = useRef(null);
 
   const rawApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
-  const apiKey = (rawApiKey && !rawApiKey.startsWith('your_') && rawApiKey !== 'undefined' && rawApiKey.trim().length > 10) ? rawApiKey.trim() : '';
+  const apiKey = (typeof rawApiKey === 'string' && rawApiKey.trim() && !rawApiKey.startsWith('your_') && rawApiKey !== 'undefined' && rawApiKey.trim().length > 10) ? rawApiKey.trim() : '';
 
-  // Listen for Google Maps Authentication Failures (gm_authFailure)
+  // Listen for global Google Maps Auth Failure callback (gm_authFailure)
   useEffect(() => {
+    const prevAuthFailure = window.gm_authFailure;
     window.gm_authFailure = () => {
-      console.warn('[GOOGLE_MAPS_AUTH_FAILURE] API key authentication failed or unbilled. Switching to interactive location picker fallback.');
+      console.warn('[GOOGLE_MAPS_AUTH_FAILURE] API key invalid or unbilled. Switching to interactive location picker fallback.');
       setMapsApiFailed(true);
       setMapsApiLoaded(false);
+      if (typeof prevAuthFailure === 'function') prevAuthFailure();
+    };
+    return () => {
+      window.gm_authFailure = prevAuthFailure;
     };
   }, []);
+
+  // Monitor DOM inside mapContainerRef to catch Google's error box immediately
+  useEffect(() => {
+    if (!mapContainerRef.current) return;
+
+    const observer = new MutationObserver(() => {
+      if (!mapContainerRef.current) return;
+      const html = mapContainerRef.current.innerHTML || '';
+      const text = mapContainerRef.current.textContent || '';
+      if (
+        html.includes('gm-err') ||
+        text.includes('Oops! Something went wrong') ||
+        text.includes("didn't load Google Maps correctly") ||
+        mapContainerRef.current.querySelector('.gm-err-container') ||
+        mapContainerRef.current.querySelector('.gm-err-content')
+      ) {
+        console.warn('[GOOGLE_MAPS_DOM_ERROR_DETECTED] Google Maps error container detected. Switching to interactive fallback.');
+        setMapsApiFailed(true);
+        setMapsApiLoaded(false);
+      }
+    });
+
+    observer.observe(mapContainerRef.current, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [mapsApiLoaded]);
 
   // 1. Fetch server delivery distance and fee calculation
   const fetchDeliveryCalculation = useCallback(async (lat, lng) => {
@@ -45,7 +75,6 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
       }
     } catch (err) {
       console.warn('Backend distance calculation error, using fallback:', err);
-      // Fallback calculation
       const dist = calculateHaversineDistance(STORE_LOCATION.latitude, STORE_LOCATION.longitude, lat, lng);
       const roadDist = Math.round(dist * 1.25 * 100) / 100;
       setDistanceInfo({
@@ -70,7 +99,7 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
 
     setPosition({ lat, lng });
 
-    // Update marker on Google Map if loaded
+    // Update marker on Google Map if initialized
     if (googleMapRef.current && googleMarkerRef.current && !mapsApiFailed) {
       try {
         const latLng = new window.google.maps.LatLng(lat, lng);
@@ -104,15 +133,16 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
     }
   }, [fetchDeliveryCalculation, onFieldsAutoFilled, mapsApiFailed]);
 
-  // 3. Load Google Maps JS API script dynamically
+  // 3. Load Google Maps JS API script dynamically ONLY if valid apiKey is present
   useEffect(() => {
-    if (window.google && window.google.maps && window.google.maps.Map) {
-      setMapsApiLoaded(true);
+    if (!apiKey) {
+      setMapsApiFailed(true);
+      setMapsApiLoaded(false);
       return;
     }
 
-    if (!apiKey) {
-      setMapsApiFailed(true);
+    if (window.google && window.google.maps && window.google.maps.Map) {
+      setMapsApiLoaded(true);
       return;
     }
 
@@ -127,7 +157,7 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
       script.defer = true;
 
       script.onload = () => {
-        if (window.google && window.google.maps) {
+        if (window.google && window.google.maps && window.google.maps.Map) {
           setMapsApiLoaded(true);
         } else {
           setMapsApiFailed(true);
@@ -145,7 +175,7 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
 
   // 4. Initialize Google Map element when API is ready
   useEffect(() => {
-    if (!mapsApiLoaded || mapsApiFailed || !mapContainerRef.current || googleMapRef.current) return;
+    if (!apiKey || !mapsApiLoaded || mapsApiFailed || !mapContainerRef.current || googleMapRef.current) return;
 
     try {
       const initialLatLng = { lat: position.lat, lng: position.lng };
@@ -187,7 +217,7 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
       console.warn('Google Map initialization error:', err);
       setMapsApiFailed(true);
     }
-  }, [mapsApiLoaded, mapsApiFailed, position.lat, position.lng, handlePositionChange]);
+  }, [apiKey, mapsApiLoaded, mapsApiFailed, position.lat, position.lng, handlePositionChange]);
 
   // Initial calculation on load
   useEffect(() => {
@@ -287,10 +317,10 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
         border: '1px solid var(--color-border, #CBD5E1)',
         background: '#F1F5F9'
       }}>
-        {mapsApiLoaded && !mapsApiFailed ? (
+        {mapsApiLoaded && !mapsApiFailed && apiKey ? (
           <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
         ) : (
-          /* Interactive Fallback Canvas Map when Google Maps JS API is unavailable */
+          /* Clean Interactive Location Picker Fallback Canvas when Google Maps API key is missing or unauthenticated */
           <div
             onClick={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
@@ -301,34 +331,35 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
             style={{
               width: '100%',
               height: '100%',
-              background: 'radial-gradient(circle, #F1F5F9 10%, #E2E8F0 90%)',
+              background: 'radial-gradient(circle at center, #F8FAFC 0%, #E2E8F0 100%)',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
               cursor: 'pointer',
               userSelect: 'none',
-              position: 'relative'
+              position: 'relative',
+              padding: '16px'
             }}
           >
             <div style={{
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              background: 'rgba(255, 255, 255, 0.95)',
-              padding: '14px 20px',
+              background: 'rgba(255, 255, 255, 0.96)',
+              padding: '14px 22px',
               borderRadius: '14px',
-              boxShadow: '0 4px 14px rgba(0,0,0,0.12)',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
               border: '1.5px solid #CBD5E1',
               textAlign: 'center',
-              maxWidth: '90%'
+              maxWidth: '92%'
             }}>
-              <div style={{ fontSize: '2.5rem', lineHeight: 1, marginBottom: '6px' }}>📍</div>
-              <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#0F172A' }}>
+              <div style={{ fontSize: '2.6rem', lineHeight: 1, marginBottom: '6px' }}>📍</div>
+              <div style={{ fontWeight: 800, fontSize: '0.92rem', color: '#0F172A' }}>
                 Tap map canvas to adjust pin position
               </div>
               <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '4px' }}>
-                Click anywhere on canvas or use GPS button to adjust delivery coordinates
+                Click anywhere on canvas or use "Use My Current Location" button to set delivery coordinates
               </div>
             </div>
           </div>
