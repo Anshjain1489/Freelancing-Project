@@ -16,11 +16,15 @@ import {
   Menu,
   X,
   LogOut,
-  Store
+  Store,
+  Printer,
+  FileText
 } from 'lucide-react';
 
 const ADMIN_NAV_ITEMS = [
   { label: 'Dashboard', to: '/admin/dashboard', icon: LayoutDashboard },
+  { label: 'POS Billing 🧾', to: '/admin/pos', icon: Printer },
+  { label: 'Invoices', to: '/admin/invoices', icon: FileText },
   { label: 'Products', to: '/admin/products', icon: Package },
   { label: 'Categories', to: '/admin/categories', icon: FolderTree },
   { label: 'Orders', to: '/admin/orders', icon: ShoppingBag },

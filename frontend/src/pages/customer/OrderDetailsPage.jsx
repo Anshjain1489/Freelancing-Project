@@ -15,7 +15,9 @@ import { Skeleton } from '../../components/ui/Skeleton';
 import { Breadcrumbs } from '../../components/layout/Breadcrumbs';
 import { formatCurrency } from '../../utils/formatting';
 import { showSuccess, showError } from '../../utils/toast';
-import { MapPin, RefreshCw, XCircle, RotateCcw, Repeat, Truck } from 'lucide-react';
+import { MapPin, RefreshCw, XCircle, RotateCcw, Repeat, Truck, FileText, Download } from 'lucide-react';
+import { invoiceService } from '../../services/invoice.service';
+import { InvoiceView } from '../../components/invoice/InvoiceView';
 
 export const OrderDetailsPage = () => {
   const { orderId } = useParams();
@@ -42,6 +44,21 @@ export const OrderDetailsPage = () => {
 
   const [retryPayload, setRetryPayload] = useState(null);
   const [retrying, setRetrying] = useState(false);
+  const [invoiceModalData, setInvoiceModalData] = useState(null);
+  const [fetchingInvoice, setFetchingInvoice] = useState(false);
+
+  const handleViewInvoice = async () => {
+    setFetchingInvoice(true);
+    try {
+      const res = await invoiceService.getInvoiceByOrderId(order.id);
+      const inv = res.data?.invoice || res.invoice || res.data;
+      setInvoiceModalData(inv);
+    } catch (err) {
+      showError(err.response?.data?.message || 'Invoice is not available yet');
+    } finally {
+      setFetchingInvoice(false);
+    }
+  };
 
   const fetchOrder = async () => {
     setLoading(true);
@@ -210,9 +227,18 @@ export const OrderDetailsPage = () => {
             Placed on: {new Date(order.createdAt || order.created_at).toLocaleString()}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           <StatusBadge status={order.status} />
           <StatusBadge status={order.paymentStatus} />
+          <Button
+            variant="outline"
+            size="sm"
+            icon={FileText}
+            loading={fetchingInvoice}
+            onClick={handleViewInvoice}
+          >
+            🧾 View Invoice
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -523,6 +549,13 @@ export const OrderDetailsPage = () => {
           </div>
         </div>
       </Modal>
+
+      {/* INVOICE MODAL POPUP */}
+      {invoiceModalData && (
+        <Modal isOpen={!!invoiceModalData} onClose={() => setInvoiceModalData(null)} title="GST Invoice">
+          <InvoiceView invoice={invoiceModalData} onClose={() => setInvoiceModalData(null)} />
+        </Modal>
+      )}
     </div>
   );
 };

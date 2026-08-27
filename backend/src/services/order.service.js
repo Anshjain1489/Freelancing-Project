@@ -142,6 +142,14 @@ const createOrder = async (userId, addressId, couponCode = null, paymentMethod =
         metadata: { eventType: 'ORDER_CREATED', paymentMethod: cleanPaymentMethod }
       });
 
+      // Generate Invoice for Confirmed Order (Idempotent)
+      try {
+        const invoiceService = require('./invoice.service');
+        await invoiceService.generateInvoiceForOrder(newOrder.id);
+      } catch (invErr) {
+        console.error('Invoice generation notice:', invErr?.message);
+      }
+
       return {
         orderId: newOrder.id,
         orderNumber: newOrder.order_number,

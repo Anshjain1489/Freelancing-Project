@@ -59,7 +59,20 @@ export const ENDPOINTS = {
     CANCEL: (id) => `/orders/${id}/cancel`,
     CREATE_PAYMENT: (id) => `/orders/${id}/create-payment`,
     RETRY_PAYMENT: (id) => `/orders/${id}/payment/retry`,
-    ORDER_TRACKING: (id) => `/orders/${id}/tracking`
+    ORDER_TRACKING: (id) => `/orders/${id}/tracking`,
+    INVOICE: (id) => `/orders/${id}/invoice`
+  },
+
+  INVOICES: {
+    BY_ID: (id) => `/invoices/${id}`,
+    DOWNLOAD: (id) => `/invoices/${id}/download?print=true`
+  },
+
+  POS: {
+    CREATE_SALE: '/admin/pos/sales',
+    GET_SALE: (id) => `/admin/pos/sales/${id}`,
+    CANCEL_SALE: (id) => `/admin/pos/sales/${id}/cancel`,
+    LIST_INVOICES: '/admin/invoices'
   },
 
   DELIVERY: {

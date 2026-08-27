@@ -21,6 +21,7 @@ const returnRoutes = require('./return.routes');
 const replacementRoutes = require('./replacement.routes');
 const adminRoutes = require('./admin.routes');
 const chatbotRoutes = require('./chatbot.routes');
+const invoiceRoutes = require('./invoice.routes');
 const { getSitemapXML } = require('../controllers/sitemap.controller');
 
 const router = express.Router();
@@ -57,5 +58,6 @@ router.use('/notifications', notificationRoutes);
 router.use('/notification-preferences', notificationRoutes);
 router.use('/admin', adminRoutes);
 router.use('/chatbot', chatbotRoutes);
+router.use('/', invoiceRoutes);
 
 module.exports = router;
