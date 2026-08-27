@@ -77,6 +77,12 @@ const toggleProductStatus = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, HTTP_STATUS.OK, 'Product status updated', result);
 });
 
+const deleteProduct = asyncHandler(async (req, res) => {
+  const result = await productService.toggleProductStatus(req.params.id, false, req.user.id, req);
+  cacheService.invalidateProductCache();
+  return ApiResponse.success(res, HTTP_STATUS.OK, 'Product deactivated successfully', result);
+});
+
 const stockNotificationService = require('../services/stockNotification.service');
 
 const subscribeStockNotification = asyncHandler(async (req, res) => {
