@@ -33,14 +33,15 @@ const getFeaturedProducts = asyncHandler(async (req, res) => {
 
 const searchProducts = asyncHandler(async (req, res) => {
   const queryTerm = String(req.query.q || '').trim().toLowerCase();
-  const cacheKey = `products:search:${queryTerm}`;
+  const limitParam = req.query.limit || 8;
+  const cacheKey = `products:search:${queryTerm}:lim:${limitParam}`;
   const cached = cacheService.get(cacheKey);
 
   if (cached) {
     return ApiResponse.success(res, HTTP_STATUS.OK, 'Product search results (cached)', { products: cached });
   }
 
-  const products = await productService.searchProducts(req.query.q);
+  const products = await productService.searchProducts(req.query.q, limitParam);
   cacheService.set(cacheKey, products, 120000);
   return ApiResponse.success(res, HTTP_STATUS.OK, 'Product search results', { products });
 });

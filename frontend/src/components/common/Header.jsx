@@ -1,13 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ShoppingBag, Search, User, PhoneCall, MapPin } from 'lucide-react';
 import { useCart } from '../../hooks/useCart';
 import { useAuth } from '../../hooks/useAuth';
+import { MobileSearchModal } from '../search/MobileSearchModal';
 
 export const Header = () => {
   const { itemCount, setIsCartOpen } = useCart();
   const { user, isAuthenticated, isAdmin } = useAuth();
   const navigate = useNavigate();
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
 
   return (
     <header style={{
@@ -26,7 +28,7 @@ export const Header = () => {
         fontSize: '0.85rem',
         fontWeight: 600,
         display: 'flex',
-        justify: 'space-between',
+        justifyContent: 'space-between',
         alignItems: 'center',
         flexWrap: 'wrap'
       }}>
@@ -50,7 +52,7 @@ export const Header = () => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        gap: '16px'
+        gap: '12px'
       }}>
         {/* Store Logo & Title */}
         <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none' }}>
@@ -78,30 +80,37 @@ export const Header = () => {
           </div>
         </Link>
 
-        {/* Search Bar Input Placeholder */}
+        {/* Responsive Search Input Bar Trigger */}
         <div style={{
           flex: 1,
           maxWidth: '500px',
-          position: 'relative',
-          display: 'none',
-          smDisplay: 'block'
+          position: 'relative'
         }}>
-          <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-secondary)' }} />
-          <input
-            type="text"
-            placeholder="Search groceries (e.g. Atta, Oil, Ghee, Spices)..."
-            onClick={() => navigate('/search')}
-            readOnly
+          <button
+            type="button"
+            onClick={() => setIsSearchModalOpen(true)}
+            aria-label="Open search groceries"
             style={{
               width: '100%',
-              padding: '10px 12px 10px 38px',
+              minHeight: '44px',
+              padding: '8px 14px 8px 38px',
               borderRadius: 'var(--radius-lg)',
               border: '1px solid var(--color-border)',
               backgroundColor: 'var(--color-background)',
               fontSize: '0.9rem',
-              cursor: 'pointer'
+              color: 'var(--color-text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              cursor: 'pointer',
+              textAlign: 'left',
+              outline: 'none'
             }}
-          />
+          >
+            <Search size={18} style={{ position: 'absolute', left: '12px', color: 'var(--color-text-secondary)' }} />
+            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              Search groceries (e.g. Atta, Oil, Milk)...
+            </span>
+          </button>
         </div>
 
         {/* Action Buttons */}
@@ -168,6 +177,11 @@ export const Header = () => {
           </button>
         </div>
       </div>
+
+      <MobileSearchModal
+        isOpen={isSearchModalOpen}
+        onClose={() => setIsSearchModalOpen(false)}
+      />
     </header>
   );
 };

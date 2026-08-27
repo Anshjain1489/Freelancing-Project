@@ -187,66 +187,124 @@ const getFeaturedProducts = async () => {
   return mockProducts.filter(p => p.isFeatured);
 };
 
-const searchProducts = async (searchQuery) => {
-  if (!searchQuery || searchQuery.trim().length < 2) {
-    throw new AppError('Search query must be at least 2 characters', HTTP_STATUS.BAD_REQUEST);
+const searchProducts = async (searchQuery, rawLimit = 8) => {
+  if (!searchQuery || typeof searchQuery !== 'string' || searchQuery.trim().length === 0) {
+    return [];
   }
 
   const cleanQuery = searchQuery.trim();
+  let limitNum = parseInt(rawLimit, 10);
+  if (isNaN(limitNum) || limitNum < 1) {
+    limitNum = 8;
+  } else if (limitNum > 20) {
+    limitNum = 20;
+  }
 
   if (supabase) {
-    // Execute PostgreSQL Full-Text Search on search_vector column
-    const { data, error } = await supabase.from('products').select(`
-      id, name, slug, brand, unit, unit_value, mrp, selling_price, discount_percentage,
-      categories ( name ),
+    // 1. Try PostgreSQL Full-Text Search on search_vector column
+    try {
+      const { data, error } = await supabase.from('products').select(`
+        id, name, slug, brand, sku, short_description, description, unit, unit_value, mrp, selling_price, discount_percentage,
+        categories ( name, slug ),
+        inventory ( quantity, low_stock_threshold ),
+        product_images ( image_url, is_primary )
+      `)
+      .eq('is_active', true)
+      .textSearch('search_vector', cleanQuery, { config: 'english', type: 'websearch' })
+      .limit(limitNum);
+
+      if (!error && data && data.length > 0) {
+        return data.map(p => ({
+          id: p.id,
+          name: p.name,
+          slug: p.slug,
+          brand: p.brand || 'Generic',
+          sku: p.sku,
+          shortDescription: p.short_description,
+          categoryName: p.categories?.name,
+          categorySlug: p.categories?.slug,
+          unit: p.unit,
+          unitValue: p.unit_value,
+          mrp: parseFloat(p.mrp),
+          sellingPrice: parseFloat(p.selling_price),
+          discountPercentage: p.discount_percentage,
+          imageUrl: p.product_images?.find(i => i.is_primary)?.image_url || p.image_url || getFallbackProductImage(p.categories?.slug, p.slug),
+          stockStatus: getStockStatus(p.inventory?.[0]?.quantity || 0, p.inventory?.[0]?.low_stock_threshold || 5),
+          isAvailable: (p.inventory?.[0]?.quantity || 0) > 0
+        }));
+      }
+    } catch (e) {
+      // Fall through to ILIKE search
+    }
+
+    // 2. Fallback to Multi-Field ILIKE fuzzy search
+    let catFilter = '';
+    try {
+      const { data: matchedCats } = await supabase.from('categories').select('id').or(`name.ilike.%${cleanQuery}%,slug.ilike.%${cleanQuery}%`);
+      if (matchedCats && matchedCats.length > 0) {
+        const cIds = matchedCats.map(c => c.id).join(',');
+        catFilter = `,category_id.in.(${cIds})`;
+      }
+    } catch (e) {}
+
+    const { data: fallbackData } = await supabase.from('products').select(`
+      id, name, slug, brand, sku, short_description, description, unit, unit_value, mrp, selling_price, discount_percentage,
+      categories ( name, slug ),
       inventory ( quantity, low_stock_threshold ),
       product_images ( image_url, is_primary )
     `)
     .eq('is_active', true)
-    .textSearch('search_vector', cleanQuery, { config: 'english', type: 'websearch' })
-    .limit(20);
+    .or(`name.ilike.%${cleanQuery}%,brand.ilike.%${cleanQuery}%,sku.ilike.%${cleanQuery}%,short_description.ilike.%${cleanQuery}%,description.ilike.%${cleanQuery}%${catFilter}`)
+    .limit(limitNum);
 
-    if (error || !data || data.length === 0) {
-      // Fallback to fuzzy ILIKE search if textSearch yields 0
-      const { data: fallbackData } = await supabase.from('products').select(`
-        id, name, slug, brand, unit, unit_value, mrp, selling_price, discount_percentage,
-        categories ( name ),
-        inventory ( quantity, low_stock_threshold ),
-        product_images ( image_url, is_primary )
-      `).eq('is_active', true).ilike('name', `%${cleanQuery}%`).limit(20);
-
-      const items = (fallbackData || []).map(p => ({
-        id: p.id,
-        name: p.name,
-        slug: p.slug,
-        categoryName: p.categories?.name,
-        unit: p.unit,
-        unitValue: p.unit_value,
-        mrp: parseFloat(p.mrp),
-        sellingPrice: parseFloat(p.selling_price),
-        discountPercentage: p.discount_percentage,
-        imageUrl: p.product_images?.find(i => i.is_primary)?.image_url || p.image_url || getFallbackProductImage(p.categories?.slug, p.slug),
-        stockStatus: getStockStatus(p.inventory?.[0]?.quantity || 0)
-      }));
-      return items;
-    }
-
-    return data.map(p => ({
+    return (fallbackData || []).map(p => ({
       id: p.id,
       name: p.name,
       slug: p.slug,
+      brand: p.brand || 'Generic',
+      sku: p.sku,
+      shortDescription: p.short_description,
       categoryName: p.categories?.name,
+      categorySlug: p.categories?.slug,
       unit: p.unit,
       unitValue: p.unit_value,
       mrp: parseFloat(p.mrp),
       sellingPrice: parseFloat(p.selling_price),
       discountPercentage: p.discount_percentage,
       imageUrl: p.product_images?.find(i => i.is_primary)?.image_url || p.image_url || getFallbackProductImage(p.categories?.slug, p.slug),
-      stockStatus: getStockStatus(p.inventory?.[0]?.quantity || 0)
+      stockStatus: getStockStatus(p.inventory?.[0]?.quantity || 0, p.inventory?.[0]?.low_stock_threshold || 5),
+      isAvailable: (p.inventory?.[0]?.quantity || 0) > 0
     }));
   }
 
-  return mockProducts.filter(p => p.name.toLowerCase().includes(cleanQuery.toLowerCase()));
+  // Mock Fallback Multi-Field Search
+  const qLower = cleanQuery.toLowerCase();
+  const matched = mockProducts.filter(p => {
+    if (!p.isActive) return false;
+    return (
+      (p.name && p.name.toLowerCase().includes(qLower)) ||
+      (p.brand && p.brand.toLowerCase().includes(qLower)) ||
+      (p.sku && p.sku.toLowerCase().includes(qLower)) ||
+      (p.shortDescription && p.shortDescription.toLowerCase().includes(qLower)) ||
+      (p.categoryName && p.categoryName.toLowerCase().includes(qLower)) ||
+      (p.categorySlug && p.categorySlug.toLowerCase().includes(qLower))
+    );
+  }).slice(0, limitNum);
+
+  return matched.map(p => ({
+    id: p.id,
+    name: p.name,
+    slug: p.slug,
+    brand: p.brand || 'Generic',
+    unit: p.unit,
+    unitValue: p.unitValue,
+    mrp: p.mrp,
+    sellingPrice: p.sellingPrice,
+    discountPercentage: p.discountPercentage,
+    imageUrl: p.imageUrl || getFallbackProductImage(p.categorySlug, p.slug),
+    stockStatus: p.stockStatus || 'IN_STOCK',
+    isAvailable: p.stockStatus !== 'OUT_OF_STOCK'
+  }));
 };
 
 const getProductBySlug = async (slug) => {

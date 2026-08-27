@@ -12,8 +12,12 @@ export const productService = {
     return response.data;
   },
 
-  searchProducts: async (query) => {
-    const response = await apiClient.get(ENDPOINTS.PRODUCTS.SEARCH, { params: { q: query } });
+  searchProducts: async (query, options = {}) => {
+    const { limit = 8, signal } = options;
+    const response = await apiClient.get(ENDPOINTS.PRODUCTS.SEARCH, {
+      params: { q: query, limit },
+      signal
+    });
     return response.data;
   },
 
