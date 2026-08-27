@@ -142,9 +142,25 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
         iconAnchor: [0, 0]
       });
 
+      // P3-18: Non-draggable Canonical Store Pin Icon
+      const storeIcon = L.divIcon({
+        className: 'store-leaflet-pin',
+        html: `<div style="font-size:2.2rem;line-height:1;transform:translate(-50%,-100%);filter:drop-shadow(0 2px 5px rgba(0,0,0,0.3));" title="Chaudhary Kirana Store (Mahruni)">🏠</div>`,
+        iconSize: [0, 0],
+        iconAnchor: [0, 0]
+      });
+
+      // Add store marker
+      L.marker([STORE_LOCATION.latitude, STORE_LOCATION.longitude], {
+        draggable: false,
+        icon: storeIcon,
+        title: STORE_LOCATION.name
+      }).addTo(map);
+
       const marker = L.marker([position.lat, position.lng], {
         draggable: true,
-        icon: customIcon
+        icon: customIcon,
+        title: 'Delivery Pin (Drag or tap to adjust)'
       }).addTo(map);
 
       leafletMapRef.current = map;
@@ -239,6 +255,21 @@ export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, in
         >
           <Navigation size={14} /> {loading ? 'Detecting...' : 'Use My Current Location'}
         </button>
+      </div>
+
+      {/* P1-1: Micro-copy map guidance helper text */}
+      <div style={{
+        fontSize: '0.78rem',
+        color: '#475569',
+        background: '#F1F5F9',
+        padding: '6px 10px',
+        borderRadius: '6px',
+        fontWeight: 600,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px'
+      }}>
+        <span>📍</span> Tap anywhere on the map or drag the pin to set your exact delivery location.
       </div>
 
       {/* Geolocation Error Alert */}

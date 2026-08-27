@@ -80,11 +80,18 @@ export const ProductCard = ({ product, onQuickView }) => {
       {/* Footer: Price & Add/Quantity Actions */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto' }}>
         <div>
-          <span style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--color-primary-dark)' }}>
-            {formatCurrency(product.sellingPrice)}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--color-primary-dark)' }}>
+              {formatCurrency(product.sellingPrice)}
+            </span>
+            {(product.unitValue || product.unit) && (
+              <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569' }}>
+                · {product.unitValue || ''} {product.unit || ''}
+              </span>
+            )}
+          </div>
           {(product.mrp || product.mrpPrice) > product.sellingPrice && (
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textDecoration: 'line-through', marginLeft: '6px' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', textDecoration: 'line-through' }}>
               {formatCurrency(product.mrp || product.mrpPrice)}
             </span>
           )}

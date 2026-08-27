@@ -77,10 +77,16 @@ const toggleProductStatus = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, HTTP_STATUS.OK, 'Product status updated', result);
 });
 
-const deleteProduct = asyncHandler(async (req, res) => {
-  const result = await productService.toggleProductStatus(req.params.id, false, req.user.id, req);
-  cacheService.invalidateProductCache();
-  return ApiResponse.success(res, HTTP_STATUS.OK, 'Product deactivated successfully', result);
+const stockNotificationService = require('../services/stockNotification.service');
+
+const subscribeStockNotification = asyncHandler(async (req, res) => {
+  const result = await stockNotificationService.subscribeToStock(req.user.id, req.params.id);
+  return ApiResponse.success(res, HTTP_STATUS.OK, result.message, result);
+});
+
+const getStockNotificationStatus = asyncHandler(async (req, res) => {
+  const result = await stockNotificationService.getSubscriptionStatus(req.user.id, req.params.id);
+  return ApiResponse.success(res, HTTP_STATUS.OK, 'Subscription status retrieved', result);
 });
 
 module.exports = {
@@ -91,5 +97,7 @@ module.exports = {
   createProduct,
   updateProduct,
   toggleProductStatus,
-  deleteProduct
+  deleteProduct,
+  subscribeStockNotification,
+  getStockNotificationStatus
 };

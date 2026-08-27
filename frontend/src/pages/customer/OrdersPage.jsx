@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { orderService } from '../../services/order.service';
+import { useCart } from '../../hooks/useCart';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { StatusBadge } from '../../components/ui/StatusBadge';
@@ -8,12 +9,64 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { TableRowSkeleton } from '../../components/ui/Skeleton';
 import { Breadcrumbs } from '../../components/layout/Breadcrumbs';
 import { formatCurrency } from '../../utils/formatting';
-import { ShoppingBag, ArrowRight } from 'lucide-react';
+import { showSuccess, showError, showInfo } from '../../utils/toast';
+import { ShoppingBag, ArrowRight, RotateCcw } from 'lucide-react';
 
 export const OrdersPage = () => {
   const navigate = useNavigate();
+  const { addItem } = useCart();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [reorderingId, setReorderingId] = useState(null);
+
+  const handleReorder = async (order) => {
+    setReorderingId(order.id);
+    try {
+      // Fetch full order details to get item list
+      const detailsRes = await orderService.getOrderById(order.id);
+      const fullOrder = detailsRes.data?.order || detailsRes.data || order;
+      const itemsToReorder = fullOrder.items || [];
+
+      if (!itemsToReorder || itemsToReorder.length === 0) {
+        showError('No items found in this order to reorder.');
+        return;
+      }
+
+      let addedCount = 0;
+      let unavailableCount = 0;
+
+      for (const item of itemsToReorder) {
+        // Construct product object using current prices and stock
+        const prodPayload = {
+          id: item.product_id || item.productId || item.id,
+          name: item.product_name || item.name,
+          sellingPrice: item.sellingPrice || item.unit_price || item.unitPrice,
+          imageUrl: item.imageUrl || item.image_url,
+          unit: item.unit,
+          unitValue: item.unitValue || item.unit_value
+        };
+
+        if (prodPayload.id) {
+          addItem(prodPayload, item.quantity || 1);
+          addedCount += 1;
+        } else {
+          unavailableCount += 1;
+        }
+      }
+
+      if (addedCount > 0) {
+        showSuccess(`🔄 ${addedCount} item(s) added to cart.${unavailableCount > 0 ? ` ${unavailableCount} item(s) unavailable.` : ''}`);
+        navigate('/cart');
+      } else {
+        showInfo('Items from this order are currently unavailable.');
+      }
+    } catch (err) {
+      console.error('Reorder error:', err);
+      showError('Failed to reorder items');
+    } finally {
+      setReorderingId(null);
+    }
+  };
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -83,10 +136,21 @@ export const OrdersPage = () => {
                   </span>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--color-primary-dark)' }}>
                     {formatCurrency(order.totalAmount)}
                   </span>
+                  {['DELIVERED', 'COMPLETED'].includes(order.status) && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={RotateCcw}
+                      loading={reorderingId === order.id}
+                      onClick={() => handleReorder(order)}
+                    >
+                      🔄 Reorder Items
+                    </Button>
+                  )}
                   <Button variant="outline" size="sm" icon={ArrowRight} onClick={() => navigate(`/orders/${order.id}`)}>
                     View Details
                   </Button>

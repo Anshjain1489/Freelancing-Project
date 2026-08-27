@@ -143,6 +143,16 @@ export const Addresses = () => {
     }
   };
 
+  const handleSetDefault = async (id) => {
+    try {
+      await addressService.setDefaultAddress(id);
+      showSuccess('Set as default address!');
+      fetchAddresses();
+    } catch (err) {
+      showError('Failed to set default address');
+    }
+  };
+
   const handleDelete = async (id) => {
     try {
       await addressService.deleteAddress(id);
@@ -178,6 +188,7 @@ export const Addresses = () => {
           const pCode = addr.postalCode || addr.postal_code;
           const distKm = addr.deliveryDistanceKm ?? addr.delivery_distance_km;
           const fee = addr.estimatedDeliveryCharge ?? addr.estimated_delivery_charge;
+          const isDef = addr.isDefault || addr.is_default;
 
           return (
             <Card key={addr.id} padding="20px">
@@ -186,7 +197,7 @@ export const Addresses = () => {
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px' }}>
                     <span style={{ fontWeight: 800, fontSize: '1rem' }}>{recName}</span>
                     <Badge variant="blue">{addr.label || 'Home'}</Badge>
-                    {addr.isDefault && <Badge variant="green">DEFAULT</Badge>}
+                    {isDef && <Badge variant="green">⭐ DEFAULT ADDRESS</Badge>}
                   </div>
                   <p style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)', margin: 0 }}>
                     {line1}{line2 ? `, ${line2}` : ''}{addr.landmark ? `, Landmark: ${addr.landmark}` : ''}, {addr.city || 'Mahruni'}, {addr.state || 'Uttar Pradesh'} - {pCode || '274702'}
@@ -202,7 +213,12 @@ export const Addresses = () => {
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {!isDef && (
+                    <Button variant="ghost" size="sm" onClick={() => handleSetDefault(addr.id)}>
+                      Set as Default
+                    </Button>
+                  )}
                   <Button variant="outline" size="sm" icon={Edit2} onClick={() => openEditModal(addr)}>
                     Edit
                   </Button>

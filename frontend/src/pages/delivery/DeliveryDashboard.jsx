@@ -90,11 +90,31 @@ export const DeliveryDashboard = () => {
             Manage assigned orders, customer location routes, and delivery status updates
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <Button variant="secondary" size="sm" icon={MapPin} loading={updatingLocation} onClick={handleUpdateLocation}>
-            📍 Update My Current Location
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <Button
+            variant="secondary"
+            size="md"
+            icon={MapPin}
+            loading={updatingLocation}
+            disabled={updatingLocation}
+            onClick={handleUpdateLocation}
+            style={{
+              minHeight: '44px',
+              padding: '10px 18px',
+              fontWeight: 800,
+              fontSize: '0.88rem',
+              borderRadius: '10px'
+            }}
+          >
+            {updatingLocation ? '📍 Locating...' : '📍 Update My Current Location'}
           </Button>
-          <Button variant="outline" size="sm" icon={Truck} onClick={() => navigate('/delivery/orders')}>
+          <Button
+            variant="outline"
+            size="md"
+            icon={Truck}
+            onClick={() => navigate('/delivery/orders')}
+            style={{ minHeight: '44px', padding: '10px 16px', borderRadius: '10px' }}
+          >
             All My Orders
           </Button>
         </div>

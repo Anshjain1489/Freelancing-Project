@@ -160,6 +160,26 @@ export const InventoryPage = () => {
     }
   };
 
+  const handleQuickAdjust = async (product, delta) => {
+    try {
+      if (delta > 0) {
+        await adminService.addStock(product.productId, delta, `Quick inline adjustment +${delta}`);
+        showSuccess(`Added +${delta} stock to "${product.productName}"`);
+      } else {
+        const reduceQty = Math.abs(delta);
+        if ((product.availableQuantity || product.stockQuantity) < reduceQty) {
+          showError(`Cannot reduce stock by ${reduceQty}. Only ${product.availableQuantity || product.stockQuantity} available.`);
+          return;
+        }
+        await adminService.removeStock(product.productId, reduceQty, `Quick inline adjustment -${reduceQty}`);
+        showSuccess(`Removed ${reduceQty} stock from "${product.productName}"`);
+      }
+      fetchInventory();
+    } catch (err) {
+      showError(err.response?.data?.message || 'Quick stock adjustment failed');
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', paddingBottom: '32px' }}>
       {/* Header */}
@@ -340,12 +360,35 @@ export const InventoryPage = () => {
                       </td>
 
                       <td style={{ padding: '14px 10px', textAlign: 'right' }}>
-                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
-                          <Button variant="outline" size="sm" icon={PlusCircle} onClick={() => handleOpenAddStock(item)} title="Add Stock">
-                            + Add
-                          </Button>
-                          <Button variant="outline" size="sm" icon={MinusCircle} onClick={() => handleOpenRemoveStock(item)} title="Remove Stock">
-                            - Remove
+                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                          {/* P2-11: Quick Quantity Adjustment Buttons */}
+                          <button
+                            type="button"
+                            onClick={() => handleQuickAdjust(item, 5)}
+                            style={{ padding: '3px 8px', borderRadius: '4px', border: '1px solid #10B981', background: '#ECFDF5', color: '#047857', fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer' }}
+                            title="Quick add +5 stock"
+                          >
+                            +5
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleQuickAdjust(item, 10)}
+                            style={{ padding: '3px 8px', borderRadius: '4px', border: '1px solid #10B981', background: '#ECFDF5', color: '#047857', fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer' }}
+                            title="Quick add +10 stock"
+                          >
+                            +10
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleQuickAdjust(item, -5)}
+                            style={{ padding: '3px 8px', borderRadius: '4px', border: '1px solid #EF4444', background: '#FEF2F2', color: '#B91C1C', fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer' }}
+                            title="Quick remove -5 stock"
+                          >
+                            -5
+                          </button>
+
+                          <Button variant="outline" size="sm" icon={PlusCircle} onClick={() => handleOpenAddStock(item)} title="Add Custom Stock">
+                            Custom
                           </Button>
                           <Button variant="ghost" size="sm" icon={Sliders} onClick={() => handleOpenThreshold(item)} title="Set Threshold" />
                           <Button variant="ghost" size="sm" icon={History} onClick={() => handleOpenHistory(item)} title="View Audit Logs" />

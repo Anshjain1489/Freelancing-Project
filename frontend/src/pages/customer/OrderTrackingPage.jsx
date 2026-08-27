@@ -212,9 +212,12 @@ export const OrderTrackingPage = () => {
           </div>
 
           <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: '#F1F5F9', fontWeight: 700, background: 'rgba(255,255,255,0.1)', padding: '6px 12px', borderRadius: '20px' }}>
-              <Clock size={16} color="#38BDF8" /> {order.estimatedDelivery}
-            </div>
+            {/* P1-2: Prominent Estimated Delivery Display for active delivery statuses */}
+            {!['DELIVERED', 'CANCELLED', 'REJECTED'].includes(order.status) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem', color: '#F1F5F9', fontWeight: 800, background: 'rgba(6, 193, 103, 0.25)', border: '1px solid rgba(6, 193, 103, 0.5)', padding: '8px 14px', borderRadius: '20px' }}>
+                <Clock size={16} color="#38BDF8" /> 🚚 Estimated Delivery: <strong>{order.estimatedDelivery || '20–30 mins'}</strong>
+              </div>
+            )}
             <div style={{ fontSize: '0.75rem', color: '#64748B' }}>
               Auto-updating via SSE • Last synced: {lastRefreshed.toLocaleTimeString()}
             </div>
@@ -222,9 +225,32 @@ export const OrderTrackingPage = () => {
         </div>
 
         {order.deliveryPartner?.name && (
-          <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem' }}>
-            <UserCheck size={18} color="#4ADE80" />
-            <span>Assigned Delivery Fleet Partner: <strong>{order.deliveryPartner.name}</strong></span>
+          <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', fontSize: '0.9rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <UserCheck size={18} color="#4ADE80" />
+              <span>Assigned Delivery Fleet Partner: <strong>{order.deliveryPartner.name}</strong></span>
+            </div>
+
+            {/* P2-10: Call Delivery Partner Button for OUT_FOR_DELIVERY orders */}
+            {order.status === 'OUT_FOR_DELIVERY' && (order.deliveryPartner?.phone || order.deliveryPartnerPhone) && (
+              <a
+                href={`tel:${order.deliveryPartner?.phone || order.deliveryPartnerPhone}`}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 14px',
+                  background: '#06C167',
+                  color: '#FFFFFF',
+                  borderRadius: '8px',
+                  fontWeight: 800,
+                  fontSize: '0.85rem',
+                  textDecoration: 'none'
+                }}
+              >
+                📞 Call Delivery Partner ({order.deliveryPartner?.phone || order.deliveryPartnerPhone})
+              </a>
+            )}
           </div>
         )}
       </Card>

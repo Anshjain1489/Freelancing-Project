@@ -142,12 +142,20 @@ const deleteAddress = async (userId, addressId) => {
 const clearDefaultAddress = async (userId) => {
   if (supabase) {
     await supabase.from('addresses').update({ is_default: false }).eq('user_id', userId);
+  } else if (mockAddresses[userId]) {
+    mockAddresses[userId].forEach(a => a.isDefault = false);
   }
+};
+
+const setDefaultAddress = async (userId, addressId) => {
+  await clearDefaultAddress(userId);
+  return await updateAddress(userId, addressId, { isDefault: true });
 };
 
 module.exports = {
   getAddresses,
   createAddress,
   updateAddress,
-  deleteAddress
+  deleteAddress,
+  setDefaultAddress
 };

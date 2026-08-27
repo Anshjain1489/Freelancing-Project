@@ -44,6 +44,33 @@ export const NotificationsPage = () => {
     }
   };
 
+  const groupNotificationsByDate = (list) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const groups = { Today: [], Yesterday: [], Earlier: [] };
+
+    (list || []).forEach(n => {
+      const d = new Date(n.createdAt || n.created_at || Date.now());
+      d.setHours(0, 0, 0, 0);
+
+      if (d.getTime() === today.getTime()) {
+        groups.Today.push(n);
+      } else if (d.getTime() === yesterday.getTime()) {
+        groups.Yesterday.push(n);
+      } else {
+        groups.Earlier.push(n);
+      }
+    });
+
+    return groups;
+  };
+
+  const grouped = groupNotificationsByDate(notifications);
+
   return (
     <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '32px' }}>
       <Breadcrumbs items={[{ label: 'My Account' }, { label: 'Notifications' }]} />
@@ -81,7 +108,7 @@ export const NotificationsPage = () => {
           </div>
         </Card>
 
-        {/* Notifications List */}
+        {/* Notifications List Grouped by Date */}
         <Card padding="24px">
           <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '16px' }}>All Notifications</h3>
 
@@ -95,40 +122,52 @@ export const NotificationsPage = () => {
               You have no notification alerts.
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {notifications.map(item => (
-                <div
-                  key={item.id}
-                  style={{
-                    padding: '14px 16px',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--color-border)',
-                    backgroundColor: item.isRead ? 'var(--color-surface)' : 'var(--color-mint-light)',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'flex-start',
-                    gap: '12px'
-                  }}
-                >
-                  <div>
-                    <div style={{ fontWeight: item.isRead ? 600 : 800, fontSize: '0.9rem', color: 'var(--color-text-primary)' }}>
-                      {item.title}
-                    </div>
-                    <p style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
-                      {item.message}
-                    </p>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-tertiary)', marginTop: '4px', display: 'block' }}>
-                      {new Date(item.createdAt).toLocaleString()}
-                    </span>
-                  </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {['Today', 'Yesterday', 'Earlier'].map(groupName => {
+                const groupItems = grouped[groupName];
+                if (!groupItems || groupItems.length === 0) return null;
 
-                  {!item.isRead && (
-                    <Button variant="ghost" size="sm" onClick={() => markOneRead(item.id)}>
-                      Mark Read
-                    </Button>
-                  )}
-                </div>
-              ))}
+                return (
+                  <div key={groupName} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #E2E8F0', paddingBottom: '4px' }}>
+                      {groupName} ({groupItems.length})
+                    </div>
+                    {groupItems.map(item => (
+                      <div
+                        key={item.id}
+                        style={{
+                          padding: '14px 16px',
+                          borderRadius: 'var(--radius-md)',
+                          border: '1px solid var(--color-border)',
+                          backgroundColor: item.isRead ? 'var(--color-surface)' : 'var(--color-mint-light)',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'flex-start',
+                          gap: '12px'
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: item.isRead ? 600 : 800, fontSize: '0.9rem', color: 'var(--color-text-primary)' }}>
+                            {item.title}
+                          </div>
+                          <p style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+                            {item.message}
+                          </p>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--color-text-tertiary)', marginTop: '4px', display: 'block' }}>
+                            {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+
+                        {!item.isRead && (
+                          <Button variant="ghost" size="sm" onClick={() => markOneRead(item.id)}>
+                            Mark Read
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
             </div>
           )}
         </Card>

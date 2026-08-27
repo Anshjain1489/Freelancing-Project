@@ -771,35 +771,69 @@ export const DeliveryAdminPage = () => {
                   Available Delivery Partners:
                 </label>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
-                  {partners.map(p => (
-                    <div
-                      key={p.id}
-                      onClick={() => setSelectedPartnerId(p.id)}
-                      style={{
-                        padding: '10px',
-                        borderRadius: '8px',
-                        border: selectedPartnerId === p.id ? '2px solid var(--color-primary)' : '1px solid var(--color-border)',
-                        background: selectedPartnerId === p.id ? 'var(--color-mint-light)' : '#FFF',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontWeight: 800, fontSize: '0.9rem' }}>👤 {p.fullName || p.name}</div>
-                        <div style={{ fontSize: '0.8rem', color: '#555' }}>📞 {p.phone}</div>
-                      </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '240px', overflowY: 'auto' }}>
+                  {partners.map((p, idx) => {
+                    const isRecommended = p.isRecommended || idx === 0;
+                    const isSelected = selectedPartnerId === p.id;
+                    const borderStyle = isSelected
+                      ? '2px solid var(--color-primary, #06C167)'
+                      : (isRecommended ? '2px solid #10B981' : '1px solid var(--color-border, #CBD5E1)');
+                    const bgStyle = isSelected
+                      ? 'var(--color-mint-light, #E8F7F0)'
+                      : (isRecommended ? '#F0FDF4' : '#FFF');
 
-                      <div style={{ textAlign: 'right', fontSize: '0.75rem' }}>
-                        <span style={{ background: '#E8F7F0', color: '#06C167', padding: '2px 6px', borderRadius: '4px', fontWeight: 800 }}>
-                          {p.activeDeliveriesCount || 0} Active
-                        </span>
-                        <div style={{ color: '#666', marginTop: '2px' }}>{p.completedTodayCount || 0} Today</div>
+                    return (
+                      <div
+                        key={p.id}
+                        onClick={() => setSelectedPartnerId(p.id)}
+                        style={{
+                          padding: '12px',
+                          borderRadius: '8px',
+                          border: borderStyle,
+                          background: bgStyle,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          position: 'relative'
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            👤 {p.fullName || p.name}
+                            {isRecommended && (
+                              <span style={{
+                                background: '#10B981',
+                                color: '#FFFFFF',
+                                fontSize: '0.7rem',
+                                fontWeight: 800,
+                                padding: '2px 8px',
+                                borderRadius: '12px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                              }}>
+                                ⭐ Recommended
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '0.8rem', color: '#555' }}>📞 {p.phone}</div>
+                          {isRecommended && (
+                            <div style={{ fontSize: '0.72rem', color: '#047857', fontWeight: 600, marginTop: '2px' }}>
+                              💡 Reason: {p.recommendationReason || 'Lowest active workload & closest location'}
+                            </div>
+                          )}
+                        </div>
+
+                        <div style={{ textAlign: 'right', fontSize: '0.75rem' }}>
+                          <span style={{ background: '#E8F7F0', color: '#06C167', padding: '2px 6px', borderRadius: '4px', fontWeight: 800 }}>
+                            {p.activeDeliveriesCount || 0} Active
+                          </span>
+                          <div style={{ color: '#666', marginTop: '2px' }}>{p.completedTodayCount || 0} Today</div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 

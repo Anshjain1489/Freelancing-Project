@@ -167,56 +167,73 @@ export const Home = () => {
       </section>
 
       {/* 2. Quick Categories Grid */}
-      <section>
+      <section style={{ position: 'relative' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h2 className="text-h2">Quick Grocery Categories</h2>
+          <h2 className="text-h2">Quick Grocery Categories 🛒</h2>
           <button onClick={() => navigate('/categories')} style={{ color: 'var(--color-primary-dark)', fontWeight: 700, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
             View All <ArrowRight size={16} />
           </button>
         </div>
 
         {loadingCategories ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '12px' }}>
+          <div style={{ display: 'flex', gap: '12px', overflowX: 'auto', paddingBottom: '8px' }}>
             {[1, 2, 3, 4, 5, 6].map(i => <CategorySkeleton key={i} />)}
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '12px' }}>
-            {categories.slice(0, 8).map(cat => (
-              <div
-                key={cat.id}
-                onClick={() => navigate(`/products?category=${cat.slug}`)}
-                style={{
-                  padding: '14px 10px',
-                  backgroundColor: 'var(--color-surface)',
-                  borderRadius: 'var(--radius-lg)',
-                  border: '1px solid var(--color-border)',
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-                  boxShadow: '0 2px 6px rgba(0,0,0,0.04)'
-                }}
-              >
-                <div style={{
-                  width: '64px',
-                  height: '64px',
-                  borderRadius: '50%',
-                  overflow: 'hidden',
-                  margin: '0 auto 8px auto',
-                  border: '2px solid var(--color-mint)',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                  backgroundColor: '#F8F9FA'
-                }}>
-                  <img
-                    src={getCategoryImage(cat)}
-                    alt={cat.name}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
+          <div style={{ position: 'relative' }}>
+            <div
+              style={{
+                display: 'flex',
+                gap: '12px',
+                overflowX: 'auto',
+                paddingBottom: '8px',
+                scrollSnapType: 'x mandatory',
+                WebkitOverflowScrolling: 'touch',
+                msOverflowStyle: 'none',
+                scrollbarWidth: 'none'
+              }}
+            >
+              {categories.slice(0, 10).map(cat => (
+                <div
+                  key={cat.id}
+                  onClick={() => navigate(`/products?category=${cat.slug}`)}
+                  style={{
+                    minWidth: '110px',
+                    maxWidth: '120px',
+                    flexShrink: 0,
+                    scrollSnapAlign: 'start',
+                    padding: '14px 10px',
+                    backgroundColor: 'var(--color-surface)',
+                    borderRadius: 'var(--radius-lg)',
+                    border: '1px solid var(--color-border)',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.04)'
+                  }}
+                >
+                  <div style={{
+                    width: '60px',
+                    height: '60px',
+                    borderRadius: '50%',
+                    overflow: 'hidden',
+                    margin: '0 auto 8px auto',
+                    border: '2px solid var(--color-mint)',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                    backgroundColor: '#F8F9FA'
+                  }}>
+                    <img
+                      src={getCategoryImage(cat)}
+                      alt={cat.name}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  </div>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--color-text-primary)', display: 'block', lineHeight: '1.2' }}>
+                    {cat.name}
+                  </span>
                 </div>
-                <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--color-text-primary)', display: 'block', lineHeight: '1.2' }}>
-                  {cat.name}
-                </span>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
       </section>

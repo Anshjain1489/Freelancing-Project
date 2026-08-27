@@ -20,5 +20,10 @@ export const addressService = {
   deleteAddress: async (id) => {
     const response = await apiClient.delete(ENDPOINTS.ADDRESSES.DELETE(id));
     return response.data;
+  },
+
+  setDefaultAddress: async (id) => {
+    const response = await apiClient.put(`/addresses/${id}/default`);
+    return response.data;
   }
 };

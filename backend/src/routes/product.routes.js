@@ -18,6 +18,10 @@ router.get('/search', productController.searchProducts);
 router.get('/', validate(productQuerySchema), productController.getProducts);
 router.get('/:slug', productController.getProductBySlug);
 
+// Stock Notification Routes (Authenticated Customer)
+router.post('/:id/notify', authenticate, productController.subscribeStockNotification);
+router.get('/:id/notify/status', authenticate, productController.getStockNotificationStatus);
+
 // Admin Only Product Management Routes
 router.post('/', authenticate, authorizeAdmin, validate(createProductSchema), productController.createProduct);
 router.patch('/:id', authenticate, authorizeAdmin, validate(updateProductSchema), productController.updateProduct);

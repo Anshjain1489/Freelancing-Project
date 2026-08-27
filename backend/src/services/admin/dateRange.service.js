@@ -29,6 +29,11 @@ const parseDateRange = (range = '30days', startDate = null, endDate = null) => {
     case 'custom':
       if (startDate) start = new Date(startDate);
       if (endDate) end = new Date(endDate);
+      if (isNaN(start.getTime()) || isNaN(end.getTime()) || start.getTime() > end.getTime()) {
+        const AppError = require('../../utils/AppError');
+        const { HTTP_STATUS } = require('../../constants/statusCodes');
+        throw new AppError('Invalid date range specified. End date cannot precede start date.', HTTP_STATUS.BAD_REQUEST);
+      }
       break;
     default:
       start.setDate(now.getDate() - 30);

@@ -20,5 +20,10 @@ export const productService = {
   getProductBySlug: async (slug) => {
     const response = await apiClient.get(ENDPOINTS.PRODUCTS.BY_SLUG(slug));
     return response.data;
+  },
+
+  subscribeStockNotification: async (productId) => {
+    const response = await apiClient.post(`/products/${productId}/notify`);
+    return response.data;
   }
 };

@@ -433,8 +433,13 @@ export const CheckoutPage = () => {
                 </div>
               )}
 
-              <div style={{ borderTop: '1.5px dashed var(--color-primary)', paddingTop: '12px', marginTop: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '1.1rem', fontWeight: 800 }}>Total Payable Amount</span>
+              <div style={{ borderTop: '1.5px dashed var(--color-primary)', paddingTop: '12px', marginTop: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                <div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 800 }}>Total Payable Amount</div>
+                  <div style={{ fontSize: '0.8rem', color: '#64748B', fontWeight: 700, marginTop: '2px' }}>
+                    🏷️ Order Total ({preview.itemCount || 0} items · {preview.items?.length || 0} products)
+                  </div>
+                </div>
                 <span style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--color-primary-dark)' }}>
                   {formatCurrency(netPayable)}
                 </span>

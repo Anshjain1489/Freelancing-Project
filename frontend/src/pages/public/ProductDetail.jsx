@@ -59,10 +59,23 @@ export const ProductDetail = () => {
   const currentQty = cartItem ? cartItem.quantity : 0;
   const discount = calculateDiscountPercentage(product.mrp, product.sellingPrice);
 
-  const handleAddToCart = () => {
-    addItem(product, 1);
-    showSuccess(`Added ${product.name} to cart 🛒`);
+  const [notifying, setNotifying] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(false);
+
+  const handleNotifyMe = async () => {
+    setNotifying(true);
+    try {
+      const res = await productService.subscribeStockNotification(product.id);
+      setIsSubscribed(true);
+      showSuccess(res.message || 'Subscribed to restock notifications! 🔔');
+    } catch (err) {
+      showError(err.response?.data?.message || 'Please login to subscribe to restock notifications.');
+    } finally {
+      setNotifying(false);
+    }
   };
+
+  const isOutOfStock = product.stockStatus === 'OUT_OF_STOCK' || product.stockQuantity === 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', paddingBottom: '32px' }}>
@@ -122,12 +135,18 @@ export const ProductDetail = () => {
             </span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px' }}>
+          {/* P2-8: Unit next to price display */}
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--color-primary-dark)' }}>
               {formatCurrency(product.sellingPrice)}
             </span>
+            {(product.unitValue || product.unit) && (
+              <span style={{ fontSize: '1.1rem', fontWeight: 700, color: '#475569' }}>
+                · {product.unitValue || ''} {product.unit || ''}
+              </span>
+            )}
             {product.mrp > product.sellingPrice && (
-              <span style={{ fontSize: '1.1rem', color: 'var(--color-text-muted)', textDecoration: 'line-through' }}>
+              <span style={{ fontSize: '1.1rem', color: 'var(--color-text-muted)', textDecoration: 'line-through', marginLeft: '6px' }}>
                 {formatCurrency(product.mrp)}
               </span>
             )}
@@ -138,7 +157,19 @@ export const ProductDetail = () => {
           </p>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '12px' }}>
-            {currentQty > 0 ? (
+            {isOutOfStock ? (
+              /* P2-15: Out of Stock Notify Me Action */
+              <Button
+                variant={isSubscribed ? 'outline' : 'secondary'}
+                size="lg"
+                loading={notifying}
+                disabled={isSubscribed}
+                onClick={handleNotifyMe}
+                style={{ background: isSubscribed ? '#F1F5F9' : '#F59E0B', color: isSubscribed ? '#475569' : '#FFFFFF', border: 'none', fontWeight: 800 }}
+              >
+                {isSubscribed ? '✅ Notification Requested' : '🔔 Notify Me When Available'}
+              </Button>
+            ) : currentQty > 0 ? (
               <QuantitySelector
                 quantity={currentQty}
                 onChange={(q) => updateQuantity(product.id, q)}

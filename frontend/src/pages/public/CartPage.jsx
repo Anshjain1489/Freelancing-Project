@@ -23,13 +23,79 @@ export const CartPage = () => {
           actionLabel="Continue Shopping 🛒"
           onAction={() => navigate('/products')}
         />
+
+        {/* P2-16: Empty Cart Shortcut Chips */}
+        <div style={{ marginTop: '24px', background: '#F8FAFC', padding: '16px', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
+          <h4 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#334155', marginBottom: '12px' }}>
+            Browse Popular Categories 🛒
+          </h4>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+            {[
+              { name: 'Atta & Grains', slug: 'atta-grains' },
+              { name: 'Rice & Pulses', slug: 'rice-pulses' },
+              { name: 'Snacks & Munchies', slug: 'snacks-munchies' },
+              { name: 'Dairy & Fresh', slug: 'dairy-fresh' },
+              { name: 'Beverages', slug: 'beverages' }
+            ].map(cat => (
+              <button
+                key={cat.slug}
+                onClick={() => navigate(`/products?category=${cat.slug}`)}
+                style={{
+                  padding: '8px 14px',
+                  background: '#FFF',
+                  border: '1px solid #CBD5E1',
+                  borderRadius: '20px',
+                  fontSize: '0.82rem',
+                  fontWeight: 700,
+                  color: '#0F172A',
+                  cursor: 'pointer',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                }}
+              >
+                {cat.name}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
 
+  const FREE_DELIVERY_THRESHOLD = 499;
+  const freeDeliveryProgress = Math.min(100, Math.round((subtotal / FREE_DELIVERY_THRESHOLD) * 100));
+
   return (
     <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '32px' }}>
       <Breadcrumbs items={[{ label: 'Shopping Cart' }]} />
+
+      {/* P2-6: Free Delivery Eligibility Progress Bar */}
+      <div style={{
+        background: subtotal >= FREE_DELIVERY_THRESHOLD ? '#ECFDF5' : '#EFF6FF',
+        border: `1px solid ${subtotal >= FREE_DELIVERY_THRESHOLD ? '#6EE7B7' : '#BFDBFE'}`,
+        borderRadius: '12px',
+        padding: '14px 18px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.88rem', fontWeight: 800 }}>
+          <span>
+            {subtotal >= FREE_DELIVERY_THRESHOLD
+              ? '🎉 You qualify for free delivery!'
+              : `Add ₹${(FREE_DELIVERY_THRESHOLD - subtotal).toFixed(0)} more to qualify for free delivery 🎉`}
+          </span>
+          <span style={{ fontSize: '0.8rem', color: '#64748B' }}>{freeDeliveryProgress}%</span>
+        </div>
+        <div style={{ width: '100%', height: '8px', background: '#E2E8F0', borderRadius: '4px', overflow: 'hidden' }}>
+          <div style={{
+            width: `${freeDeliveryProgress}%`,
+            height: '100%',
+            background: subtotal >= FREE_DELIVERY_THRESHOLD ? '#10B981' : '#3B82F6',
+            borderRadius: '4px',
+            transition: 'width 0.3s ease'
+          }} />
+        </div>
+      </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1 className="text-h1">Your Shopping Cart 🛒 ({itemCount} items)</h1>

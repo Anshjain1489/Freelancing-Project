@@ -23,9 +23,15 @@ const deleteAddress = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, HTTP_STATUS.OK, 'Address deleted', result);
 });
 
+const setDefaultAddress = asyncHandler(async (req, res) => {
+  const address = await addressService.setDefaultAddress(req.user.id, req.params.id);
+  return ApiResponse.success(res, HTTP_STATUS.OK, 'Default address set successfully', { address });
+});
+
 module.exports = {
   getAddresses,
   createAddress,
   updateAddress,
-  deleteAddress
+  deleteAddress,
+  setDefaultAddress
 };

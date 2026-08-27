@@ -46,6 +46,11 @@ export const SearchPage = () => {
     }
   };
 
+  const handleClearSearch = () => {
+    setQuery('');
+    setSearchParams({});
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '32px' }}>
       <Breadcrumbs items={[{ label: 'Search' }]} />
@@ -57,7 +62,7 @@ export const SearchPage = () => {
         </p>
       </div>
 
-      <div style={{ maxWidth: '600px' }}>
+      <div style={{ maxWidth: '600px', position: 'relative' }}>
         <Input
           icon={Search}
           placeholder="Type to search daily Kirana items..."
@@ -65,6 +70,33 @@ export const SearchPage = () => {
           onChange={handleInputChange}
           autoFocus
         />
+        {query.length > 0 && (
+          <button
+            type="button"
+            onClick={handleClearSearch}
+            aria-label="Clear search"
+            style={{
+              position: 'absolute',
+              right: '12px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              background: '#E2E8F0',
+              border: 'none',
+              borderRadius: '50%',
+              width: '24px',
+              height: '24px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              fontWeight: 800,
+              fontSize: '0.8rem',
+              color: '#475569'
+            }}
+          >
+            ✕
+          </button>
+        )}
       </div>
 
       <div>
