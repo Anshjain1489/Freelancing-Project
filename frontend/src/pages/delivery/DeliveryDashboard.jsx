@@ -65,6 +65,22 @@ export const DeliveryDashboard = () => {
 
   const { summary, activeDeliveries } = data;
 
+  const [updatingLocation, setUpdatingLocation] = useState(false);
+
+  const handleUpdateLocation = async () => {
+    const { getCurrentPosition } = await import('../../utils/location.utils');
+    setUpdatingLocation(true);
+    try {
+      const pos = await getCurrentPosition();
+      await deliveryPartnerService.updateCurrentLocation(pos.latitude, pos.longitude);
+      showSuccess(`Location updated: (${pos.latitude.toFixed(4)}, ${pos.longitude.toFixed(4)})`);
+    } catch (err) {
+      showError(err.message || 'Failed to update location.');
+    } finally {
+      setUpdatingLocation(false);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1000px', margin: '0 auto', paddingBottom: '40px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
@@ -74,9 +90,14 @@ export const DeliveryDashboard = () => {
             Manage assigned orders, customer location routes, and delivery status updates
           </p>
         </div>
-        <Button variant="outline" size="sm" icon={Truck} onClick={() => navigate('/delivery/orders')}>
-          All My Orders
-        </Button>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <Button variant="secondary" size="sm" icon={MapPin} loading={updatingLocation} onClick={handleUpdateLocation}>
+            📍 Update My Current Location
+          </Button>
+          <Button variant="outline" size="sm" icon={Truck} onClick={() => navigate('/delivery/orders')}>
+            All My Orders
+          </Button>
+        </div>
       </div>
 
       {/* SUMMARY METRIC CARDS */}

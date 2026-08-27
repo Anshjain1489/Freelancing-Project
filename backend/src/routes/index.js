@@ -51,6 +51,7 @@ router.use('/', returnRoutes);
 router.use('/', replacementRoutes);
 router.use('/delivery', deliveryRoutes);
 router.use('/delivery', deliveryPartnerRoutes);
+router.use('/delivery-partner', deliveryPartnerRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/notification-preferences', notificationRoutes);

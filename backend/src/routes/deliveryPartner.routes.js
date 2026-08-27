@@ -12,6 +12,8 @@ const { deliveryActionLimiter } = require('../middleware/rateLimiter.middleware'
 router.get('/dashboard', deliveryController.getPartnerDashboard);
 router.get('/orders', deliveryController.getPartnerOrders);
 router.get('/orders/:id', deliveryController.getPartnerOrderById);
+router.put('/location', deliveryActionLimiter, deliveryController.updateLocation);
+router.post('/location', deliveryActionLimiter, deliveryController.updateLocation);
 router.post('/orders/:id/accept', deliveryActionLimiter, deliveryController.acceptDelivery);
 router.post('/orders/:id/pickup', deliveryActionLimiter, deliveryController.pickupDelivery);
 router.post('/orders/:id/start', deliveryActionLimiter, deliveryController.startDelivery);

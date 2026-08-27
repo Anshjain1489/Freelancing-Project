@@ -48,6 +48,11 @@ export const deliveryPartnerService = {
     return response.data;
   },
 
+  updateCurrentLocation: async (latitude, longitude) => {
+    const response = await apiClient.put(ENDPOINTS.DELIVERY.UPDATE_LOCATION, { latitude, longitude });
+    return response.data;
+  },
+
   // Admin Delivery Management Methods
   getAdminDeliveryDashboard: async () => {
     const response = await apiClient.get(ENDPOINTS.ADMIN.DELIVERY_DASHBOARD);

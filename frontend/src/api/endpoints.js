@@ -72,7 +72,8 @@ export const ENDPOINTS = {
     DELIVER: (id) => `/delivery/orders/${id}/deliver`,
     COMPLETE: (id) => `/delivery/orders/${id}/complete`,
     FAIL: (id) => `/delivery/orders/${id}/fail`,
-    FAILED: (id) => `/delivery/orders/${id}/failed`
+    FAILED: (id) => `/delivery/orders/${id}/failed`,
+    UPDATE_LOCATION: '/delivery-partner/location'
   },
 
   PAYMENTS: {

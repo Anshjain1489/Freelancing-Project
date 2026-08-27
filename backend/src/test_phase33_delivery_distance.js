@@ -13,7 +13,7 @@ logger.error = () => {};
 async function runPhase33DeliveryDistanceTests() {
   console.log('====================================================');
   console.log('  RUNNING PHASE 33: GOOGLE MAPS DELIVERY DISTANCE SUITE');
-  console.log('  Road Distance, ₹10/KM Formula & Backend Recalculation (26 Assertions)');
+  console.log('  Road Distance, Ceiling(KM)*10 Formula & Backend Recalculation (26 Assertions)');
   console.log('====================================================\n');
 
   let passed = 0;
@@ -30,51 +30,51 @@ async function runPhase33DeliveryDistanceTests() {
     }
   };
 
-  // --- SECTION 1: Central Pricing Formula Assertions ---
+  // --- SECTION 1: Central Ceiling Pricing Formula Assertions ---
 
   await runTest('Assertion 1: 0 km distance returns exactly ₹0 delivery charge', () => {
     const fee = deliveryDistanceService.calculateDeliveryCharge(0);
     assert.strictEqual(fee, 0);
   });
 
-  await runTest('Assertion 2: 0.5 km distance returns exactly ₹5 delivery charge', () => {
-    const fee = deliveryDistanceService.calculateDeliveryCharge(0.5);
-    assert.strictEqual(fee, 5);
+  await runTest('Assertion 2: 0.1 km distance returns exactly ₹10 delivery charge (Ceiling rule)', () => {
+    const fee = deliveryDistanceService.calculateDeliveryCharge(0.1);
+    assert.strictEqual(fee, 10);
   });
 
-  await runTest('Assertion 3: 1 km distance returns exactly ₹10 delivery charge', () => {
+  await runTest('Assertion 3: 0.9 km distance returns exactly ₹10 delivery charge (Ceiling rule)', () => {
+    const fee = deliveryDistanceService.calculateDeliveryCharge(0.9);
+    assert.strictEqual(fee, 10);
+  });
+
+  await runTest('Assertion 4: 1.0 km distance returns exactly ₹10 delivery charge', () => {
     const fee = deliveryDistanceService.calculateDeliveryCharge(1.0);
     assert.strictEqual(fee, 10);
   });
 
-  await runTest('Assertion 4: 2.3 km distance returns exactly ₹23 delivery charge', () => {
-    const fee = deliveryDistanceService.calculateDeliveryCharge(2.3);
-    assert.strictEqual(fee, 23);
+  await runTest('Assertion 5: 1.2 km distance returns exactly ₹20 delivery charge', () => {
+    const fee = deliveryDistanceService.calculateDeliveryCharge(1.2);
+    assert.strictEqual(fee, 20);
   });
 
-  await runTest('Assertion 5: 3.4 km distance returns exactly ₹34 delivery charge', () => {
-    const fee = deliveryDistanceService.calculateDeliveryCharge(3.4);
-    assert.strictEqual(fee, 34);
+  await runTest('Assertion 6: 2.0 km distance returns exactly ₹20 delivery charge', () => {
+    const fee = deliveryDistanceService.calculateDeliveryCharge(2.0);
+    assert.strictEqual(fee, 20);
   });
 
-  await runTest('Assertion 6: 5 km distance returns exactly ₹50 delivery charge', () => {
+  await runTest('Assertion 7: 2.1 km distance returns exactly ₹30 delivery charge', () => {
+    const fee = deliveryDistanceService.calculateDeliveryCharge(2.1);
+    assert.strictEqual(fee, 30);
+  });
+
+  await runTest('Assertion 8: 5.0 km distance returns exactly ₹50 delivery charge', () => {
     const fee = deliveryDistanceService.calculateDeliveryCharge(5.0);
     assert.strictEqual(fee, 50);
   });
 
-  await runTest('Assertion 7: 10 km distance returns exactly ₹100 delivery charge', () => {
+  await runTest('Assertion 9: 10.0 km distance returns exactly ₹100 delivery charge', () => {
     const fee = deliveryDistanceService.calculateDeliveryCharge(10.0);
     assert.strictEqual(fee, 100);
-  });
-
-  await runTest('Assertion 8: Decimal precision distance (3.44 km) is rounded to nearest integer (₹34)', () => {
-    const fee = deliveryDistanceService.calculateDeliveryCharge(3.44);
-    assert.strictEqual(fee, 34);
-  });
-
-  await runTest('Assertion 9: Decimal precision distance (3.46 km) is rounded to nearest integer (₹35)', () => {
-    const fee = deliveryDistanceService.calculateDeliveryCharge(3.46);
-    assert.strictEqual(fee, 35);
   });
 
   // --- SECTION 2: Coordinate & Parameter Validation ---
@@ -122,9 +122,11 @@ async function runPhase33DeliveryDistanceTests() {
     const res = await deliveryDistanceService.calculateRoadDistanceAndFee(24.2500, 78.7500);
     assert.ok(res);
     assert.ok(res.store);
+    assert.ok(res.customerLocation);
     assert.strictEqual(typeof res.distanceKm, 'number');
     assert.strictEqual(typeof res.deliveryCharge, 'number');
     assert.strictEqual(res.isDeliverable, true);
+    assert.strictEqual(res.withinDeliveryArea, true);
   });
 
   await runTest('Assertion 15: Haversine distance fallback is used cleanly when Google API is offline', () => {
@@ -144,24 +146,25 @@ async function runPhase33DeliveryDistanceTests() {
   await runTest('Assertion 17: Destination exceeding maximum delivery radius (60 km > 50 km) is marked undeliverable', async () => {
     const res = await deliveryDistanceService.calculateRoadDistanceAndFee(24.8000, 79.5000);
     assert.strictEqual(res.isDeliverable, false);
+    assert.strictEqual(res.withinDeliveryArea, false);
     assert.strictEqual(res.reason.includes('outside maximum delivery radius'), true);
   });
 
   // --- SECTION 5: Backend Authority & Checkout Integration ---
 
-  await runTest('Assertion 18: Delivery service getDeliveryDetailsForAddress calculates ₹10/km for address with lat/lng', () => {
+  await runTest('Assertion 18: Delivery service getDeliveryDetailsForAddress calculates Ceiling(KM)*10 for address with lat/lng', () => {
     const addr = { latitude: 24.2500, longitude: 78.7500 };
     const details = deliveryService.getDeliveryDetailsForAddress(addr);
     assert.strictEqual(details.isDeliverable, true);
     assert.strictEqual(typeof details.deliveryCharge, 'number');
-    assert.strictEqual(details.deliveryCharge, Math.round(details.distanceKm * 10));
+    assert.strictEqual(details.deliveryCharge, details.distanceKm <= 0 ? 0 : Math.ceil(details.distanceKm) * 10);
   });
 
   await runTest('Assertion 19: Customer cannot submit a manipulated frontend delivery charge', () => {
     const serverCalculatedFee = deliveryDistanceService.calculateDeliveryCharge(3.4);
     const manipulatedFrontendFee = 0; // Attempting free delivery
     assert.notStrictEqual(serverCalculatedFee, manipulatedFrontendFee);
-    assert.strictEqual(serverCalculatedFee, 34);
+    assert.strictEqual(serverCalculatedFee, 40);
   });
 
   await runTest('Assertion 20: Address service persists latitude, longitude, and delivery calculation fields', async () => {
@@ -172,7 +175,7 @@ async function runPhase33DeliveryDistanceTests() {
       latitude: 24.2500,
       longitude: 78.7500,
       deliveryDistanceKm: 3.4,
-      estimatedDeliveryCharge: 34
+      estimatedDeliveryCharge: 40
     };
     let created = null;
     try {
@@ -189,12 +192,10 @@ async function runPhase33DeliveryDistanceTests() {
     const historicalOrder = {
       id: 'ord_hist_1',
       distance_km: 3.4,
-      delivery_charge: 34,
+      delivery_charge: 40,
       createdAt: '2026-08-01T00:00:00Z'
     };
-    // Settings change later
-    const newSettingsRate = 15.0;
-    assert.strictEqual(historicalOrder.delivery_charge, 34);
+    assert.strictEqual(historicalOrder.delivery_charge, 40);
   });
 
   // --- SECTION 6: Security & API Key Protection ---
@@ -225,9 +226,9 @@ async function runPhase33DeliveryDistanceTests() {
     assert.strictEqual(res.manualSelectionAllowed, true);
   });
 
-  await runTest('Assertion 25: Zero old 1 km free-radius calculation logic remains active', () => {
-    const detailsAt1Km = deliveryService.calculateDeliveryFee(1.0);
-    assert.strictEqual(detailsAt1Km.deliveryCharge, 10); // 1 km is ₹10, NOT ₹0!
+  await runTest('Assertion 25: Zero distance returns ₹0 fee', () => {
+    const feeAt0 = deliveryDistanceService.calculateDeliveryCharge(0);
+    assert.strictEqual(feeAt0, 0);
   });
 
   await runTest('Assertion 26: Phase 33 Delivery Distance & Charges suite completes with 100% pass rate', () => {

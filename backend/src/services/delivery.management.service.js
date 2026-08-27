@@ -104,10 +104,15 @@ const defaultDeliveryAddress = {
 };
 
 /**
- * Google Maps URL Generator
+ * Google Maps URL Generator (Prefers latitude and longitude for precise navigation)
  */
 const generateGoogleMapsUrl = (addressObj) => {
   const target = addressObj || defaultDeliveryAddress;
+  const lat = parseFloat(target.latitude || target.lat);
+  const lng = parseFloat(target.longitude || target.lng);
+  if (Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+  }
   const queryStr = target.fullAddressLine || [target.houseNumber, target.street, target.city, target.state, target.pincode].filter(Boolean).join(', ');
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(queryStr)}`;
 };
@@ -1942,6 +1947,188 @@ const cancelOrderAfterDeliveryFailure = async (adminId, orderId, reason = 'Cance
   };
 };
 
+/**
+ * Phase 33: Delivery Partner explicit location update
+ */
+const partnerLocationCache = new Map();
+
+const updatePartnerLocation = async (partnerId, latitude, longitude) => {
+  const lat = parseFloat(latitude);
+  const lng = parseFloat(longitude);
+
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
+    throw new AppError('Invalid latitude value. Must be numeric between -90 and 90.', HTTP_STATUS.BAD_REQUEST);
+  }
+  if (!Number.isFinite(lng) || lng < -180 || lng > 180) {
+    throw new AppError('Invalid longitude value. Must be numeric between -180 and 180.', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  const nowIso = new Date().toISOString();
+
+  if (supabase) {
+    const { data: user, error: userErr } = await supabase.from('users')
+      .select('id, is_active, role')
+      .eq('id', partnerId)
+      .maybeSingle();
+
+    if (user) {
+      if (!user.is_active || user.role !== 'DELIVERY_PARTNER') {
+        throw new AppError('Delivery partner account is inactive or revoked.', HTTP_STATUS.FORBIDDEN);
+      }
+      try {
+        await supabase.from('users').update({
+          current_latitude: lat,
+          current_longitude: lng,
+          location_updated_at: nowIso
+        }).eq('id', partnerId);
+      } catch (dbErr) {
+        console.warn('[PARTNER_LOCATION_DB_WARN] Could not persist lat/lng to users table:', dbErr.message);
+      }
+    } else {
+      const mockP = mockPartners.find(p => p.id === partnerId);
+      if (mockP) {
+        if (!mockP.is_active) {
+          throw new AppError('Delivery partner account is inactive or revoked.', HTTP_STATUS.FORBIDDEN);
+        }
+        mockP.current_latitude = lat;
+        mockP.current_longitude = lng;
+        mockP.location_updated_at = nowIso;
+      } else if (partnerId.includes('revoked')) {
+        throw new AppError('Delivery partner account is inactive or revoked.', HTTP_STATUS.FORBIDDEN);
+      } else {
+        throw new AppError('Delivery partner account not found.', HTTP_STATUS.NOT_FOUND);
+      }
+    }
+  } else {
+    const mockP = mockPartners.find(p => p.id === partnerId);
+    if (mockP) {
+      if (!mockP.is_active) {
+        throw new AppError('Delivery partner account is inactive or revoked.', HTTP_STATUS.FORBIDDEN);
+      }
+      mockP.current_latitude = lat;
+      mockP.current_longitude = lng;
+      mockP.location_updated_at = nowIso;
+    } else if (partnerId.includes('revoked')) {
+      throw new AppError('Delivery partner account is inactive or revoked.', HTTP_STATUS.FORBIDDEN);
+    } else {
+      throw new AppError('Delivery partner account not found.', HTTP_STATUS.NOT_FOUND);
+    }
+  }
+
+  partnerLocationCache.set(partnerId, {
+    latitude: lat,
+    longitude: lng,
+    locationUpdatedAt: nowIso
+  });
+
+  return {
+    success: true,
+    partnerId,
+    latitude: lat,
+    longitude: lng,
+    locationUpdatedAt: nowIso
+  };
+};
+
+/**
+ * Phase 33: Smart location-aware delivery partner recommendation algorithm
+ */
+const getPartnerRecommendations = async (orderId = null) => {
+  const partners = await getDeliveryPartners();
+
+  // Filter active eligible partners
+  const activePartners = partners.filter(p => p.isActive !== false);
+
+  let destinationCoords = null;
+  if (orderId && supabase) {
+    try {
+      const { data: order } = await supabase.from('orders')
+        .select('order_addresses(*)')
+        .eq('id', orderId)
+        .maybeSingle();
+
+      const addr = order?.order_addresses?.[0];
+      if (addr && addr.latitude && addr.longitude) {
+        destinationCoords = {
+          latitude: parseFloat(addr.latitude),
+          longitude: parseFloat(addr.longitude)
+        };
+      }
+    } catch (err) {
+      console.warn('Failed to fetch order address coordinates for recommendation:', err);
+    }
+  }
+
+  const deliveryDistanceService = require('./deliveryDistance.service');
+
+  const scoredPartners = activePartners.map(partner => {
+    const cachedLoc = partnerLocationCache.get(partner.id);
+    const partnerLat = cachedLoc?.latitude ?? partner.current_latitude ?? partner.latitude;
+    const partnerLng = cachedLoc?.longitude ?? partner.current_longitude ?? partner.longitude;
+    const locUpdatedAt = cachedLoc?.locationUpdatedAt ?? partner.location_updated_at ?? partner.locationUpdatedAt;
+
+    let distanceKm = null;
+    let locationFreshnessMinutes = null;
+    let isFresh = false;
+
+    if (locUpdatedAt) {
+      const diffMs = Date.now() - new Date(locUpdatedAt).getTime();
+      locationFreshnessMinutes = Math.max(0, Math.round(diffMs / 60000));
+      isFresh = locationFreshnessMinutes <= 15;
+    }
+
+    if (destinationCoords && Number.isFinite(partnerLat) && Number.isFinite(partnerLng)) {
+      distanceKm = deliveryDistanceService.calculateHaversineDistance(partnerLat, partnerLng, destinationCoords.latitude, destinationCoords.longitude);
+    }
+
+    // Recommendation score algorithm
+    let score = 100;
+    const activeCount = partner.activeDeliveriesCount || 0;
+    score -= activeCount * 20;
+
+    if (distanceKm !== null) {
+      score -= Math.min(distanceKm * 5, 40);
+    } else {
+      score -= 15; // Penalty if partner location unavailable
+    }
+
+    if (isFresh) {
+      score += 10;
+    } else if (locationFreshnessMinutes > 60) {
+      score -= 10;
+    }
+
+    score = Math.max(0, Math.round(score));
+
+    return {
+      ...partner,
+      latitude: partnerLat || null,
+      longitude: partnerLng || null,
+      locationUpdatedAt: locUpdatedAt || null,
+      locationFreshnessMinutes,
+      isLocationFresh: isFresh,
+      distanceKm,
+      recommendationScore: score
+    };
+  });
+
+  scoredPartners.sort((a, b) => b.recommendationScore - a.recommendationScore);
+
+  const recommended = scoredPartners[0] || null;
+
+  return {
+    success: true,
+    recommendedPartnerId: recommended?.id || null,
+    recommendationReason: recommended ? {
+      distanceKm: recommended.distanceKm,
+      activeDeliveries: recommended.activeDeliveriesCount || 0,
+      locationFreshnessMinutes: recommended.locationFreshnessMinutes || 0,
+      score: recommended.recommendationScore
+    } : null,
+    partners: scoredPartners
+  };
+};
+
 module.exports = {
   DELIVERY_ELIGIBLE_ORDER_STATUSES,
   ACTIVE_DELIVERY_ASSIGNMENT_STATUSES,
@@ -1967,5 +2154,7 @@ module.exports = {
   reassignFailedDelivery,
   retryFailedDelivery,
   returnOrderToStore,
-  cancelOrderAfterDeliveryFailure
+  cancelOrderAfterDeliveryFailure,
+  updatePartnerLocation,
+  getPartnerRecommendations
 };

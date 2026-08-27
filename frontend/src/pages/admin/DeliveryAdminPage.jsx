@@ -5,7 +5,8 @@ import { Button } from '../../components/ui/Button';
 import { TableRowSkeleton } from '../../components/ui/Skeleton';
 import { formatCurrency } from '../../utils/formatting';
 import { showSuccess, showError } from '../../utils/toast';
-import { Truck, UserPlus, MapPin, CheckCircle, Clock, AlertTriangle, ShieldCheck, Phone, Mail, Package, FileText, User, ChevronRight, X } from 'lucide-react';
+import { generateGoogleMapsNavigationUrl } from '../../utils/location.utils';
+import { Truck, UserPlus, MapPin, CheckCircle, Clock, AlertTriangle, ShieldCheck, Phone, Mail, Package, FileText, User, ChevronRight, X, ExternalLink } from 'lucide-react';
 
 export const DeliveryAdminPage = () => {
   const [dashboardSummary, setDashboardSummary] = useState({
@@ -378,6 +379,16 @@ export const DeliveryAdminPage = () => {
                             <strong>{order.deliveryAddress?.pincode || order.address?.postal_code || order.address?.postalCode}</strong>
                           </div>
                         </div>
+                      </div>
+                      <div style={{ marginTop: '6px' }}>
+                        <a
+                          href={generateGoogleMapsNavigationUrl(order.address?.latitude || order.deliveryAddress?.latitude, order.address?.longitude || order.deliveryAddress?.longitude, order.deliveryAddress?.fullAddressLine)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', fontWeight: 700, color: '#2563EB', textDecoration: 'none' }}
+                        >
+                          <ExternalLink size={13} /> Open in Google Maps 🗺️
+                        </a>
                       </div>
                     </div>
 

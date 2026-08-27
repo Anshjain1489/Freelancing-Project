@@ -81,6 +81,12 @@ const failReturnPickup = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, HTTP_STATUS.OK, result.message, result);
 });
 
+const updateLocation = asyncHandler(async (req, res) => {
+  const { latitude, longitude } = req.body;
+  const result = await deliveryService.updatePartnerLocation(req.user.id, latitude, longitude);
+  return ApiResponse.success(res, HTTP_STATUS.OK, 'Location updated successfully', result);
+});
+
 module.exports = {
   getPartnerDashboard,
   getPartnerOrders,
@@ -94,5 +100,6 @@ module.exports = {
   getReturnPickups,
   acceptReturnPickup,
   markReturnPickedUp,
-  failReturnPickup
+  failReturnPickup,
+  updateLocation
 };

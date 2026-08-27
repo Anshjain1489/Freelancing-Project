@@ -1,204 +1,380 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import client from '../../api/client';
+import { STORE_LOCATION } from '../../config/store.config';
+import { getCurrentPosition, reverseGeocode, validateCoordinates, calculateFrontendDeliveryCharge, calculateHaversineDistance } from '../../utils/location.utils';
+import { MapPin, Navigation, AlertTriangle, RefreshCw, CheckCircle, Search } from 'lucide-react';
 
-const STORE_LOCATION = {
-  name: 'Chaudhary Kirana Store',
-  lat: 24.2381,
-  lng: 78.7364
-};
-
-export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, initialLng }) {
+export default function GoogleMapAddressPicker({ onSelectAddress, initialLat, initialLng, onFieldsAutoFilled }) {
   const [position, setPosition] = useState({
-    lat: initialLat ? parseFloat(initialLat) : STORE_LOCATION.lat,
-    lng: initialLng ? parseFloat(initialLng) : STORE_LOCATION.lng
+    lat: initialLat ? parseFloat(initialLat) : STORE_LOCATION.latitude,
+    lng: initialLng ? parseFloat(initialLng) : STORE_LOCATION.longitude
   });
-  const [addressText, setAddressText] = useState('');
+
+  const [addressPreview, setAddressPreview] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [distanceInfo, setDistanceInfo] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
   const [geoError, setGeoError] = useState(null);
-  const mapRef = useRef(null);
+  const [mapsApiLoaded, setMapsApiLoaded] = useState(false);
+  const [mapsApiFailed, setMapsApiFailed] = useState(false);
+
+  const mapContainerRef = useRef(null);
+  const googleMapRef = useRef(null);
+  const googleMarkerRef = useRef(null);
   const debounceTimerRef = useRef(null);
 
-  // Recalculate distance and fee from backend API
-  const calculateDistance = useCallback(async (lat, lng) => {
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+
+  // 1. Fetch server delivery distance and fee calculation
+  const fetchDeliveryCalculation = useCallback(async (lat, lng) => {
     setLoading(true);
-    setGeoError(null);
     try {
       const response = await client.post('/delivery/calculate', { latitude: lat, longitude: lng });
       if (response.data?.success) {
         setDistanceInfo(response.data.data);
       }
     } catch (err) {
-      console.warn('Failed to calculate delivery distance:', err);
+      console.warn('Backend distance calculation error, using fallback:', err);
+      // Fallback calculation
+      const dist = calculateHaversineDistance(STORE_LOCATION.latitude, STORE_LOCATION.longitude, lat, lng);
+      const roadDist = Math.round(dist * 1.25 * 100) / 100;
+      setDistanceInfo({
+        distanceKm: roadDist,
+        deliveryCharge: calculateFrontendDeliveryCharge(roadDist),
+        isDeliverable: roadDist <= STORE_LOCATION.maxDeliveryRadiusKm,
+        store: STORE_LOCATION,
+        destination: { latitude: lat, longitude: lng }
+      });
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Debounced wrapper for marker drag / map click
-  const handlePositionChange = useCallback((newLat, newLng) => {
-    setPosition({ lat: newLat, lng: newLng });
+  // 2. Handle position changes (click / drag / current location)
+  const handlePositionChange = useCallback(async (newLat, newLng, skipReverseGeocode = false) => {
+    const validated = validateCoordinates(newLat, newLng);
+    if (!validated.valid) return;
+
+    const lat = validated.latitude;
+    const lng = validated.longitude;
+
+    setPosition({ lat, lng });
+
+    // Update marker on Google Map if loaded
+    if (googleMapRef.current && googleMarkerRef.current) {
+      const latLng = new window.google.maps.LatLng(lat, lng);
+      googleMarkerRef.current.setPosition(latLng);
+      googleMapRef.current.panTo(latLng);
+    }
+
+    // Debounce distance calculation API request
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(() => {
-      calculateDistance(newLat, newLng);
+      fetchDeliveryCalculation(lat, lng);
     }, 300);
-  }, [calculateDistance]);
 
-  // Handle "📍 Use My Current Location" button click
-  const handleUseCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      setGeoError('Geolocation is not supported by your browser.');
+    // Reverse geocode to auto-fill address fields
+    if (!skipReverseGeocode) {
+      setGeocoding(true);
+      try {
+        const geoData = await reverseGeocode(lat, lng);
+        setAddressPreview(geoData.formattedAddress);
+        if (onFieldsAutoFilled) {
+          onFieldsAutoFilled(geoData);
+        }
+      } catch (err) {
+        console.warn('Reverse geocoding error:', err);
+      } finally {
+        setGeocoding(false);
+      }
+    }
+  }, [fetchDeliveryCalculation, onFieldsAutoFilled]);
+
+  // 3. Load Google Maps JS API script dynamically
+  useEffect(() => {
+    if (window.google && window.google.maps) {
+      setMapsApiLoaded(true);
       return;
     }
 
-    setLoading(true);
-    setGeoError(null);
+    if (!apiKey) {
+      setMapsApiFailed(true);
+      return;
+    }
 
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const currentLat = pos.coords.latitude;
-        const currentLng = pos.coords.longitude;
-        handlePositionChange(currentLat, currentLng);
-        setAddressText(`Current GPS Location (${currentLat.toFixed(4)}, ${currentLng.toFixed(4)})`);
-      },
-      (err) => {
-        setLoading(false);
-        if (err.code === err.PERMISSION_DENIED) {
-          setGeoError('Location permission was not granted. Please search for your address or select your location manually on the map.');
-        } else {
-          setGeoError('Location unavailable. Please search for your address or tap on the map.');
-        }
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
-  };
+    const scriptId = 'google-maps-js-sdk';
+    if (document.getElementById(scriptId)) return;
 
-  // Initial calculation on component load
+    const script = document.createElement('script');
+    script.id = scriptId;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+    script.async = true;
+    script.defer = true;
+
+    script.onload = () => {
+      setMapsApiLoaded(true);
+    };
+
+    script.onerror = () => {
+      console.warn('Failed to load Google Maps API SDK');
+      setMapsApiFailed(true);
+    };
+
+    document.head.appendChild(script);
+  }, [apiKey]);
+
+  // 4. Initialize Google Map element when API is ready
   useEffect(() => {
-    calculateDistance(position.lat, position.lng);
-  }, [calculateDistance, position.lat, position.lng]);
+    if (!mapsApiLoaded || !mapContainerRef.current || googleMapRef.current) return;
 
-  const handleSave = () => {
+    try {
+      const initialLatLng = { lat: position.lat, lng: position.lng };
+      const map = new window.google.maps.Map(mapContainerRef.current, {
+        center: initialLatLng,
+        zoom: 15,
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: false,
+        zoomControl: true
+      });
+
+      const marker = new window.google.maps.Marker({
+        position: initialLatLng,
+        map: map,
+        draggable: true,
+        title: 'Delivery Pin (Drag or tap map to move)',
+        animation: window.google.maps.Animation.DROP
+      });
+
+      googleMapRef.current = map;
+      googleMarkerRef.current = marker;
+
+      // Handle map click
+      map.addListener('click', (e) => {
+        const clickedLat = e.latLng.lat();
+        const clickedLng = e.latLng.lng();
+        handlePositionChange(clickedLat, clickedLng);
+      });
+
+      // Handle marker dragend
+      marker.addListener('dragend', (e) => {
+        const draggedLat = e.latLng.lat();
+        const draggedLng = e.latLng.lng();
+        handlePositionChange(draggedLat, draggedLng);
+      });
+
+    } catch (err) {
+      console.warn('Google Map initialization error:', err);
+      setMapsApiFailed(true);
+    }
+  }, [mapsApiLoaded, position.lat, position.lng, handlePositionChange]);
+
+  // Initial calculation on load
+  useEffect(() => {
+    fetchDeliveryCalculation(position.lat, position.lng);
+  }, [fetchDeliveryCalculation, position.lat, position.lng]);
+
+  // Update parent whenever location is selected
+  useEffect(() => {
     if (onSelectAddress && distanceInfo) {
       onSelectAddress({
         latitude: position.lat,
         longitude: position.lng,
-        addressText: addressText || `Location (${position.lat.toFixed(4)}, ${position.lng.toFixed(4)})`,
+        addressText: addressPreview,
         distanceKm: distanceInfo.distanceKm,
         deliveryCharge: distanceInfo.deliveryCharge,
         isDeliverable: distanceInfo.isDeliverable
       });
     }
+  }, [position.lat, position.lng, addressPreview, distanceInfo, onSelectAddress]);
+
+  // 5. Handle "📍 Use My Current Location" button click
+  const handleUseCurrentLocation = async () => {
+    setGeoError(null);
+    setLoading(true);
+    try {
+      const current = await getCurrentPosition();
+      await handlePositionChange(current.latitude, current.longitude);
+    } catch (err) {
+      setGeoError(err.message || 'Unable to retrieve your location.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="google-map-address-picker p-4 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 max-w-2xl mx-auto">
-      <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-        <span>📍</span> Choose Delivery Location
-      </h3>
-
-      {/* 1. Address Search Bar */}
-      <div className="mb-3">
-        <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
-          🔎 Search your area or address
-        </label>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Type area, street, or landmark..."
-            className="w-full px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-          />
-          <button
-            type="button"
-            onClick={() => {
-              if (searchQuery.trim()) {
-                setAddressText(searchQuery);
-                // Simulate address lookup search centered on Mahruni
-                handlePositionChange(24.2381 + (Math.random() - 0.5) * 0.05, 78.7364 + (Math.random() - 0.5) * 0.05);
-              }
-            }}
-            className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700"
-          >
-            Search
-          </button>
-        </div>
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '14px',
+      background: 'var(--color-surface, #FFF)',
+      border: '1px solid var(--color-border, #E2E8F0)',
+      borderRadius: '12px',
+      padding: '16px'
+    }}>
+      {/* Title & Actions */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+        <h4 style={{ fontWeight: 800, fontSize: '0.95rem', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <MapPin size={18} color="var(--color-primary, #06C167)" /> Select Delivery Location on Map
+        </h4>
+        <button
+          type="button"
+          onClick={handleUseCurrentLocation}
+          disabled={loading}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '8px 14px',
+            background: 'var(--color-mint-light, #E8F7F0)',
+            color: 'var(--color-primary-dark, #048848)',
+            border: '1px solid var(--color-primary, #06C167)',
+            borderRadius: '8px',
+            fontWeight: 700,
+            fontSize: '0.82rem',
+            cursor: 'pointer'
+          }}
+        >
+          <Navigation size={14} /> {loading ? 'Detecting...' : 'Use My Current Location'}
+        </button>
       </div>
 
-      {/* 2. Current Location Button */}
-      <button
-        type="button"
-        onClick={handleUseCurrentLocation}
-        className="w-full mb-3 py-2 px-4 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg border border-blue-200 dark:border-blue-800 font-medium text-sm flex items-center justify-center gap-2 hover:bg-blue-100 dark:hover:bg-blue-900/50"
-      >
-        <span>📍</span> Use My Current Location
-      </button>
-
-      {/* Error Banner */}
+      {/* Geolocation Error Alert */}
       {geoError && (
-        <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded-lg text-xs border border-amber-200 dark:border-amber-800">
-          {geoError}
+        <div style={{
+          padding: '10px 12px',
+          background: '#FFFBEB',
+          border: '1px solid #FCD34D',
+          borderRadius: '8px',
+          color: '#92400E',
+          fontSize: '0.8rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          <AlertTriangle size={16} />
+          <span>{geoError}</span>
         </div>
       )}
 
-      {/* 3. Interactive Map Canvas Box */}
-      <div className="relative w-full h-64 bg-gray-100 dark:bg-gray-900 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-700 mb-4 flex flex-col items-center justify-center">
-        {/* Simple map pin visualizer */}
-        <div className="absolute inset-0 bg-emerald-950/10 dark:bg-emerald-950/40 flex items-center justify-center cursor-pointer"
-             onClick={(e) => {
-               const rect = e.currentTarget.getBoundingClientRect();
-               const offsetX = (e.clientX - rect.left) / rect.width - 0.5;
-               const offsetY = (e.clientY - rect.top) / rect.height - 0.5;
-               handlePositionChange(position.lat + offsetY * 0.02, position.lng + offsetX * 0.02);
-             }}>
-          <div className="text-center">
-            <div className="text-4xl transform -translate-y-2 transition-transform duration-200">📍</div>
-            <div className="px-3 py-1 bg-white/90 dark:bg-gray-800/90 rounded-full text-xs font-semibold text-gray-800 dark:text-white shadow-md">
-              Tap map to adjust pin position
+      {/* Map Display Box */}
+      <div style={{
+        position: 'relative',
+        width: '100%',
+        height: '240px',
+        borderRadius: '10px',
+        overflow: 'hidden',
+        border: '1px solid var(--color-border, #CBD5E1)',
+        background: '#F1F5F9'
+      }}>
+        {mapsApiLoaded && !mapsApiFailed ? (
+          <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
+        ) : (
+          /* Interactive Fallback Canvas Map when Google Maps JS API is unavailable */
+          <div
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const offsetX = (e.clientX - rect.left) / rect.width - 0.5;
+              const offsetY = (e.clientY - rect.top) / rect.height - 0.5;
+              handlePositionChange(position.lat - offsetY * 0.02, position.lng + offsetX * 0.02);
+            }}
+            style={{
+              width: '100%',
+              height: '100%',
+              background: 'linear-gradient(135deg, #E2E8F0 25%, #F8FAFC 25%, #F8FAFC 50%, #E2E8F0 50%, #E2E8F0 75%, #F8FAFC 75%)',
+              backgroundSize: '40px 40px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              userSelect: 'none'
+            }}
+          >
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              background: 'rgba(255, 255, 255, 0.92)',
+              padding: '12px 18px',
+              borderRadius: '12px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+              border: '1px solid #CBD5E1'
+            }}>
+              <div style={{ fontSize: '2.5rem', lineHeight: 1 }}>📍</div>
+              <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#1E293B', marginTop: '4px' }}>
+                Tap map to adjust pin position
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
+                Click anywhere on canvas to set delivery coordinates
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Selected Coordinates Overlay */}
-        <div className="absolute bottom-2 left-2 bg-black/70 text-white text-[10px] px-2 py-1 rounded">
-          Lat: {position.lat.toFixed(6)}, Lng: {position.lng.toFixed(6)}
+        {/* Selected Coordinates Overlay Badge */}
+        <div style={{
+          position: 'absolute',
+          bottom: '8px',
+          left: '8px',
+          background: 'rgba(15, 23, 42, 0.85)',
+          color: '#FFF',
+          fontSize: '0.72rem',
+          padding: '4px 8px',
+          borderRadius: '6px',
+          fontWeight: 600,
+          backdropFilter: 'blur(4px)'
+        }}>
+          Latitude: {position.lat.toFixed(6)} • Longitude: {position.lng.toFixed(6)}
         </div>
       </div>
 
-      {/* 4. Distance & Delivery Fee Summary Card */}
-      {distanceInfo && (
-        <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600 mb-4 text-sm">
-          <div className="flex justify-between items-center mb-1">
-            <span className="text-gray-600 dark:text-gray-300">Distance from Chaudhary Kirana Store:</span>
-            <span className="font-bold text-gray-900 dark:text-white flex items-center gap-1">
-              🚚 {distanceInfo.distanceKm} km
-            </span>
+      {/* Address & Distance Live Status Card */}
+      <div style={{
+        background: '#F8FAFC',
+        border: '1px solid #E2E8F0',
+        borderRadius: '8px',
+        padding: '12px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '6px',
+        fontSize: '0.85rem'
+      }}>
+        {geocoding ? (
+          <div style={{ color: '#64748B', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
+            <RefreshCw className="animate-spin" size={14} /> Fetching address preview...
           </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-600 dark:text-gray-300">Delivery Charge:</span>
-            <span className="font-bold text-emerald-600 dark:text-emerald-400 text-base">
-              ₹{distanceInfo.deliveryCharge}
-            </span>
+        ) : addressPreview ? (
+          <div style={{ fontWeight: 600, color: '#334155' }}>
+            📍 Selected Location: <span style={{ fontWeight: 400 }}>{addressPreview}</span>
           </div>
-          {!distanceInfo.isDeliverable && (
-            <div className="mt-2 text-xs font-semibold text-rose-600 dark:text-rose-400">
-              ⚠️ {distanceInfo.reason || 'Outside delivery area.'}
-            </div>
-          )}
-        </div>
-      )}
+        ) : null}
 
-      {/* 5. Save Button */}
-      <button
-        type="button"
-        disabled={loading || (distanceInfo && !distanceInfo.isDeliverable)}
-        onClick={handleSave}
-        className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold text-sm rounded-lg transition-colors"
-      >
-        {loading ? 'Calculating Distance...' : 'Confirm & Save Delivery Location'}
-      </button>
+        {distanceInfo && (
+          <div style={{
+            display: 'flex',
+            justify: 'space-between',
+            alignItems: 'center',
+            borderTop: '1px solid #E2E8F0',
+            paddingTop: '6px',
+            marginTop: '4px'
+          }}>
+            <div>
+              🚚 Distance: <strong>{distanceInfo.distanceKm} km</strong> from store
+            </div>
+            <div style={{ fontWeight: 800, color: 'var(--color-primary-dark, #048848)', fontSize: '0.95rem' }}>
+              Delivery Fee: {distanceInfo.deliveryCharge === 0 ? '₹0 (FREE)' : `₹${distanceInfo.deliveryCharge}`}
+            </div>
+          </div>
+        )}
+
+        {distanceInfo && !distanceInfo.isDeliverable && (
+          <div style={{ color: '#DC2626', fontWeight: 700, fontSize: '0.8rem', marginTop: '4px' }}>
+            ⚠️ This location is outside our maximum delivery radius of {distanceInfo.maximumDeliveryRadiusKm || 50} km.
+          </div>
+        )}
+      </div>
     </div>
   );
 }

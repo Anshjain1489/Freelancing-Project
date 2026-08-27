@@ -50,11 +50,26 @@ const calculateHaversineDistance = (lat1, lon1, lat2, lon2) => {
  * 5 km = ₹50
  * 10 km = ₹100
  */
+/**
+ * Central Delivery Charge Formula (Phase 33 Specification)
+ * IF distance <= 0 THEN delivery_charge = 0
+ * ELSE delivery_charge = CEILING(distance) * 10
+ *
+ * Examples:
+ * 0 km -> ₹0
+ * 0.1 km -> ₹10
+ * 0.9 km -> ₹10
+ * 1.0 km -> ₹10
+ * 1.2 km -> ₹20
+ * 2.0 km -> ₹20
+ * 2.1 km -> ₹30
+ */
 const calculateDeliveryCharge = (distanceKm) => {
   if (!Number.isFinite(distanceKm) || distanceKm < 0) {
     throw new AppError('Invalid delivery distance', HTTP_STATUS.BAD_REQUEST, ERROR_CODES.BAD_REQUEST);
   }
-  return Math.round(distanceKm * 10.0);
+  if (distanceKm === 0) return 0;
+  return Math.ceil(distanceKm) * 10;
 };
 
 /**
@@ -155,11 +170,18 @@ const calculateRoadDistanceAndFee = async (destLat, destLng) => {
       latitude,
       longitude
     },
+    customerLocation: {
+      latitude,
+      longitude
+    },
     distanceMeters,
     distanceKm,
     chargePerKm: storeSettings.chargePerKm,
     deliveryCharge,
+    estimatedDeliveryCharge: deliveryCharge,
     isDeliverable,
+    withinDeliveryArea: isDeliverable,
+    maximumDeliveryRadiusKm: storeSettings.maxDeliveryRadiusKm,
     reason: isDeliverable ? null : `Address is outside maximum delivery radius of ${storeSettings.maxDeliveryRadiusKm} KM`,
     calculationMethod
   };
