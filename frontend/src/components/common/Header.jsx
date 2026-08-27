@@ -10,6 +10,7 @@ export const Header = () => {
   const { user, isAuthenticated, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const searchTriggerRef = useRef(null);
 
   return (
     <header style={{
@@ -87,6 +88,7 @@ export const Header = () => {
           position: 'relative'
         }}>
           <button
+            ref={searchTriggerRef}
             type="button"
             onClick={() => setIsSearchModalOpen(true)}
             aria-label="Open search groceries"
@@ -181,6 +183,7 @@ export const Header = () => {
       <MobileSearchModal
         isOpen={isSearchModalOpen}
         onClose={() => setIsSearchModalOpen(false)}
+        triggerRef={searchTriggerRef}
       />
     </header>
   );
