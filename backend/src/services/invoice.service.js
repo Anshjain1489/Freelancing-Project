@@ -332,7 +332,7 @@ const createPosSaleAndInvoice = async (posData, cashierId, req = null) => {
 
   // 1. Check stock availability for all items
   for (const item of posData.items) {
-    const qty = parseFloat(item.quantity || 1);
+    const qty = item.quantity === undefined || item.quantity === null ? 1 : parseFloat(item.quantity);
     if (isNaN(qty) || qty <= 0) {
       throw new AppError(`Item quantity must be greater than zero`, HTTP_STATUS.BAD_REQUEST);
     }

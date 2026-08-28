@@ -117,8 +117,10 @@ export const PosBillingPage = () => {
   const roundOff = Math.round((grandTotal - rawGrand) * 100) / 100;
 
   const handleCompleteSale = async () => {
-    if (cartItems.length === 0) {
-      setErrorMsg('Please add at least one product to the POS bill');
+    if (submitting || cartItems.length === 0) {
+      if (cartItems.length === 0) {
+        setErrorMsg('Please add at least one product to the POS bill');
+      }
       return;
     }
     setErrorMsg(null);
