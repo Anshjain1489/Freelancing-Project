@@ -1,7 +1,26 @@
 const dotenv = require('dotenv');
 const path = require('path');
+const fs = require('fs');
+const dns = require('dns');
 
-dotenv.config({ path: path.join(__dirname, '../../.env') });
+// Enforce IPv4-first DNS resolution order to resolve IPv6 ENETUNREACH in dual-stack networks
+if (dns && typeof dns.setDefaultResultOrder === 'function') {
+  dns.setDefaultResultOrder('ipv4first');
+}
+
+// Deterministic multi-location environment loader
+const possibleEnvPaths = [
+  path.join(__dirname, '../../.env'),
+  path.join(__dirname, '../.env'),
+  path.join(process.cwd(), '.env'),
+  path.join(process.cwd(), 'backend/.env')
+];
+
+for (const envPath of possibleEnvPaths) {
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath, override: false });
+  }
+}
 
 const config = {
   env: process.env.NODE_ENV || 'development',
@@ -13,8 +32,8 @@ const config = {
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || ''
   },
   jwt: {
-    accessSecret: (process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? '' : 'dev_jwt_access_secret_chaudhary_kirana_2026')).trim(),
-    refreshSecret: (process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? '' : 'dev_jwt_refresh_secret_chaudhary_kirana_2026')).trim(),
+    accessSecret: (process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? '' : 'ChaudharyKiranaStore_SuperSecret_Access_JWT_Key_2026!')).trim(),
+    refreshSecret: (process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? '' : 'ChaudharyKiranaStore_SuperSecret_Refresh_JWT_Key_2026!')).trim(),
     issuer: process.env.JWT_ISSUER || 'chaudhary-kirana-api',
     audience: process.env.JWT_AUDIENCE || 'chaudhary-kirana-clients'
   },
@@ -80,17 +99,24 @@ function validateEnvironment(overrideEnv = null) {
   checkRequired('JWT_ACCESS_SECRET', config.jwt.accessSecret);
   checkRequired('JWT_REFRESH_SECRET', config.jwt.refreshSecret);
 
-  const placeholders = ['your_', 'change_me', 'example', '123456', 'placeholder', 'secret_key_here'];
+  if (config.supabase.url && !config.supabase.url.startsWith('https://')) {
+    errors.push(`SUPABASE_URL '${config.supabase.url}' must be a valid HTTPS URL`);
+  }
+
+  const placeholders = ['your_', 'change_me', 'example', '123456', 'placeholder', 'secret_key_here', 'replace-me', 'changeme', 'dev_'];
+  checkNotPlaceholder('SUPABASE_ANON_KEY', config.supabase.anonKey, ['your-', 'placeholder']);
   checkNotPlaceholder('JWT_ACCESS_SECRET', config.jwt.accessSecret, placeholders);
   checkNotPlaceholder('JWT_REFRESH_SECRET', config.jwt.refreshSecret, placeholders);
 
+  const minSecretLength = targetEnv === 'production' ? 32 : 16;
+  if (config.jwt.accessSecret && config.jwt.accessSecret.length < minSecretLength) {
+    errors.push(`JWT_ACCESS_SECRET must be at least ${minSecretLength} characters long (current length: ${config.jwt.accessSecret.length})`);
+  }
+  if (config.jwt.refreshSecret && config.jwt.refreshSecret.length < minSecretLength) {
+    errors.push(`JWT_REFRESH_SECRET must be at least ${minSecretLength} characters long (current length: ${config.jwt.refreshSecret.length})`);
+  }
+
   if (targetEnv === 'production') {
-    if (config.jwt.accessSecret.length < 16) {
-      errors.push('JWT_ACCESS_SECRET must be at least 16 characters in production mode');
-    }
-    if (config.jwt.refreshSecret.length < 16) {
-      errors.push('JWT_REFRESH_SECRET must be at least 16 characters in production mode');
-    }
     if (config.frontendUrl && !config.frontendUrl.startsWith('https://') && !config.frontendUrl.startsWith('http://localhost')) {
       errors.push(`Production FRONTEND_URL '${config.frontendUrl}' must use HTTPS protocol`);
     }
