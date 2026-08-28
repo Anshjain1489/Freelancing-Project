@@ -1,0 +1,22 @@
+{
+  "name": "Chaudhary Kirana Store",
+  "short_name": "Chaudhary Kirana",
+  "description": "Order fresh groceries, staples, dairy, personal care, and household items online from Chaudhary Kirana Store.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1F2937",
+  "theme_color": "#06C167",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

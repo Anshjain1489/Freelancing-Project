@@ -18,13 +18,23 @@ import {
   LogOut,
   Store,
   Printer,
-  FileText
+  FileText,
+  DollarSign,
+  Wallet,
+  Receipt,
+  Building2
 } from 'lucide-react';
 
 const ADMIN_NAV_ITEMS = [
   { label: 'Dashboard', to: '/admin/dashboard', icon: LayoutDashboard },
+  { label: 'Finance 💰', to: '/admin/finance', icon: DollarSign },
+  { label: 'Profit & Loss 📈', to: '/admin/profit-loss', icon: TrendingUp },
+  { label: 'Expenses 💸', to: '/admin/expenses', icon: Receipt },
+  { label: 'Cash Register 💵', to: '/admin/cash-management', icon: Wallet },
+  { label: 'Supplier Payables 🏭', to: '/admin/payables', icon: Building2 },
   { label: 'POS Billing 🧾', to: '/admin/pos', icon: Printer },
   { label: 'Invoices', to: '/admin/invoices', icon: FileText },
+  { label: 'Procurement 🛒', to: '/admin/procurement', icon: Package },
   { label: 'Products', to: '/admin/products', icon: Package },
   { label: 'Categories', to: '/admin/categories', icon: FolderTree },
   { label: 'Orders', to: '/admin/orders', icon: ShoppingBag },

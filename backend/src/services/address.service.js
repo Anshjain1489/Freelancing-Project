@@ -2,10 +2,12 @@ const supabase = require('../config/supabase');
 const AppError = require('../utils/AppError');
 const { HTTP_STATUS } = require('../constants/statusCodes');
 
+const isUuid = (val) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(val || ''));
+
 const mockAddresses = {};
 
 const getAddresses = async (userId) => {
-  if (supabase) {
+  if (supabase && isUuid(userId)) {
     const { data, error } = await supabase
       .from('addresses')
       .select('*')
@@ -57,7 +59,7 @@ const createAddress = async (userId, addressData) => {
     await clearDefaultAddress(userId);
   }
 
-  if (supabase) {
+  if (supabase && isUuid(userId)) {
     const insertPayload = {
       user_id: userId,
       recipient_name: addressData.recipientName,
@@ -117,7 +119,7 @@ const updateAddress = async (userId, addressId, addressData) => {
   if (addressData.latitude && addressData.longitude) payload.distance_calculated_at = new Date().toISOString();
   if (addressData.isDefault !== undefined) payload.is_default = addressData.isDefault;
 
-  if (supabase) {
+  if (supabase && isUuid(userId)) {
     const { data, error } = await supabase.from('addresses').update(payload).eq('id', addressId).eq('user_id', userId).select().single();
     if (error) throw new AppError('Failed to update address', HTTP_STATUS.BAD_REQUEST);
     return data;
@@ -127,7 +129,7 @@ const updateAddress = async (userId, addressId, addressData) => {
 };
 
 const deleteAddress = async (userId, addressId) => {
-  if (supabase) {
+  if (supabase && isUuid(userId)) {
     const { error } = await supabase.from('addresses').delete().eq('id', addressId).eq('user_id', userId);
     if (error) throw new AppError('Failed to delete address', HTTP_STATUS.BAD_REQUEST);
     return { message: 'Address deleted successfully' };
@@ -140,7 +142,7 @@ const deleteAddress = async (userId, addressId) => {
 };
 
 const clearDefaultAddress = async (userId) => {
-  if (supabase) {
+  if (supabase && isUuid(userId)) {
     await supabase.from('addresses').update({ is_default: false }).eq('user_id', userId);
   } else if (mockAddresses[userId]) {
     mockAddresses[userId].forEach(a => a.isDefault = false);

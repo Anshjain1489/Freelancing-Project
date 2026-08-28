@@ -10,6 +10,7 @@ const logger = require('../utils/logger');
 
 // In-memory fallback notification store
 const mockNotifications = [];
+const isUuid = (val) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(val || ''));
 
 /**
  * Get all user IDs that have the ADMIN role
@@ -50,7 +51,7 @@ const createNotification = async ({ userId, type = 'ORDER', title, message, even
   let notificationId = `notif-${Date.now()}`;
   let notificationRecord = null;
 
-  if (supabase) {
+  if (supabase && isUuid(userId)) {
     // 1. Insert in-app notification record
     const { data: newNotif, error } = await supabase.from('notifications').insert([{
       user_id: userId || null,
@@ -267,7 +268,7 @@ eventBus.on(EVENT_TYPES.LOW_STOCK, async (payload) => {
 const getUserNotifications = async (userId, queryParams = {}) => {
   const { page, limit, offset } = getPaginationParams(queryParams.page, queryParams.limit);
 
-  if (supabase) {
+  if (supabase && isUuid(userId)) {
     const { data, count, error } = await supabase.from('notifications')
       .select('*', { count: 'exact' })
       .eq('user_id', userId)
@@ -297,7 +298,7 @@ const getUserNotifications = async (userId, queryParams = {}) => {
 };
 
 const getUnreadCount = async (userId) => {
-  if (supabase) {
+  if (supabase && isUuid(userId)) {
     const { count, error } = await supabase.from('notifications')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId)
@@ -311,7 +312,7 @@ const getUnreadCount = async (userId) => {
 };
 
 const markAsRead = async (userId, notificationId) => {
-  if (supabase) {
+  if (supabase && isUuid(userId)) {
     await supabase.from('notifications')
       .update({ is_read: true, read_at: new Date().toISOString() })
       .eq('id', notificationId)
@@ -328,7 +329,7 @@ const markAsRead = async (userId, notificationId) => {
 };
 
 const markAllAsRead = async (userId) => {
-  if (supabase) {
+  if (supabase && isUuid(userId)) {
     await supabase.from('notifications')
       .update({ is_read: true, read_at: new Date().toISOString() })
       .eq('user_id', userId)

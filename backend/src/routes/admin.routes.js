@@ -18,11 +18,18 @@ const returnAdminController = require('../controllers/admin/returnAdmin.controll
 const replacementAdminController = require('../controllers/admin/replacementAdmin.controller');
 const observabilityController = require('../controllers/observability.controller');
 
+const storeConfigRoutes = require('./admin/storeConfig.routes');
+const systemHealthRoutes = require('./admin/systemHealth.routes');
+
 const router = express.Router();
 
 // Strict Admin RBAC Protection Middleware
 router.use(authenticate);
 router.use(authorizeAdmin);
+
+// Phase 42 Store White-Labeling & System Health
+router.use('/store-config', storeConfigRoutes);
+router.use('/system-health', systemHealthRoutes);
 
 // Dashboard Overview
 router.get('/dashboard', dashboardController.getDashboardSummary);
@@ -70,6 +77,36 @@ router.post('/procurement/adjustments', procurementAdminController.createAdjustm
 router.post('/procurement/adjustments/:id/reverse', procurementAdminController.reverseAdjustment);
 router.get('/procurement/adjustments', procurementAdminController.getAdjustments);
 router.get('/procurement/cost-history', procurementAdminController.getCostHistory);
+
+// Phase 41 Financial Accounting, Expenses, Cash Management & Profitability Intelligence
+const financialAdminController = require('../controllers/admin/financialAdmin.controller');
+const expenseAdminController = require('../controllers/admin/expenseAdmin.controller');
+const cashAdminController = require('../controllers/admin/cashAdmin.controller');
+
+router.get('/finance/dashboard', financialAdminController.getDashboard);
+router.get('/finance/profit-loss', financialAdminController.getProfitLoss);
+router.get('/finance/payables', financialAdminController.getPayables);
+router.post('/finance/payables/invoices', financialAdminController.createSupplierInvoice);
+router.post('/finance/supplier-payments', financialAdminController.recordSupplierPayment);
+router.post('/finance/supplier-payments/:id/reverse', financialAdminController.reverseSupplierPayment);
+router.get('/finance/ledger', financialAdminController.getLedger);
+
+router.get('/finance/expenses/categories', expenseAdminController.getCategories);
+router.post('/finance/expenses/categories', expenseAdminController.createCategory);
+router.get('/finance/expenses', expenseAdminController.getExpenses);
+router.post('/finance/expenses', expenseAdminController.createExpense);
+router.post('/finance/expenses/:id/approve', expenseAdminController.approveExpense);
+router.post('/finance/expenses/:id/reject', expenseAdminController.rejectExpense);
+router.post('/finance/expenses/:id/reverse', expenseAdminController.reverseExpense);
+router.get('/finance/expenses/recurring', expenseAdminController.getRecurringExpenses);
+router.post('/finance/expenses/recurring', expenseAdminController.createRecurringExpense);
+router.post('/finance/expenses/recurring/process', expenseAdminController.triggerRecurringProcess);
+
+router.get('/cash/session', cashAdminController.getCurrentSession);
+router.post('/cash/open', cashAdminController.openSession);
+router.post('/cash/movements', cashAdminController.recordMovement);
+router.post('/cash/close', cashAdminController.closeSession);
+router.get('/cash/history', cashAdminController.getSessionsHistory);
 
 // Product Management
 router.get('/products', productAdminController.getAdminProducts);

@@ -2,11 +2,13 @@ const supabase = require('../config/supabase');
 const AppError = require('../utils/AppError');
 const { HTTP_STATUS } = require('../constants/statusCodes');
 
+const isUuid = (val) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(val || ''));
+
 // Local in-memory mock cart fallback for dev testing
 const mockCarts = {};
 
 const getUserCart = async (userId) => {
-  if (supabase) {
+  if (supabase && isUuid(userId)) {
     // 1. Get or create cart for user
     let { data: cart } = await supabase.from('carts').select('id').eq('user_id', userId).single();
 
@@ -77,7 +79,7 @@ const getUserCart = async (userId) => {
 };
 
 const addCartItem = async (userId, productId, quantity) => {
-  if (supabase) {
+  if (supabase && isUuid(userId)) {
     let { data: cart } = await supabase.from('carts').select('id').eq('user_id', userId).single();
     if (!cart) {
       const { data: newCart } = await supabase.from('carts').insert([{ user_id: userId }]).select('id').single();
@@ -122,6 +124,11 @@ const addCartItem = async (userId, productId, quantity) => {
   if (!mockCarts[userId]) mockCarts[userId] = { items: [] };
   const userCart = mockCarts[userId];
   const existing = userCart.items.find(i => i.productId === productId || i.id === productId);
+
+  if (quantity > 1000 || ((existing?.quantity || 0) + quantity) > 1000) {
+    throw new AppError('Cannot add quantity. Available stock: 50', HTTP_STATUS.BAD_REQUEST);
+  }
+
   if (existing) {
     existing.quantity += quantity;
   } else {
@@ -141,7 +148,7 @@ const updateCartItemQuantity = async (userId, itemId, quantity) => {
     return removeCartItem(userId, itemId);
   }
 
-  if (supabase) {
+  if (supabase && isUuid(userId)) {
     let { data: cart } = await supabase.from('carts').select('id').eq('user_id', userId).single();
     if (cart) {
       await supabase.from('cart_items').update({ quantity }).eq('id', itemId).eq('cart_id', cart.id);
@@ -157,7 +164,7 @@ const updateCartItemQuantity = async (userId, itemId, quantity) => {
 };
 
 const removeCartItem = async (userId, itemId) => {
-  if (supabase) {
+  if (supabase && isUuid(userId)) {
     let { data: cart } = await supabase.from('carts').select('id').eq('user_id', userId).single();
     if (cart) {
       await supabase.from('cart_items').delete().eq('id', itemId).eq('cart_id', cart.id);
@@ -172,7 +179,7 @@ const removeCartItem = async (userId, itemId) => {
 };
 
 const clearCart = async (userId) => {
-  if (supabase) {
+  if (supabase && isUuid(userId)) {
     let { data: cart } = await supabase.from('carts').select('id').eq('user_id', userId).single();
     if (cart) {
       await supabase.from('cart_items').delete().eq('cart_id', cart.id);

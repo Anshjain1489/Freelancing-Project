@@ -15,6 +15,7 @@ const orderTrackingService = require('./orderTracking.service');
 
 // Local in-memory mock fallback
 const mockOrders = [];
+const isUuid = (val) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(val || ''));
 
 const parsePaymentInfo = (payments) => {
   const payList = Array.isArray(payments) ? payments : (payments ? [payments] : []);
@@ -77,7 +78,7 @@ const createOrder = async (userId, addressId, couponCode = null, paymentMethod =
   // 7. Create Order Database Record (Phase 21: CONFIRMED + PENDING payment state)
   const orderNumber = `CKS-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
 
-  if (supabase) {
+  if (supabase && isUuid(userId) && (!addressId || isUuid(addressId))) {
     try {
       const { data: newOrder, error: createErr } = await supabase.from('orders').insert([{
         user_id: userId,
@@ -190,6 +191,23 @@ const createOrder = async (userId, addressId, couponCode = null, paymentMethod =
   };
   mockOrders.push(mockOrder);
 
+  try {
+    await orderTrackingService.recordStatusChange({
+      orderId: mockOrder.id,
+      previousStatus: null,
+      newStatus: ORDER_STATUS.CONFIRMED,
+      changedBy: userId,
+      changedByRole: 'CUSTOMER',
+      reason: 'Order placed by customer',
+      metadata: { eventType: 'ORDER_CREATED', paymentMethod: cleanPaymentMethod, orderNumber: mockOrder.orderNumber }
+    });
+  } catch (e) {}
+
+  try {
+    const invoiceService = require('./invoice.service');
+    await invoiceService.generateInvoiceForOrder(mockOrder.id);
+  } catch (invErr) {}
+
   return {
     orderId: mockOrder.id,
     orderNumber,
@@ -209,7 +227,7 @@ const createOrder = async (userId, addressId, couponCode = null, paymentMethod =
 const getUserOrders = async (userId, queryParams = {}) => {
   const { page, limit, offset } = getPaginationParams(queryParams.page, queryParams.limit);
 
-  if (supabase) {
+  if (supabase && isUuid(userId)) {
     const { data, count, error } = await supabase.from('orders')
       .select('*, order_items (*), payments ( status, razorpay_order_id, razorpay_payment_id, provider_payment_id )', { count: 'exact' })
       .eq('user_id', userId)
@@ -246,7 +264,7 @@ const getUserOrders = async (userId, queryParams = {}) => {
 };
 
 const getOrderById = async (userId, orderId) => {
-  if (supabase) {
+  if (supabase && isUuid(userId) && isUuid(orderId)) {
     const { data: order, error } = await supabase.from('orders')
       .select('*, order_items (*), order_addresses (*), payments (*)')
       .or(`id.eq.${orderId},order_number.eq.${orderId}`)
@@ -283,5 +301,6 @@ const getOrderById = async (userId, orderId) => {
 module.exports = {
   createOrder,
   getUserOrders,
-  getOrderById
+  getOrderById,
+  mockOrders
 };

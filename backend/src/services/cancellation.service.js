@@ -12,6 +12,7 @@ const { ORDER_STATUS } = require('./orderStatus.service');
 
 // Memory fallback store for unit tests / offline mode
 const mockCancellations = new Map();
+const isUuid = (val) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(val || ''));
 
 /**
  * 1. CUSTOMER REQUEST ORDER CANCELLATION
@@ -85,7 +86,7 @@ const requestCustomerCancellation = async (userId, orderId, reason) => {
     throw new AppError('Order is out for delivery. Direct customer cancellation is not allowed; store administrator intervention is required.', HTTP_STATUS.BAD_REQUEST);
   }
 
-  if (supabase) {
+  if (supabase && isUuid(order.id)) {
     const { data: existing } = await supabase.from('cancellation_requests')
       .select('*')
       .eq('order_id', order.id)
@@ -106,7 +107,7 @@ const requestCustomerCancellation = async (userId, orderId, reason) => {
   let cancellationRecord = null;
   const initialStatus = isAutoApprovable ? 'APPROVED' : 'REQUESTED';
 
-  if (supabase) {
+  if (supabase && isUuid(order.id)) {
     try {
       const { data: inserted, error: insertErr } = await supabase.from('cancellation_requests').insert([{
         order_id: order.id,

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Outlet, NavLink, Link } from 'react-router-dom';
-import { LayoutDashboard, Package, Grid, Layers, ShoppingBag, Truck, Users, CreditCard, BarChart2, Tag, Image, Settings, Store, Volume2, VolumeX, BellRing } from 'lucide-react';
+import { LayoutDashboard, Package, Grid, Layers, ShoppingBag, Truck, Users, CreditCard, BarChart2, Tag, Image, Settings, Store, Volume2, VolumeX, BellRing, Rocket, Activity, ShieldCheck, Sliders } from 'lucide-react';
 import { NotificationBell } from '../components/notifications/NotificationBell';
 import { useNotifications } from '../hooks/useNotifications';
 
@@ -20,6 +20,13 @@ export const AdminLayout = () => {
     { to: '/admin/promotions', label: 'Promotions', icon: Tag },
     { to: '/admin/banners', label: 'Banners', icon: Image },
     { to: '/admin/settings', label: 'Store Settings', icon: Settings }
+  ];
+
+  const systemMenuItems = [
+    { to: '/admin/store-configuration', label: 'White-Label Config', icon: Sliders },
+    { to: '/admin/onboarding', label: 'Onboarding Wizard', icon: Rocket },
+    { to: '/admin/system-health', label: 'System Health', icon: Activity },
+    { to: '/admin/deployment-status', label: 'Deployment Status', icon: ShieldCheck }
   ];
 
   return (
@@ -56,7 +63,6 @@ export const AdminLayout = () => {
 
         {/* Right Actions Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          {/* Autoplay Unlock Prompt if browser blocked audio */}
           {autoplayBlocked && (
             <button
               onClick={unlockAudio}
@@ -80,7 +86,6 @@ export const AdminLayout = () => {
             </button>
           )}
 
-          {/* Sound Toggle Button */}
           <button
             onClick={toggleSound}
             style={{
@@ -103,7 +108,6 @@ export const AdminLayout = () => {
             <span>Sound {soundEnabled ? 'ON' : 'OFF'}</span>
           </button>
 
-          {/* Admin Notification Bell */}
           <NotificationBell />
 
           <Link to="/" style={{
@@ -131,7 +135,10 @@ export const AdminLayout = () => {
           width: '240px',
           backgroundColor: '#ffffff',
           borderRight: '1px solid #E5E7EB',
-          padding: '16px 8px'
+          padding: '16px 8px',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between'
         }}>
           <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             {adminMenuItems.map((item) => (
@@ -156,6 +163,32 @@ export const AdminLayout = () => {
                 <span>{item.label}</span>
               </NavLink>
             ))}
+
+            <div style={{ margin: '16px 0 8px 12px', fontSize: '0.7rem', fontWeight: 800, color: '#9CA3AF', letterSpacing: '0.05em' }}>
+              SYSTEM & OPERATIONS
+            </div>
+
+            {systemMenuItems.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                style={({ isActive }) => ({
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '10px 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  color: isActive ? '#ffffff' : '#374151',
+                  backgroundColor: isActive ? '#1F2937' : 'transparent',
+                  textDecoration: 'none'
+                })}
+              >
+                <item.icon size={18} />
+                <span>{item.label}</span>
+              </NavLink>
+            ))}
           </nav>
         </aside>
 
@@ -167,3 +200,5 @@ export const AdminLayout = () => {
     </div>
   );
 };
+
+export default AdminLayout;

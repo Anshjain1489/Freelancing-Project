@@ -171,7 +171,7 @@ async function getCustomerOrderTracking(userId, userRole, orderId) {
       order = {
         id: orderId,
         user_id: first.changed_by || 'cust_1',
-        order_number: `CKS-${orderId}`,
+        order_number: first.metadata?.orderNumber || `CKS-${orderId}`,
         status: last.new_status || 'CONFIRMED',
         payment_status: 'PAID',
         payment_method: first.metadata?.paymentMethod || 'COD',

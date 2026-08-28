@@ -3,9 +3,10 @@ const AppError = require('../utils/AppError');
 const { HTTP_STATUS } = require('../constants/statusCodes');
 
 const mockPreferences = {};
+const isUuid = (val) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(val || ''));
 
 const getPreferences = async (userId) => {
-  if (supabase) {
+  if (supabase && isUuid(userId)) {
     let { data: pref } = await supabase.from('notification_preferences')
       .select('*')
       .eq('user_id', userId)
@@ -40,7 +41,7 @@ const getPreferences = async (userId) => {
 };
 
 const updatePreferences = async (userId, updateData) => {
-  if (supabase) {
+  if (supabase && isUuid(userId)) {
     const payload = {};
     if (typeof updateData.inAppOrders === 'boolean') payload.in_app_orders = updateData.inAppOrders;
     if (typeof updateData.whatsappOrders === 'boolean') payload.whatsapp_orders = updateData.whatsappOrders;

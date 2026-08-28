@@ -3,6 +3,8 @@ const AppError = require('../utils/AppError');
 const { HTTP_STATUS, ERROR_CODES } = require('../constants/statusCodes');
 const inventoryService = require('./inventory.service');
 const { logAdminActivity } = require('./adminLog.service');
+const financialLedgerService = require('./admin/financialLedger.service');
+const cashManagementService = require('./admin/cashManagement.service');
 
 // Memory store fallbacks for unit testing / offline execution
 const mockInvoices = new Map();
@@ -185,6 +187,41 @@ const generateInvoiceForOrder = async (orderId) => {
   }
 
   if (!orderData) {
+    try {
+      const orderService = require('./order.service');
+      const foundMock = (orderService.mockOrders || []).find(o => String(o.id) === String(orderId) || String(o.orderNumber) === String(orderId));
+      if (foundMock) {
+        orderData = {
+          id: foundMock.id,
+          order_number: foundMock.orderNumber,
+          user_id: foundMock.userId,
+          subtotal: foundMock.subtotal,
+          discount_amount: foundMock.discountAmount || 0,
+          tax_amount: 0,
+          delivery_charge: foundMock.deliveryCharge || 0,
+          total_amount: foundMock.totalPayableAmount || foundMock.totalAmount,
+          payment_method: foundMock.paymentMethod || 'COD',
+          payment_status: foundMock.paymentStatus || 'PENDING'
+        };
+        if (foundMock.items && foundMock.items.length > 0) {
+          orderItemsData = foundMock.items.map(i => ({
+            product_id: i.productId || i.id,
+            product_name: i.name || 'Grocery Item',
+            sku: i.sku || 'SKU-GEN',
+            unit: i.unit || 'kg',
+            quantity: i.quantity,
+            mrp: i.mrp || i.sellingPrice || 100,
+            selling_price: i.sellingPrice || 100,
+            discount_amount: 0,
+            tax_amount: 0,
+            total_amount: (i.sellingPrice || 100) * i.quantity
+          }));
+        }
+      }
+    } catch (e) {}
+  }
+
+  if (!orderData) {
     // Mock fallback order data
     orderData = {
       id: orderId,
@@ -236,7 +273,7 @@ const generateInvoiceForOrder = async (orderId) => {
     tax_amount: calculated.taxAmount,
     delivery_charge: calculated.deliveryCharge,
     round_off: calculated.roundOff,
-    total_amount: calculated.totalAmount,
+    total_amount: parseFloat(orderData.total_amount || orderData.totalPayableAmount || calculated.totalAmount),
     currency: 'INR',
     payment_method: orderData.payment_method || 'RAZORPAY',
     payment_status: orderData.payment_status || 'PAID',
@@ -410,25 +447,39 @@ const createPosSaleAndInvoice = async (posData, cashierId, req = null) => {
     created_at: new Date().toISOString()
   };
 
-  const itemsRecords = calculated.items.map(item => ({
-    id: `positem-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-    pos_sale_id: posSaleRecord.id,
-    invoice_id: invoiceRecord.id,
-    product_id: item.productId,
-    product_name: item.productName,
-    sku: item.sku,
-    brand: item.brand,
-    unit: item.unit,
-    quantity: item.quantity,
-    mrp: item.mrp,
-    selling_price: item.sellingPrice,
-    discount_amount: item.discountAmount,
-    tax_percentage: item.taxPercentage,
-    tax_amount: item.taxAmount,
-    subtotal: item.subtotal,
-    total_amount: item.totalAmount,
-    created_at: new Date().toISOString()
-  }));
+  let totalSaleCogs = 0;
+  const itemsRecords = calculated.items.map(item => {
+    const storeMap = inventoryService.mockProductsStore || inventoryService.mockInventory;
+    const prod = storeMap ? storeMap.get(item.productId) : null;
+    const wacSnapshot = prod ? parseFloat(prod.average_cost_price || 0) : 0;
+    const lineCogs = Math.round(item.quantity * wacSnapshot * 100) / 100;
+    totalSaleCogs += lineCogs;
+
+    return {
+      id: `positem-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      pos_sale_id: posSaleRecord.id,
+      invoice_id: invoiceRecord.id,
+      product_id: item.productId,
+      product_name: item.productName,
+      sku: item.sku,
+      brand: item.brand,
+      unit: item.unit,
+      quantity: item.quantity,
+      mrp: item.mrp,
+      selling_price: item.sellingPrice,
+      discount_amount: item.discountAmount,
+      tax_percentage: item.taxPercentage,
+      tax_amount: item.taxAmount,
+      subtotal: item.subtotal,
+      total_amount: item.totalAmount,
+      sale_cost_snapshot: wacSnapshot,
+      invoice_item_cost: wacSnapshot,
+      created_at: new Date().toISOString()
+    };
+  });
+
+  posSaleRecord.cogs = totalSaleCogs;
+  posSaleRecord.gross_profit = Math.round((calculated.totalAmount - totalSaleCogs) * 100) / 100;
 
   // 3. Database Insertion & Atomic Stock Deduction
   if (supabase) {
@@ -448,7 +499,9 @@ const createPosSaleAndInvoice = async (posData, cashierId, req = null) => {
         payment_method: paymentMethod,
         payment_status: 'PAID',
         notes: posData.notes || 'Counter POS Sale',
-        status: 'COMPLETED'
+        status: 'COMPLETED',
+        cogs: posSaleRecord.cogs,
+        gross_profit: posSaleRecord.gross_profit
       }]).select().single();
 
       if (dbSale) {
@@ -499,21 +552,22 @@ const createPosSaleAndInvoice = async (posData, cashierId, req = null) => {
 
         if (dbInv) {
           invoiceRecord.id = dbInv.id;
-          const itemsPayload = calculated.items.map(item => ({
+          const itemsPayload = itemsRecords.map(item => ({
             invoice_id: dbInv.id,
-            product_id: isUuid(item.productId) ? item.productId : null,
-            product_name: item.productName,
+            product_id: isUuid(item.product_id) ? item.product_id : null,
+            product_name: item.product_name,
             sku: item.sku,
             brand: item.brand,
             unit: item.unit,
             quantity: item.quantity,
             mrp: item.mrp,
-            selling_price: item.sellingPrice,
-            discount_amount: item.discountAmount,
-            tax_percentage: item.taxPercentage,
-            tax_amount: item.taxAmount,
+            selling_price: item.selling_price,
+            discount_amount: item.discount_amount,
+            tax_percentage: item.tax_percentage,
+            tax_amount: item.tax_amount,
             subtotal: item.subtotal,
-            total_amount: item.totalAmount
+            total_amount: item.total_amount,
+            invoice_item_cost: item.invoice_item_cost
           }));
           await supabase.from('invoice_items').insert(itemsPayload);
           invoiceRecord.invoice_items = itemsPayload;
@@ -523,6 +577,14 @@ const createPosSaleAndInvoice = async (posData, cashierId, req = null) => {
   }
 
   // Memory Store Fallback
+  for (const item of calculated.items) {
+    const storeMap = inventoryService.mockProductsStore || inventoryService.mockInventory;
+    const prod = storeMap ? storeMap.get(item.productId) : null;
+    if (prod) {
+      prod.stock_quantity = Math.max(0, (prod.stock_quantity || 0) - item.quantity);
+    }
+  }
+
   posSaleRecord.items = itemsRecords;
   invoiceRecord.invoice_items = itemsRecords;
 
@@ -530,12 +592,42 @@ const createPosSaleAndInvoice = async (posData, cashierId, req = null) => {
   mockInvoices.set(invoiceRecord.id, invoiceRecord);
   mockInvoiceItems.push(...itemsRecords);
 
+  // Post Financial Ledger Entry (CREDIT: SALE)
+  await financialLedgerService.recordLedgerEntry({
+    entryType: 'SALE',
+    referenceType: 'POS_SALE',
+    referenceId: posSaleRecord.id,
+    amount: calculated.totalAmount,
+    direction: 'CREDIT',
+    paymentMethod,
+    description: `POS Counter Sale (${saleNumber})`,
+    createdBy: cashierId
+  });
+
+  // Record Cash Movement if paid with CASH
+  if (paymentMethod === 'CASH') {
+    try {
+      await cashManagementService.recordCashMovement({
+        movementType: 'CASH_SALE',
+        amount: calculated.totalAmount,
+        description: `POS Sale ${saleNumber}`,
+        referenceType: 'POS_SALE',
+        referenceId: posSaleRecord.id
+      }, cashierId);
+    } catch (e) {}
+  }
+
   await logAdminActivity(cashierId, 'ADMIN_POS_SALE_CREATED', 'pos_sale', posSaleRecord.id, {
     saleNumber,
     invoiceNumber,
     totalAmount: calculated.totalAmount,
     paymentMethod
   }, req);
+
+  return {
+    sale: posSaleRecord,
+    invoice: invoiceRecord
+  };
 
   return {
     sale: posSaleRecord,
@@ -749,6 +841,17 @@ const cancelPosSale = async (saleId, adminId, reason = 'Customer Returned Items'
     }
   }
 
+  await financialLedgerService.recordLedgerEntry({
+    entryType: 'REFUND',
+    referenceType: 'POS_SALE_CANCELLATION',
+    referenceId: saleId,
+    amount: sale.total_amount || 0,
+    direction: 'DEBIT',
+    paymentMethod: sale.payment_method || 'CASH',
+    description: `POS Sale Cancellation (${sale.sale_number}): ${reason}`,
+    createdBy: adminId
+  });
+
   await logAdminActivity(adminId, 'ADMIN_POS_SALE_CANCELLED', 'pos_sale', saleId, { reason }, req);
   return { success: true, sale, message: 'POS sale cancelled and inventory restored' };
 };
@@ -762,5 +865,9 @@ module.exports = {
   getInvoiceById,
   getInvoiceByOrderId,
   listInvoices,
-  cancelPosSale
+  cancelPosSale,
+  mockInvoices,
+  mockInvoiceItems,
+  mockPosSales,
+  mockPosSaleItems
 };

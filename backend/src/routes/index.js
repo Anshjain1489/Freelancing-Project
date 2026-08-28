@@ -22,6 +22,7 @@ const replacementRoutes = require('./replacement.routes');
 const adminRoutes = require('./admin.routes');
 const chatbotRoutes = require('./chatbot.routes');
 const invoiceRoutes = require('./invoice.routes');
+const storeConfigurationService = require('../services/storeConfiguration.service');
 const { getSitemapXML } = require('../controllers/sitemap.controller');
 
 const router = express.Router();
@@ -32,11 +33,21 @@ router.get('/sitemap.xml', getSitemapXML);
 // 2. Public Health & Diagnostic Endpoint
 router.use('/health', healthRoutes);
 
-// 3. Public Webhooks (Signature verified internally inside controllers, NO JWT authentication required)
+// 3. Public Store White-Label Branding Endpoint
+router.get('/store-config/public', async (req, res, next) => {
+  try {
+    const config = await storeConfigurationService.getPublicConfiguration(req.query.store_id);
+    res.status(200).json({ success: true, data: config });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 4. Public Webhooks (Signature verified internally inside controllers, NO JWT authentication required)
 router.use('/webhooks', webhookRoutes);
 router.use('/webhooks', whatsappWebhookRoutes);
 
-// 4. Feature Routes
+// 5. Feature Routes
 router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
 router.use('/categories', categoryRoutes);
@@ -57,6 +68,7 @@ router.use('/payments', paymentRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/notification-preferences', notificationRoutes);
 router.use('/admin', adminRoutes);
+
 const replenishmentCustomerController = require('../controllers/replenishmentCustomer.controller');
 const { authenticate } = require('../middleware/auth.middleware');
 

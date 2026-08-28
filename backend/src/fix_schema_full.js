@@ -424,13 +424,211 @@ async function fixSchemaFull() {
     await exec('CREATE INDEX IF NOT EXISTS idx_jobs_status_next_run ON background_jobs (status, next_run_at);', 'idx_jobs_status_next_run');
     await exec('CREATE INDEX IF NOT EXISTS idx_jobs_idempotency_key ON background_jobs (idempotency_key);', 'idx_jobs_idempotency_key');
 
+    // Phase 41: Migration 044 Financial Management Tables & Cost Snapshots
+    await exec(`
+      CREATE TABLE IF NOT EXISTS expense_categories (
+        id VARCHAR(64) PRIMARY KEY,
+        name VARCHAR(100) UNIQUE NOT NULL,
+        description TEXT,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `, 'create expense_categories table');
+
+    await exec(`
+      CREATE TABLE IF NOT EXISTS expenses (
+        id VARCHAR(64) PRIMARY KEY,
+        expense_number VARCHAR(50) UNIQUE NOT NULL,
+        category_id VARCHAR(64) REFERENCES expense_categories(id) ON DELETE RESTRICT,
+        amount NUMERIC(10, 2) NOT NULL CHECK (amount > 0),
+        payment_method VARCHAR(30) NOT NULL DEFAULT 'CASH',
+        expense_date DATE NOT NULL DEFAULT CURRENT_DATE,
+        description TEXT NOT NULL,
+        vendor_name VARCHAR(150),
+        reference_number VARCHAR(100),
+        receipt_url TEXT,
+        status VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED', 'REVERSED')),
+        reverses_expense_id VARCHAR(64) REFERENCES expenses(id),
+        reversed_by VARCHAR(64),
+        reversal_reason TEXT,
+        created_by VARCHAR(64),
+        approved_by VARCHAR(64),
+        approved_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `, 'create expenses table');
+
+    await exec(`
+      CREATE TABLE IF NOT EXISTS recurring_expenses (
+        id VARCHAR(64) PRIMARY KEY,
+        title VARCHAR(150) NOT NULL,
+        category_id VARCHAR(64) REFERENCES expense_categories(id),
+        amount NUMERIC(10, 2) NOT NULL CHECK (amount > 0),
+        payment_method VARCHAR(30) DEFAULT 'CASH',
+        frequency VARCHAR(20) NOT NULL DEFAULT 'MONTHLY' CHECK (frequency IN ('DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY')),
+        next_due_date DATE NOT NULL,
+        vendor_name VARCHAR(150),
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `, 'create recurring_expenses table');
+
+    await exec(`
+      CREATE TABLE IF NOT EXISTS supplier_invoices (
+        id VARCHAR(64) PRIMARY KEY,
+        invoice_number VARCHAR(50) UNIQUE NOT NULL,
+        purchase_order_id VARCHAR(64) REFERENCES purchase_orders(id) ON DELETE SET NULL,
+        supplier_id VARCHAR(64) REFERENCES suppliers(id) ON DELETE RESTRICT,
+        invoice_amount NUMERIC(10, 2) NOT NULL CHECK (invoice_amount >= 0),
+        amount_paid NUMERIC(10, 2) NOT NULL DEFAULT 0.00 CHECK (amount_paid >= 0),
+        outstanding_balance NUMERIC(10, 2) NOT NULL CHECK (outstanding_balance >= 0),
+        due_date DATE NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'UNPAID' CHECK (status IN ('UNPAID', 'PARTIALLY_PAID', 'PAID', 'OVERDUE', 'CANCELLED')),
+        notes TEXT,
+        created_by VARCHAR(64),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `, 'create supplier_invoices table');
+
+    await exec(`
+      CREATE TABLE IF NOT EXISTS supplier_payments (
+        id VARCHAR(64) PRIMARY KEY,
+        payment_number VARCHAR(50) UNIQUE NOT NULL,
+        supplier_invoice_id VARCHAR(64) REFERENCES supplier_invoices(id) ON DELETE RESTRICT,
+        supplier_id VARCHAR(64) REFERENCES suppliers(id) ON DELETE RESTRICT,
+        amount NUMERIC(10, 2) NOT NULL CHECK (amount > 0),
+        payment_method VARCHAR(30) NOT NULL DEFAULT 'BANK_TRANSFER',
+        payment_date DATE NOT NULL DEFAULT CURRENT_DATE,
+        reference_number VARCHAR(100),
+        notes TEXT,
+        status VARCHAR(20) NOT NULL DEFAULT 'COMPLETED' CHECK (status IN ('COMPLETED', 'REVERSED')),
+        reverses_payment_id VARCHAR(64) REFERENCES supplier_payments(id),
+        reversal_reason TEXT,
+        created_by VARCHAR(64),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `, 'create supplier_payments table');
+
+    await exec(`
+      CREATE TABLE IF NOT EXISTS cash_register_sessions (
+        id VARCHAR(64) PRIMARY KEY,
+        session_number VARCHAR(50) UNIQUE NOT NULL,
+        register_id VARCHAR(50) NOT NULL DEFAULT 'MAIN_POS_1',
+        opened_by VARCHAR(64) NOT NULL,
+        closed_by VARCHAR(64),
+        opened_at TIMESTAMPTZ DEFAULT NOW(),
+        closed_at TIMESTAMPTZ,
+        opening_cash NUMERIC(10, 2) NOT NULL CHECK (opening_cash >= 0),
+        cash_sales NUMERIC(10, 2) NOT NULL DEFAULT 0.00 CHECK (cash_sales >= 0),
+        cash_in NUMERIC(10, 2) NOT NULL DEFAULT 0.00 CHECK (cash_in >= 0),
+        cash_expenses NUMERIC(10, 2) NOT NULL DEFAULT 0.00 CHECK (cash_expenses >= 0),
+        cash_out NUMERIC(10, 2) NOT NULL DEFAULT 0.00 CHECK (cash_out >= 0),
+        manual_adjustments NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+        expected_cash NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+        actual_cash NUMERIC(10, 2) DEFAULT NULL,
+        discrepancy NUMERIC(10, 2) DEFAULT 0.00,
+        status VARCHAR(20) NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'CLOSED')),
+        notes TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `, 'create cash_register_sessions table');
+
+    await exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_open_cash_session ON cash_register_sessions(register_id) WHERE status = \'OPEN\';', 'idx_open_cash_session partial index');
+
+    await exec(`
+      CREATE TABLE IF NOT EXISTS cash_movements (
+        id VARCHAR(64) PRIMARY KEY,
+        session_id VARCHAR(64) REFERENCES cash_register_sessions(id) ON DELETE CASCADE,
+        movement_type VARCHAR(30) NOT NULL CHECK (movement_type IN ('CASH_IN', 'CASH_OUT', 'CASH_SALE', 'CASH_EXPENSE', 'MANUAL_ADJUSTMENT')),
+        amount NUMERIC(10, 2) NOT NULL CHECK (amount > 0),
+        description TEXT NOT NULL,
+        reference_type VARCHAR(50),
+        reference_id VARCHAR(64),
+        created_by VARCHAR(64),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `, 'create cash_movements table');
+
+    await exec(`
+      CREATE TABLE IF NOT EXISTS cash_reconciliations (
+        id VARCHAR(64) PRIMARY KEY,
+        session_id VARCHAR(64) REFERENCES cash_register_sessions(id) ON DELETE CASCADE,
+        expected_cash NUMERIC(10, 2) NOT NULL,
+        actual_cash NUMERIC(10, 2) NOT NULL,
+        discrepancy NUMERIC(10, 2) NOT NULL,
+        status VARCHAR(30) NOT NULL DEFAULT 'MATCHED' CHECK (status IN ('MATCHED', 'DISCREPANCY_FLAGGED', 'APPROVED')),
+        notes TEXT,
+        reconciled_by VARCHAR(64) NOT NULL,
+        reconciled_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `, 'create cash_reconciliations table');
+
+    await exec(`
+      CREATE TABLE IF NOT EXISTS financial_ledger_entries (
+        id VARCHAR(64) PRIMARY KEY,
+        entry_number VARCHAR(50) UNIQUE NOT NULL,
+        entry_date TIMESTAMPTZ DEFAULT NOW(),
+        entry_type VARCHAR(40) NOT NULL CHECK (entry_type IN ('SALE', 'REFUND', 'EXPENSE', 'SUPPLIER_PAYMENT', 'INVENTORY_WRITE_OFF', 'CASH_ADJUSTMENT', 'PAYMENT_RECEIVED')),
+        reference_type VARCHAR(50) NOT NULL,
+        reference_id VARCHAR(64) NOT NULL,
+        amount NUMERIC(10, 2) NOT NULL CHECK (amount >= 0),
+        direction VARCHAR(10) NOT NULL CHECK (direction IN ('CREDIT', 'DEBIT')),
+        payment_method VARCHAR(30) DEFAULT 'CASH',
+        description TEXT NOT NULL,
+        reverses_entry_id VARCHAR(64) REFERENCES financial_ledger_entries(id),
+        reversed_by VARCHAR(64),
+        reversal_reason TEXT,
+        created_by VARCHAR(64),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `, 'create financial_ledger_entries table');
+
+    await exec(`
+      CREATE TABLE IF NOT EXISTS financial_period_summaries (
+        id VARCHAR(64) PRIMARY KEY,
+        period_type VARCHAR(20) NOT NULL CHECK (period_type IN ('DAILY', 'WEEKLY', 'MONTHLY', 'CUSTOM')),
+        period_start DATE NOT NULL,
+        period_end DATE NOT NULL,
+        total_revenue NUMERIC(10, 2) DEFAULT 0.00,
+        gross_sales NUMERIC(10, 2) DEFAULT 0.00,
+        discounts NUMERIC(10, 2) DEFAULT 0.00,
+        refunds NUMERIC(10, 2) DEFAULT 0.00,
+        net_sales NUMERIC(10, 2) DEFAULT 0.00,
+        cogs NUMERIC(10, 2) DEFAULT 0.00,
+        gross_profit NUMERIC(10, 2) DEFAULT 0.00,
+        operating_expenses NUMERIC(10, 2) DEFAULT 0.00,
+        net_profit NUMERIC(10, 2) DEFAULT 0.00,
+        total_cash_sales NUMERIC(10, 2) DEFAULT 0.00,
+        total_upi_sales NUMERIC(10, 2) DEFAULT 0.00,
+        total_card_sales NUMERIC(10, 2) DEFAULT 0.00,
+        total_online_sales NUMERIC(10, 2) DEFAULT 0.00,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `, 'create financial_period_summaries table');
+
+    await exec('ALTER TABLE order_items ADD COLUMN IF NOT EXISTS sale_cost_snapshot NUMERIC(10, 2) DEFAULT 0.00;', 'order_items.sale_cost_snapshot');
+    await exec('ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS invoice_item_cost NUMERIC(10, 2) DEFAULT 0.00;', 'invoice_items.invoice_item_cost');
+    await exec('ALTER TABLE pos_sale_items ADD COLUMN IF NOT EXISTS sale_cost_snapshot NUMERIC(10, 2) DEFAULT 0.00;', 'pos_sale_items.sale_cost_snapshot');
+    await exec('ALTER TABLE orders ADD COLUMN IF NOT EXISTS gross_profit NUMERIC(10, 2) DEFAULT 0.00;', 'orders.gross_profit');
+    await exec('ALTER TABLE orders ADD COLUMN IF NOT EXISTS cogs NUMERIC(10, 2) DEFAULT 0.00;', 'orders.cogs');
+    await exec('ALTER TABLE pos_sales ADD COLUMN IF NOT EXISTS gross_profit NUMERIC(10, 2) DEFAULT 0.00;', 'pos_sales.gross_profit');
+    await exec('ALTER TABLE pos_sales ADD COLUMN IF NOT EXISTS cogs NUMERIC(10, 2) DEFAULT 0.00;', 'pos_sales.cogs');
+
     // Disable RLS on operational tables for backend service consistency
     const rlsTables = [
       'orders', 'payments', 'order_addresses', 'refunds', 'coupons',
       'delivery_assignments', 'notifications', 'notification_deliveries',
       'notification_preferences', 'admin_activity_logs', 'inventory_movements',
       'cancellation_requests', 'returns', 'return_items', 'replacement_requests', 'store_settings',
-      'whatsapp_delivery_notifications', 'order_status_history', 'background_jobs'
+      'whatsapp_delivery_notifications', 'order_status_history', 'background_jobs',
+      'expense_categories', 'expenses', 'recurring_expenses', 'supplier_invoices',
+      'supplier_payments', 'cash_register_sessions', 'cash_movements', 'cash_reconciliations',
+      'financial_ledger_entries', 'financial_period_summaries'
     ];
     for (const table of rlsTables) {
       await exec(`ALTER TABLE ${table} DISABLE ROW LEVEL SECURITY;`, `disable RLS on ${table}`);

@@ -22,6 +22,7 @@ const RefundPolicy = lazy(() => import('../pages/public/RefundPolicy').then(m =>
 const TermsOfService = lazy(() => import('../pages/public/TermsOfService').then(m => ({ default: m.TermsOfService })));
 const PrivacyPolicy = lazy(() => import('../pages/public/PrivacyPolicy').then(m => ({ default: m.PrivacyPolicy })));
 const ComponentShowcase = lazy(() => import('../pages/dev/ComponentShowcase').then(m => ({ default: m.ComponentShowcase })));
+const OfflinePage = lazy(() => import('../pages/OfflinePage').then(m => ({ default: m.OfflinePage })));
 
 // Lazy-Loaded Auth Pages
 const Login = lazy(() => import('../pages/auth/Login').then(m => ({ default: m.Login })));
@@ -72,6 +73,19 @@ const OperationsDashboardPage = lazy(() => import('../pages/admin/OperationsDash
 const ProcurementPage = lazy(() => import('../pages/admin/ProcurementPage').then(m => ({ default: m.ProcurementPage })));
 const InventoryValuationPage = lazy(() => import('../pages/admin/InventoryValuationPage').then(m => ({ default: m.InventoryValuationPage })));
 
+// Lazy-Loaded Phase 41 Pages
+const FinancialDashboardPage = lazy(() => import('../pages/admin/FinancialDashboardPage').then(m => ({ default: m.FinancialDashboardPage })));
+const ExpenseManagementPage = lazy(() => import('../pages/admin/ExpenseManagementPage').then(m => ({ default: m.ExpenseManagementPage })));
+const CashManagementPage = lazy(() => import('../pages/admin/CashManagementPage').then(m => ({ default: m.CashManagementPage })));
+const SupplierPayablesPage = lazy(() => import('../pages/admin/SupplierPayablesPage').then(m => ({ default: m.SupplierPayablesPage })));
+const ProfitLossPage = lazy(() => import('../pages/admin/ProfitLossPage').then(m => ({ default: m.ProfitLossPage })));
+
+// Lazy-Loaded Phase 42 Pages
+const StoreConfigurationPage = lazy(() => import('../pages/admin/StoreConfigurationPage').then(m => ({ default: m.StoreConfigurationPage })));
+const ClientOnboardingPage = lazy(() => import('../pages/admin/ClientOnboardingPage').then(m => ({ default: m.ClientOnboardingPage })));
+const SystemHealthPage = lazy(() => import('../pages/admin/SystemHealthPage').then(m => ({ default: m.SystemHealthPage })));
+const DeploymentStatusPage = lazy(() => import('../pages/admin/DeploymentStatusPage').then(m => ({ default: m.DeploymentStatusPage })));
+
 // Protected Route Guards
 import { useAuth } from '../hooks/useAuth';
 
@@ -117,6 +131,7 @@ export const AppRoutes = () => {
           <Route path="/terms" element={<TermsOfService />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route path="/dev/components" element={<ComponentShowcase />} />
+          <Route path="/offline" element={<OfflinePage />} />
 
           {/* Auth Pages */}
           <Route path="/login" element={<Login />} />
@@ -233,6 +248,17 @@ export const AppRoutes = () => {
           <Route path="/admin/operations" element={<OperationsDashboardPage />} />
           <Route path="/admin/procurement" element={<ProcurementPage />} />
           <Route path="/admin/inventory/valuation" element={<InventoryValuationPage />} />
+          <Route path="/admin/finance" element={<FinancialDashboardPage />} />
+          <Route path="/admin/expenses" element={<ExpenseManagementPage />} />
+          <Route path="/admin/cash-management" element={<CashManagementPage />} />
+          <Route path="/admin/payables" element={<SupplierPayablesPage />} />
+          <Route path="/admin/profit-loss" element={<ProfitLossPage />} />
+
+          {/* Phase 42 Admin Routes */}
+          <Route path="/admin/store-configuration" element={<StoreConfigurationPage />} />
+          <Route path="/admin/onboarding" element={<ClientOnboardingPage />} />
+          <Route path="/admin/system-health" element={<SystemHealthPage />} />
+          <Route path="/admin/deployment-status" element={<DeploymentStatusPage />} />
         </Route>
 
         {/* Fallback 404 Route */}

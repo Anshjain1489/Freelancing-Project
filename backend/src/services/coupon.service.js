@@ -47,6 +47,11 @@ const validateCoupon = async (userId, couponCode, addressId = null) => {
     throw new AppError(`Invalid or inactive coupon code: "${normalizedCode}"`, HTTP_STATUS.BAD_REQUEST);
   }
 
+  const validUntil = coupon.valid_until || coupon.validUntil;
+  if (validUntil && new Date(validUntil) < new Date()) {
+    throw new AppError(`Coupon code "${normalizedCode}" has expired`, HTTP_STATUS.BAD_REQUEST);
+  }
+
   // Calculate live server-side cart subtotal
   const cart = await cartService.getUserCart(userId);
   if (!cart.items || cart.items.length === 0) {
@@ -171,20 +176,32 @@ const createCoupon = async (adminId, couponData, req = null) => {
   const code = String(couponData.code || '').trim().toUpperCase();
   if (!code) throw new AppError('Coupon code is required', HTTP_STATUS.BAD_REQUEST);
 
-  const minAmt = parseFloat(couponData.minimumOrderAmount || couponData.minimum_order_amount || 0);
-  const discVal = parseFloat(couponData.discountValue || couponData.discount_value || 0);
+  const minAmt = parseFloat(couponData.minimumOrderAmount || couponData.minimum_order_amount || couponData.minPurchaseAmount || 0);
+  const discVal = parseFloat(couponData.discountValue || couponData.discount_value || couponData.discountAmount || 0);
   const discType = couponData.discountType || couponData.discount_type || 'FIXED';
   const description = couponData.description || `₹${discVal} OFF on orders above ₹${minAmt}`;
 
   if (supabase) {
-    const { data, error } = await supabase.from('coupons').insert([{
+    const insertPayload = {
       code,
       description,
       minimum_order_amount: minAmt,
       discount_type: discType,
       discount_value: discVal,
       is_active: couponData.isActive ?? true
-    }]).select().single();
+    };
+    if (couponData.validUntil || couponData.valid_until) {
+      insertPayload.valid_until = couponData.validUntil || couponData.valid_until;
+    }
+
+    let { data, error } = await supabase.from('coupons').insert([insertPayload]).select().single();
+
+    if (error && (error.message.includes('valid_until') || error.message.includes('schema cache'))) {
+      delete insertPayload.valid_until;
+      const retry = await supabase.from('coupons').insert([insertPayload]).select().single();
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) throw new AppError('Failed to create coupon: ' + error.message, HTTP_STATUS.BAD_REQUEST);
 
@@ -199,6 +216,7 @@ const createCoupon = async (adminId, couponData, req = null) => {
     minimum_order_amount: minAmt,
     discount_type: discType,
     discount_value: discVal,
+    valid_until: couponData.validUntil || couponData.valid_until || null,
     is_active: couponData.isActive ?? true,
     created_at: new Date().toISOString()
   };

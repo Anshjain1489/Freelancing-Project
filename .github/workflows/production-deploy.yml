@@ -1,0 +1,29 @@
+name: Production Deployment Pipeline
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18.x
+
+      - name: Install & Run Pre-Deployment Check
+        run: |
+          cd backend
+          npm ci
+          node src/scripts/preDeploymentCheck.js
+
+      - name: Build Frontend Production Dist
+        run: |
+          cd frontend
+          npm ci
+          npm run build
