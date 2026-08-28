@@ -22,50 +22,61 @@ for (const envPath of possibleEnvPaths) {
   }
 }
 
+/**
+ * Safely resolves non-empty environment variable string with fallback.
+ */
+const getEnvStr = (key, fallback = '') => {
+  const val = process.env[key];
+  if (val && typeof val === 'string' && val.trim() !== '') {
+    return val.trim();
+  }
+  return fallback;
+};
+
 const config = {
-  env: process.env.NODE_ENV || 'development',
-  port: parseInt(process.env.PORT, 10) || 5000,
-  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
+  env: getEnvStr('NODE_ENV', 'development'),
+  port: parseInt(getEnvStr('PORT', '5000'), 10) || 5000,
+  frontendUrl: getEnvStr('FRONTEND_URL', 'http://localhost:5173'),
   supabase: {
-    url: process.env.SUPABASE_URL || 'https://vuhwlckfhexlyezmfled.supabase.co',
-    anonKey: process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ1aHdsY2tmaGV4bHllem1mbGVkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcyODgxNTgsImV4cCI6MjEwMjg2NDE1OH0.94QQfa75xYoJQ5APORmT21ouAY5TBTIZhHu9JYrH-Ic',
-    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ1aHdsY2tmaGV4bHllem1mbGVkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NzI4ODE1OCwiZXhwIjoyMTAyODY0MTU4fQ.ovDLQX7wuL6o5MNKgl0IV8N_wAl1BZGA7fqPwW9bE_M'
+    url: getEnvStr('SUPABASE_URL', 'https://vuhwlckfhexlyezmfled.supabase.co'),
+    anonKey: getEnvStr('SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ1aHdsY2tmaGV4bHllem1mbGVkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcyODgxNTgsImV4cCI6MjEwMjg2NDE1OH0.94QQfa75xYoJQ5APORmT21ouAY5TBTIZhHu9JYrH-Ic'),
+    serviceRoleKey: getEnvStr('SUPABASE_SERVICE_ROLE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ1aHdsY2tmaGV4bHllem1mbGVkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NzI4ODE1OCwiZXhwIjoyMTAyODY0MTU4fQ.ovDLQX7wuL6o5MNKgl0IV8N_wAl1BZGA7fqPwW9bE_M')
   },
   jwt: {
-    accessSecret: (process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'ChaudharyKiranaStore_SuperSecret_Access_JWT_Key_2026!').trim(),
-    refreshSecret: (process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || 'ChaudharyKiranaStore_SuperSecret_Refresh_JWT_Key_2026!').trim(),
-    issuer: process.env.JWT_ISSUER || 'chaudhary-kirana-api',
-    audience: process.env.JWT_AUDIENCE || 'chaudhary-kirana-clients'
+    accessSecret: getEnvStr('JWT_ACCESS_SECRET', getEnvStr('JWT_SECRET', 'ChaudharyKiranaStore_SuperSecret_Access_JWT_Key_2026!')),
+    refreshSecret: getEnvStr('JWT_REFRESH_SECRET', getEnvStr('JWT_SECRET', 'ChaudharyKiranaStore_SuperSecret_Refresh_JWT_Key_2026!')),
+    issuer: getEnvStr('JWT_ISSUER', 'chaudhary-kirana-api'),
+    audience: getEnvStr('JWT_AUDIENCE', 'chaudhary-kirana-clients')
   },
   google: {
-    clientId: process.env.GOOGLE_CLIENT_ID || '',
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET || ''
+    clientId: getEnvStr('GOOGLE_CLIENT_ID', ''),
+    clientSecret: getEnvStr('GOOGLE_CLIENT_SECRET', '')
   },
   razorpay: {
-    keyId: process.env.RAZORPAY_KEY_ID || '',
-    keySecret: process.env.RAZORPAY_KEY_SECRET || '',
-    webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || ''
+    keyId: getEnvStr('RAZORPAY_KEY_ID', ''),
+    keySecret: getEnvStr('RAZORPAY_KEY_SECRET', ''),
+    webhookSecret: getEnvStr('RAZORPAY_WEBHOOK_SECRET', '')
   },
   store: {
-    name: process.env.STORE_NAME || 'Chaudhary Kirana Store',
-    owner: process.env.STORE_OWNER || 'Akash Chaudhary',
-    phone1: process.env.PRIMARY_PHONE || '7897837095',
-    phone2: process.env.SECONDARY_PHONE || '7007550184',
-    address: process.env.STORE_ADDRESS || 'Near Bada Jain Mandir, Tikamgarh Road, Mahruni, India',
-    latitude: parseFloat(process.env.STORE_LATITUDE) || 24.2381,
-    longitude: parseFloat(process.env.STORE_LONGITUDE) || 78.7364,
-    minOrderValue: parseFloat(process.env.MIN_ORDER_VALUE) || 199.0,
-    freeDeliveryRadiusKm: parseFloat(process.env.FREE_DELIVERY_RADIUS_KM) || 0.0,
-    deliveryChargePerExtraKm: parseFloat(process.env.DELIVERY_CHARGE_PER_EXTRA_KM) || 10.0,
-    maxDeliveryRadiusKm: parseFloat(process.env.MAX_DELIVERY_RADIUS_KM) || 15.0
+    name: getEnvStr('STORE_NAME', 'Chaudhary Kirana Store'),
+    owner: getEnvStr('STORE_OWNER', 'Akash Chaudhary'),
+    phone1: getEnvStr('PRIMARY_PHONE', '7897837095'),
+    phone2: getEnvStr('SECONDARY_PHONE', '7007550184'),
+    address: getEnvStr('STORE_ADDRESS', 'Near Bada Jain Mandir, Tikamgarh Road, Mahruni, India'),
+    latitude: parseFloat(getEnvStr('STORE_LATITUDE', '24.2381')) || 24.2381,
+    longitude: parseFloat(getEnvStr('STORE_LONGITUDE', '78.7364')) || 78.7364,
+    minOrderValue: parseFloat(getEnvStr('MIN_ORDER_VALUE', '199.0')) || 199.0,
+    freeDeliveryRadiusKm: parseFloat(getEnvStr('FREE_DELIVERY_RADIUS_KM', '0.0')) || 0.0,
+    deliveryChargePerExtraKm: parseFloat(getEnvStr('DELIVERY_CHARGE_PER_EXTRA_KM', '10.0')) || 10.0,
+    maxDeliveryRadiusKm: parseFloat(getEnvStr('MAX_DELIVERY_RADIUS_KM', '15.0')) || 15.0
   },
   monitoring: {
-    sentryDsn: process.env.SENTRY_DSN || '',
-    logLevel: process.env.LOG_LEVEL || 'info'
+    sentryDsn: getEnvStr('SENTRY_DSN', ''),
+    logLevel: getEnvStr('LOG_LEVEL', 'info')
   },
   rateLimit: {
-    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 60000,
-    maxRequests: parseInt(process.env.RATE_LIMIT_MAX, 10) || 100
+    windowMs: parseInt(getEnvStr('RATE_LIMIT_WINDOW_MS', '60000'), 10) || 60000,
+    maxRequests: parseInt(getEnvStr('RATE_LIMIT_MAX', '100'), 10) || 100
   }
 };
 

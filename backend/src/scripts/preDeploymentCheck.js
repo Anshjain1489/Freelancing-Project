@@ -8,15 +8,6 @@ if (dns && typeof dns.setDefaultResultOrder === 'function') {
   dns.setDefaultResultOrder('ipv4first');
 }
 
-// Custom lookup function forcing IPv4 family (bypasses IPv6 AAAA lookup)
-function ipv4Lookup(hostname, options, callback) {
-  if (typeof options === 'function') {
-    callback = options;
-    options = {};
-  }
-  return dns.lookup(hostname, Object.assign({}, options, { family: 4 }), callback);
-}
-
 const config = require('../config/environment');
 
 let passedChecks = 0;
@@ -130,10 +121,10 @@ function checkSupabaseConfiguration() {
  * Check 4: PostgreSQL Connectivity & Database Schema Audit
  */
 async function checkDatabaseConnectivity() {
-  const dbUrl = process.env.DATABASE_URL || 'postgresql://postgres:Anshjain2005%40@db.vuhwlckfhexlyezmfled.supabase.co:5432/postgres';
+  const dbUrl = process.env.DATABASE_URL || 'postgresql://postgres.vuhwlckfhexlyezmfled:Anshjain2005%40@aws-0-ap-south-1.pooler.supabase.com:5432/postgres';
   
   // Sanitize host & port for safe error reporting
-  let sanitizedHost = 'supabase-postgres';
+  let sanitizedHost = 'aws-0-ap-south-1.pooler.supabase.com';
   let port = 5432;
   try {
     const parsedUrl = new URL(dbUrl);
@@ -144,8 +135,7 @@ async function checkDatabaseConnectivity() {
   const client = new Client({
     connectionString: dbUrl,
     ssl: { rejectUnauthorized: false },
-    connectionTimeoutMillis: 10000,
-    lookup: ipv4Lookup
+    connectionTimeoutMillis: 10000
   });
 
   try {
