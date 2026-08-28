@@ -118,10 +118,26 @@ function checkSupabaseConfiguration() {
 }
 
 /**
+ * Resolves effective PostgreSQL connection string, rewriting legacy IPv6-only direct hostnames to IPv4 Pooler hostnames.
+ */
+function getEffectiveDatabaseUrl(rawUrl) {
+  const defaultUrl = 'postgresql://postgres.vuhwlckfhexlyezmfled:Anshjain2005%40@aws-0-ap-south-1.pooler.supabase.com:5432/postgres';
+  if (!rawUrl || typeof rawUrl !== 'string' || rawUrl.trim() === '') {
+    return defaultUrl;
+  }
+  let cleaned = rawUrl.trim();
+  if (cleaned.includes('db.vuhwlckfhexlyezmfled.supabase.co')) {
+    cleaned = cleaned.replace('db.vuhwlckfhexlyezmfled.supabase.co', 'aws-0-ap-south-1.pooler.supabase.com');
+    cleaned = cleaned.replace('//postgres:', '//postgres.vuhwlckfhexlyezmfled:');
+  }
+  return cleaned;
+}
+
+/**
  * Check 4: PostgreSQL Connectivity & Database Schema Audit
  */
 async function checkDatabaseConnectivity() {
-  const dbUrl = process.env.DATABASE_URL || 'postgresql://postgres.vuhwlckfhexlyezmfled:Anshjain2005%40@aws-0-ap-south-1.pooler.supabase.com:5432/postgres';
+  const dbUrl = getEffectiveDatabaseUrl(process.env.DATABASE_URL);
   
   // Sanitize host & port for safe error reporting
   let sanitizedHost = 'aws-0-ap-south-1.pooler.supabase.com';
