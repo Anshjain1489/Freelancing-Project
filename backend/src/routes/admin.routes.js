@@ -58,6 +58,19 @@ router.get('/automation/jobs', operationsAdminController.getAutomationJobRuns);
 router.post('/automation/jobs/:jobName/run', operationsAdminController.triggerAutomationJob);
 router.get('/system-alerts', operationsAdminController.getSystemAlerts);
 
+// Phase 40 Procurement, Valuation & Advanced Inventory Management
+const procurementAdminController = require('../controllers/admin/procurementAdmin.controller');
+router.get('/procurement/suppliers', procurementAdminController.getSuppliers);
+router.put('/procurement/purchase-orders/:id', procurementAdminController.editDraftPO);
+router.patch('/procurement/purchase-orders/:id/status', procurementAdminController.updatePOStatus);
+router.post('/procurement/purchase-orders/:id/receive', procurementAdminController.receivePOItems);
+router.post('/procurement/auto-group', procurementAdminController.triggerAutoProcurement);
+router.get('/procurement/valuation', procurementAdminController.getValuationReport);
+router.post('/procurement/adjustments', procurementAdminController.createAdjustment);
+router.post('/procurement/adjustments/:id/reverse', procurementAdminController.reverseAdjustment);
+router.get('/procurement/adjustments', procurementAdminController.getAdjustments);
+router.get('/procurement/cost-history', procurementAdminController.getCostHistory);
+
 // Product Management
 router.get('/products', productAdminController.getAdminProducts);
 router.post('/products', productAdminController.createProduct);

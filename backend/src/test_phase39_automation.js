@@ -28,7 +28,7 @@ function check(description, condition) {
 async function runTests() {
   try {
     // -------------------------------------------------------------------------
-    // 1. INVENTORY INTELLIGENCE & REORDER FORMULAS (Assertions 1 - 40)
+    // 1. INVENTORY INTELLIGENCE & REORDER FORMULAS (Assertions 1 - 50)
     // -------------------------------------------------------------------------
     console.log('--- TEST GROUP 1: Inventory Intelligence & Sales Velocity Math ---');
 
@@ -97,6 +97,13 @@ async function runTests() {
     const snapHighSafety = reorderIntelligence.calculateProductReorderStatus(prodSample, 30, 3, 20);
     check('High safety stock increases recommended quantity', snapHighSafety.recommendedQty >= snapshot1.recommendedQty);
 
+    // Additional calculation snapshot assertions
+    check('snapHighLeadTime leadTimeDays is 10', snapHighLeadTime.leadTimeDays === 10);
+    check('snapHighSafety safetyStockDays is 20', snapHighSafety.safetyStockDays === 20);
+    check('snapshotZeroSales availableStock is 7', snapshotZeroSales.availableStock === 7);
+    check('snapshotOos currentStock is 0', snapshotOos.currentStock === 0);
+    check('snapshotCrit reservedStock is 1', snapshotCrit.reservedStock === 1);
+
     // Test 1.9: Generate & Sync All Recommendations
     const genRes = await reorderIntelligence.generateReorderRecommendations();
     check('generateReorderRecommendations returns object with count', typeof genRes.count === 'number');
@@ -118,15 +125,17 @@ async function runTests() {
     check('dismissRecommendation rejects non-existent id with 404 Not Found', errDismissInvalid && errDismissInvalid.statusCode === HTTP_STATUS.NOT_FOUND);
 
     // -------------------------------------------------------------------------
-    // 2. PURCHASE ORDER SUBSYSTEM & LIFECYCLE (Assertions 40 - 75)
+    // 2. PURCHASE ORDER SUBSYSTEM & LIFECYCLE (Assertions 45 - 90)
     // -------------------------------------------------------------------------
     console.log('\n--- TEST GROUP 2: Purchase Order Subsystem & Lifecycle ---');
 
     // Create Supplier
-    const supplier = await purchaseOrderService.createSupplier({ name: 'Chaudhary Wholesalers', phone: '9876543210', leadTimeDays: 3 });
+    const supplier = await purchaseOrderService.createSupplier({ name: 'Chaudhary Wholesalers', phone: '9876543210', leadTimeDays: 3, contactPerson: 'Ramesh Chaudhary', email: 'ramesh@wholesalers.com' });
     check('createSupplier returns created supplier object', typeof supplier.id === 'string');
     check('supplier name matches input', supplier.name === 'Chaudhary Wholesalers');
     check('supplier status is ACTIVE', supplier.status === 'ACTIVE');
+    check('supplier contact_person is Ramesh Chaudhary', supplier.contact_person === 'Ramesh Chaudhary');
+    check('supplier email is ramesh@wholesalers.com', supplier.email === 'ramesh@wholesalers.com');
 
     let errSupNoName = null;
     try { await purchaseOrderService.createSupplier({}); } catch (e) { errSupNoName = e; }
@@ -149,6 +158,12 @@ async function runTests() {
     check('PO total_amount calculated correctly (50*200 + 20*120 = 12400)', newPo.total_amount === 12400);
     check('PO items array contains 2 items', newPo.items.length === 2);
     check('PO item quantity_received initially 0', newPo.items[0].quantity_received === 0);
+
+    check('PO item 1 product_name matches Aashirvaad Atta 5kg', newPo.items[0].product_name === 'Aashirvaad Atta 5kg');
+    check('PO item 1 quantity_ordered is 50', newPo.items[0].quantity_ordered === 50);
+    check('PO item 2 product_name matches Fortune Oil 1L', newPo.items[1].product_name === 'Fortune Oil 1L');
+    check('PO item 1 line_total calculated (50 * 200 = 10000)', newPo.items[0].line_total === 10000);
+    check('PO item 2 line_total calculated (20 * 120 = 2400)', newPo.items[1].line_total === 2400);
 
     // Duplicate Active PO Protection Guard
     let errDupPo = null;
@@ -205,8 +220,13 @@ async function runTests() {
     const allPos = await purchaseOrderService.getPurchaseOrders();
     check('getPurchaseOrders returns purchase orders array', Array.isArray(allPos.purchaseOrders) && allPos.purchaseOrders.length > 0);
 
+    // Additional Supplier & PO Assertions
+    check('Supplier lead_time_days is 3', supplier.lead_time_days === 3);
+    check('Supplier contact_person is non-empty', typeof supplier.contact_person === 'string');
+    check('Supplier phone is string', typeof supplier.phone === 'string');
+
     // -------------------------------------------------------------------------
-    // 3. CUSTOMER REPLENISHMENT ENGINE (Assertions 76 - 95)
+    // 3. CUSTOMER REPLENISHMENT ENGINE (Assertions 91 - 115)
     // -------------------------------------------------------------------------
     console.log('\n--- TEST GROUP 3: Customer Grocery Replenishment Engine ---');
 
@@ -247,7 +267,7 @@ async function runTests() {
     check('dismissCustomerReplenishment rejects invalid id with 404 Not Found', errMissingReplenish && errMissingReplenish.statusCode === HTTP_STATUS.NOT_FOUND);
 
     // -------------------------------------------------------------------------
-    // 4. NOTIFICATION PROVIDER & SECURE INVOICE TOKENS (Assertions 96 - 110)
+    // 4. NOTIFICATION PROVIDER & SECURE INVOICE TOKENS (Assertions 116 - 135)
     // -------------------------------------------------------------------------
     console.log('\n--- TEST GROUP 4: Notification Provider Abstraction & Secure WhatsApp Tokens ---');
 
@@ -274,6 +294,9 @@ async function runTests() {
     const smsRes = await NotificationProvider.send('SMS', '9876543210', { message: 'OTP 123456' });
     check('NotificationProvider routes to SmsProvider', smsRes.provider === 'SMS' && smsRes.success === true);
 
+    const channelRes = await NotificationProvider.send('UNSUPPORTED_CHANNEL', '123', { title: 'Alert', message: 'hi' });
+    check('NotificationProvider handles unsupported channel gracefully with fallback to IN_APP', channelRes.provider === 'IN_APP');
+
     // Secure Invoice Token Generator
     const invoiceId = 'inv-test-999';
     const tokenObj = await generateSecureInvoiceToken(invoiceId, 'cust-1', 24);
@@ -296,7 +319,7 @@ async function runTests() {
     check('validateInvoiceToken rejects missing token with 400 Bad Request', errMissingToken && errMissingToken.statusCode === HTTP_STATUS.BAD_REQUEST);
 
     // -------------------------------------------------------------------------
-    // 5. AUTOMATION SCHEDULER & CONCURRENCY LOCK (Assertions 111 - 122)
+    // 5. AUTOMATION SCHEDULER & CONCURRENCY LOCK (Assertions 136 - 150)
     // -------------------------------------------------------------------------
     console.log('\n--- TEST GROUP 5: Automation Scheduler & Job Locking ---');
 
@@ -328,6 +351,10 @@ async function runTests() {
     check('Job run log duration_ms is non-negative', runsList.jobRuns[0].duration_ms >= 0);
     check('Job run log records_processed is non-negative', runsList.jobRuns[0].records_processed >= 0);
 
+    // Additional scheduler assertions
+    check('jobRes2 jobName is monitorSystemHealth', jobRes2.jobName === 'monitorSystemHealth');
+    check('jobRes2 duration is numeric', typeof jobRes2.duration === 'number');
+
     // System Alerts
     await automationScheduler.createSystemAlert('TEST_ALERT', 'INFO', 'Test Alert Title', 'Test message content');
     const alertsList = await automationScheduler.getSystemAlerts();
@@ -335,7 +362,7 @@ async function runTests() {
     check('System alert title matches input', alertsList.alerts[0].title === 'Test Alert Title');
 
     // -------------------------------------------------------------------------
-    // 6. SECURITY RBAC BARRIERS (Assertions 123 - 128)
+    // 6. SECURITY RBAC BARRIERS (Assertions 151 - 155)
     // -------------------------------------------------------------------------
     console.log('\n--- TEST GROUP 6: Security RBAC Barriers ---');
 

@@ -166,5 +166,56 @@ export const adminService = {
   getActivityLogs: async (params = {}) => {
     const response = await apiClient.get(ENDPOINTS.ADMIN.ACTIVITY, { params });
     return response.data;
+  },
+
+  // Phase 40 Procurement & Valuation API Endpoints
+  getProcurementSuppliers: async () => {
+    const response = await apiClient.get('/admin/procurement/suppliers');
+    return response.data;
+  },
+
+  editDraftPurchaseOrder: async (id, data) => {
+    const response = await apiClient.put(`/admin/procurement/purchase-orders/${id}`, data);
+    return response.data;
+  },
+
+  updatePOStatus: async (id, status, notes = '') => {
+    const response = await apiClient.patch(`/admin/procurement/purchase-orders/${id}/status`, { status, notes });
+    return response.data;
+  },
+
+  receivePOItemsAtomic: async (id, items) => {
+    const response = await apiClient.post(`/admin/procurement/purchase-orders/${id}/receive`, { items });
+    return response.data;
+  },
+
+  triggerAutoProcurement: async () => {
+    const response = await apiClient.post('/admin/procurement/auto-group');
+    return response.data;
+  },
+
+  getInventoryValuationReport: async () => {
+    const response = await apiClient.get('/admin/procurement/valuation');
+    return response.data;
+  },
+
+  createStockAdjustment: async (data) => {
+    const response = await apiClient.post('/admin/procurement/adjustments', data);
+    return response.data;
+  },
+
+  reverseStockAdjustment: async (id, notes = '') => {
+    const response = await apiClient.post(`/admin/procurement/adjustments/${id}/reverse`, { notes });
+    return response.data;
+  },
+
+  getStockAdjustments: async () => {
+    const response = await apiClient.get('/admin/procurement/adjustments');
+    return response.data;
+  },
+
+  getCostHistory: async (productId) => {
+    const response = await apiClient.get('/admin/procurement/cost-history', { params: { productId } });
+    return response.data;
   }
 };

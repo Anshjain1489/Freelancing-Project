@@ -135,7 +135,7 @@ const createPurchaseOrder = async (poData, creatorId) => {
     }
   }
 
-  mockPurchaseOrdersMap.set(id, poRecord);
+  mockPurchaseOrdersMap.set(id, { ...poRecord, items: itemsRecords });
   mockPurchaseOrderItemsMap.set(id, itemsRecords);
 
   return { ...poRecord, items: itemsRecords };
