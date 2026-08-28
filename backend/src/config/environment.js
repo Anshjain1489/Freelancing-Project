@@ -8,7 +8,7 @@ if (dns && typeof dns.setDefaultResultOrder === 'function') {
   dns.setDefaultResultOrder('ipv4first');
 }
 
-// Deterministic multi-location environment loader
+// Multi-location local environment loader (loads .env if present on disk)
 const possibleEnvPaths = [
   path.join(__dirname, '../../.env'),
   path.join(__dirname, '../.env'),
@@ -22,67 +22,56 @@ for (const envPath of possibleEnvPaths) {
   }
 }
 
-/**
- * Safely resolves non-empty environment variable string with fallback.
- */
-const getEnvStr = (key, fallback = '') => {
-  const val = process.env[key];
-  if (val && typeof val === 'string' && val.trim() !== '') {
-    return val.trim();
-  }
-  return fallback;
-};
-
 const config = {
-  env: getEnvStr('NODE_ENV', 'development'),
-  port: parseInt(getEnvStr('PORT', '5000'), 10) || 5000,
-  frontendUrl: getEnvStr('FRONTEND_URL', 'http://localhost:5173'),
+  env: process.env.NODE_ENV || 'development',
+  port: parseInt(process.env.PORT, 10) || 5000,
+  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
   supabase: {
-    url: getEnvStr('SUPABASE_URL', 'https://vuhwlckfhexlyezmfled.supabase.co'),
-    anonKey: getEnvStr('SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ1aHdsY2tmaGV4bHllem1mbGVkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcyODgxNTgsImV4cCI6MjEwMjg2NDE1OH0.94QQfa75xYoJQ5APORmT21ouAY5TBTIZhHu9JYrH-Ic'),
-    serviceRoleKey: getEnvStr('SUPABASE_SERVICE_ROLE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ1aHdsY2tmaGV4bHllem1mbGVkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NzI4ODE1OCwiZXhwIjoyMTAyODY0MTU4fQ.ovDLQX7wuL6o5MNKgl0IV8N_wAl1BZGA7fqPwW9bE_M')
+    url: process.env.SUPABASE_URL || '',
+    anonKey: process.env.SUPABASE_ANON_KEY || '',
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || ''
   },
   jwt: {
-    accessSecret: getEnvStr('JWT_ACCESS_SECRET', getEnvStr('JWT_SECRET', 'ChaudharyKiranaStore_SuperSecret_Access_JWT_Key_2026!')),
-    refreshSecret: getEnvStr('JWT_REFRESH_SECRET', getEnvStr('JWT_SECRET', 'ChaudharyKiranaStore_SuperSecret_Refresh_JWT_Key_2026!')),
-    issuer: getEnvStr('JWT_ISSUER', 'chaudhary-kirana-api'),
-    audience: getEnvStr('JWT_AUDIENCE', 'chaudhary-kirana-clients')
+    accessSecret: (process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || '').trim(),
+    refreshSecret: (process.env.JWT_REFRESH_SECRET || '').trim(),
+    issuer: process.env.JWT_ISSUER || 'chaudhary-kirana-api',
+    audience: process.env.JWT_AUDIENCE || 'chaudhary-kirana-clients'
   },
+  databaseUrl: process.env.DATABASE_URL || '',
   google: {
-    clientId: getEnvStr('GOOGLE_CLIENT_ID', ''),
-    clientSecret: getEnvStr('GOOGLE_CLIENT_SECRET', '')
+    clientId: process.env.GOOGLE_CLIENT_ID || '',
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET || ''
   },
   razorpay: {
-    keyId: getEnvStr('RAZORPAY_KEY_ID', ''),
-    keySecret: getEnvStr('RAZORPAY_KEY_SECRET', ''),
-    webhookSecret: getEnvStr('RAZORPAY_WEBHOOK_SECRET', '')
+    keyId: process.env.RAZORPAY_KEY_ID || '',
+    keySecret: process.env.RAZORPAY_KEY_SECRET || '',
+    webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || ''
   },
   store: {
-    name: getEnvStr('STORE_NAME', 'Chaudhary Kirana Store'),
-    owner: getEnvStr('STORE_OWNER', 'Akash Chaudhary'),
-    phone1: getEnvStr('PRIMARY_PHONE', '7897837095'),
-    phone2: getEnvStr('SECONDARY_PHONE', '7007550184'),
-    address: getEnvStr('STORE_ADDRESS', 'Near Bada Jain Mandir, Tikamgarh Road, Mahruni, India'),
-    latitude: parseFloat(getEnvStr('STORE_LATITUDE', '24.2381')) || 24.2381,
-    longitude: parseFloat(getEnvStr('STORE_LONGITUDE', '78.7364')) || 78.7364,
-    minOrderValue: parseFloat(getEnvStr('MIN_ORDER_VALUE', '199.0')) || 199.0,
-    freeDeliveryRadiusKm: parseFloat(getEnvStr('FREE_DELIVERY_RADIUS_KM', '0.0')) || 0.0,
-    deliveryChargePerExtraKm: parseFloat(getEnvStr('DELIVERY_CHARGE_PER_EXTRA_KM', '10.0')) || 10.0,
-    maxDeliveryRadiusKm: parseFloat(getEnvStr('MAX_DELIVERY_RADIUS_KM', '15.0')) || 15.0
+    name: process.env.STORE_NAME || 'Chaudhary Kirana Store',
+    owner: process.env.STORE_OWNER || 'Akash Chaudhary',
+    phone1: process.env.PRIMARY_PHONE || '7897837095',
+    phone2: process.env.SECONDARY_PHONE || '7007550184',
+    address: process.env.STORE_ADDRESS || 'Near Bada Jain Mandir, Tikamgarh Road, Mahruni, India',
+    latitude: parseFloat(process.env.STORE_LATITUDE) || 24.2381,
+    longitude: parseFloat(process.env.STORE_LONGITUDE) || 78.7364,
+    minOrderValue: parseFloat(process.env.MIN_ORDER_VALUE) || 199.0,
+    freeDeliveryRadiusKm: parseFloat(process.env.FREE_DELIVERY_RADIUS_KM) || 0.0,
+    deliveryChargePerExtraKm: parseFloat(process.env.DELIVERY_CHARGE_PER_EXTRA_KM) || 10.0,
+    maxDeliveryRadiusKm: parseFloat(process.env.MAX_DELIVERY_RADIUS_KM) || 15.0
   },
   monitoring: {
-    sentryDsn: getEnvStr('SENTRY_DSN', ''),
-    logLevel: getEnvStr('LOG_LEVEL', 'info')
+    sentryDsn: process.env.SENTRY_DSN || '',
+    logLevel: process.env.LOG_LEVEL || 'info'
   },
   rateLimit: {
-    windowMs: parseInt(getEnvStr('RATE_LIMIT_WINDOW_MS', '60000'), 10) || 60000,
-    maxRequests: parseInt(getEnvStr('RATE_LIMIT_MAX', '100'), 10) || 100
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 60000,
+    maxRequests: parseInt(process.env.RATE_LIMIT_MAX, 10) || 100
   }
 };
 
 /**
- * Validates production environment configuration.
- * Throws descriptive Error if critical production variables are missing or insecure.
+ * Validates production environment configuration without fake fallbacks or weakened security requirements.
  */
 function validateEnvironment(overrideEnv = null) {
   const targetEnv = overrideEnv || config.env;
@@ -109,12 +98,18 @@ function validateEnvironment(overrideEnv = null) {
   checkRequired('SUPABASE_ANON_KEY', config.supabase.anonKey);
   checkRequired('JWT_ACCESS_SECRET', config.jwt.accessSecret);
   checkRequired('JWT_REFRESH_SECRET', config.jwt.refreshSecret);
+  checkRequired('DATABASE_URL', config.databaseUrl);
 
-  if (config.supabase.url && !config.supabase.url.startsWith('https://')) {
-    errors.push(`SUPABASE_URL '${config.supabase.url}' must be a valid HTTPS URL`);
+  if (config.supabase.url) {
+    if (!config.supabase.url.startsWith('https://')) {
+      errors.push(`SUPABASE_URL '${config.supabase.url}' must use HTTPS protocol`);
+    }
+    if (config.supabase.url.includes('localhost') || config.supabase.url.includes('127.0.0.1')) {
+      errors.push(`SUPABASE_URL '${config.supabase.url}' cannot be localhost in production`);
+    }
   }
 
-  const placeholders = ['your_', 'change_me', 'example', '123456', 'placeholder', 'secret_key_here', 'replace-me', 'changeme', 'dev_'];
+  const placeholders = ['your_', 'change_me', 'example', '123456', 'placeholder', 'secret_key_here', 'replace-me', 'changeme', 'dev_', 'test_'];
   checkNotPlaceholder('SUPABASE_ANON_KEY', config.supabase.anonKey, ['your-', 'placeholder']);
   checkNotPlaceholder('JWT_ACCESS_SECRET', config.jwt.accessSecret, placeholders);
   checkNotPlaceholder('JWT_REFRESH_SECRET', config.jwt.refreshSecret, placeholders);
@@ -125,6 +120,18 @@ function validateEnvironment(overrideEnv = null) {
   }
   if (config.jwt.refreshSecret && config.jwt.refreshSecret.length < minSecretLength) {
     errors.push(`JWT_REFRESH_SECRET must be at least ${minSecretLength} characters long (current length: ${config.jwt.refreshSecret.length})`);
+  }
+  if (config.jwt.accessSecret && config.jwt.refreshSecret && config.jwt.accessSecret === config.jwt.refreshSecret) {
+    errors.push('JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must not be identical');
+  }
+
+  if (config.databaseUrl) {
+    if (!config.databaseUrl.startsWith('postgresql://') && !config.databaseUrl.startsWith('postgres://')) {
+      errors.push('DATABASE_URL must be a valid PostgreSQL connection URL starting with postgresql:// or postgres://');
+    }
+    if (targetEnv === 'production' && (config.databaseUrl.includes('@localhost') || config.databaseUrl.includes('@127.0.0.1'))) {
+      errors.push('DATABASE_URL cannot point to localhost or 127.0.0.1 in production');
+    }
   }
 
   if (targetEnv === 'production') {
