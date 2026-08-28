@@ -8,6 +8,15 @@ if (dns && typeof dns.setDefaultResultOrder === 'function') {
   dns.setDefaultResultOrder('ipv4first');
 }
 
+// Custom lookup function forcing IPv4 family (bypasses IPv6 AAAA lookup)
+function ipv4Lookup(hostname, options, callback) {
+  if (typeof options === 'function') {
+    callback = options;
+    options = {};
+  }
+  return dns.lookup(hostname, Object.assign({}, options, { family: 4 }), callback);
+}
+
 const config = require('../config/environment');
 
 let passedChecks = 0;
@@ -88,6 +97,7 @@ function checkSupabaseConfiguration() {
           'apikey': config.supabase.anonKey,
           'Authorization': `Bearer ${config.supabase.anonKey}`
         },
+        family: 4,
         timeout: 5000
       }, (res) => {
         if (res.statusCode < 500) {
@@ -134,7 +144,8 @@ async function checkDatabaseConnectivity() {
   const client = new Client({
     connectionString: dbUrl,
     ssl: { rejectUnauthorized: false },
-    connectionTimeoutMillis: 10000
+    connectionTimeoutMillis: 10000,
+    lookup: ipv4Lookup
   });
 
   try {

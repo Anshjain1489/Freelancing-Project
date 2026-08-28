@@ -27,13 +27,13 @@ const config = {
   port: parseInt(process.env.PORT, 10) || 5000,
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
   supabase: {
-    url: process.env.SUPABASE_URL || '',
-    anonKey: process.env.SUPABASE_ANON_KEY || '',
-    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+    url: process.env.SUPABASE_URL || 'https://vuhwlckfhexlyezmfled.supabase.co',
+    anonKey: process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ1aHdsY2tmaGV4bHllem1mbGVkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcyODgxNTgsImV4cCI6MjEwMjg2NDE1OH0.94QQfa75xYoJQ5APORmT21ouAY5TBTIZhHu9JYrH-Ic',
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ1aHdsY2tmaGV4bHllem1mbGVkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NzI4ODE1OCwiZXhwIjoyMTAyODY0MTU4fQ.ovDLQX7wuL6o5MNKgl0IV8N_wAl1BZGA7fqPwW9bE_M'
   },
   jwt: {
-    accessSecret: (process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? '' : 'ChaudharyKiranaStore_SuperSecret_Access_JWT_Key_2026!')).trim(),
-    refreshSecret: (process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? '' : 'ChaudharyKiranaStore_SuperSecret_Refresh_JWT_Key_2026!')).trim(),
+    accessSecret: (process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'ChaudharyKiranaStore_SuperSecret_Access_JWT_Key_2026!').trim(),
+    refreshSecret: (process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || 'ChaudharyKiranaStore_SuperSecret_Refresh_JWT_Key_2026!').trim(),
     issuer: process.env.JWT_ISSUER || 'chaudhary-kirana-api',
     audience: process.env.JWT_AUDIENCE || 'chaudhary-kirana-clients'
   },
