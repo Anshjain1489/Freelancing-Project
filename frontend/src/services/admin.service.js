@@ -7,13 +7,43 @@ export const adminService = {
     return response.data;
   },
 
+  getDashboardOverview: async () => {
+    const response = await apiClient.get('/admin/analytics/overview');
+    return response.data;
+  },
+
+  getSalesAnalytics: async (params = {}) => {
+    const response = await apiClient.get('/admin/analytics/sales', { params });
+    return response.data;
+  },
+
   getRevenueAnalytics: async (params = {}) => {
-    const response = await apiClient.get(ENDPOINTS.ADMIN.ANALYTICS_REVENUE, { params });
+    const response = await apiClient.get('/admin/analytics/sales', { params });
+    return response.data;
+  },
+
+  getProductAnalytics: async (params = {}) => {
+    const response = await apiClient.get('/admin/analytics/products', { params });
     return response.data;
   },
 
   getTopProductsAnalytics: async (params = {}) => {
-    const response = await apiClient.get(ENDPOINTS.ADMIN.ANALYTICS_TOP_PRODUCTS, { params });
+    const response = await apiClient.get('/admin/analytics/products', { params });
+    return response.data;
+  },
+
+  getInventoryAnalytics: async () => {
+    const response = await apiClient.get('/admin/analytics/inventory');
+    return response.data;
+  },
+
+  getGstReport: async (params = {}) => {
+    const response = await apiClient.get('/admin/analytics/gst', { params });
+    return response.data;
+  },
+
+  getDeliveryAnalytics: async (params = {}) => {
+    const response = await apiClient.get('/admin/analytics/delivery', { params });
     return response.data;
   },
 

@@ -28,9 +28,18 @@ router.use(authorizeAdmin);
 router.get('/dashboard', dashboardController.getDashboardSummary);
 router.get('/observability/dashboard', observabilityController.getObservabilityDashboard);
 
-// Business Analytics
+// Business Analytics & Intelligence
+router.get('/analytics/overview', analyticsAdminController.getDashboardOverview);
+router.get('/analytics/sales', analyticsAdminController.getSalesAnalytics);
 router.get('/analytics/revenue', analyticsAdminController.getRevenueAnalytics);
+router.get('/analytics/products', analyticsAdminController.getProductAnalytics);
 router.get('/analytics/top-products', analyticsAdminController.getTopProducts);
+router.get('/analytics/inventory', analyticsAdminController.getInventoryAnalytics);
+router.get('/analytics/payments', analyticsAdminController.getSalesAnalytics);
+router.get('/analytics/gst', analyticsAdminController.getGstReport);
+router.get('/analytics/delivery', analyticsAdminController.getDeliveryAnalytics);
+router.get('/analytics/export/:type', analyticsAdminController.exportCsv);
+router.get('/analytics/report/pdf', analyticsAdminController.exportPdfMonthlyReport);
 
 // Product Management
 router.get('/products', productAdminController.getAdminProducts);
