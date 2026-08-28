@@ -41,6 +41,23 @@ router.get('/analytics/delivery', analyticsAdminController.getDeliveryAnalytics)
 router.get('/analytics/export/:type', analyticsAdminController.exportCsv);
 router.get('/analytics/report/pdf', analyticsAdminController.exportPdfMonthlyReport);
 
+// Phase 39 Operations & Reorder Intelligence
+const operationsAdminController = require('../controllers/admin/operationsAdmin.controller');
+router.get('/operations/overview', operationsAdminController.getOperationsOverview);
+router.get('/reorder-recommendations', operationsAdminController.getReorderRecommendations);
+router.post('/reorder-recommendations/calculate', operationsAdminController.triggerReorderRecommendations);
+router.patch('/reorder-recommendations/:id/dismiss', operationsAdminController.dismissReorderRecommendation);
+router.post('/reorder-recommendations/:id/purchase-order', operationsAdminController.createPurchaseOrderFromRecommendation);
+router.get('/purchase-orders', operationsAdminController.getPurchaseOrders);
+router.post('/purchase-orders', operationsAdminController.createPurchaseOrder);
+router.patch('/purchase-orders/:id/status', operationsAdminController.updatePurchaseOrderStatus);
+router.post('/purchase-orders/:id/receive', operationsAdminController.receivePurchaseOrderItems);
+router.get('/suppliers', operationsAdminController.getSuppliers);
+router.post('/suppliers', operationsAdminController.createSupplier);
+router.get('/automation/jobs', operationsAdminController.getAutomationJobRuns);
+router.post('/automation/jobs/:jobName/run', operationsAdminController.triggerAutomationJob);
+router.get('/system-alerts', operationsAdminController.getSystemAlerts);
+
 // Product Management
 router.get('/products', productAdminController.getAdminProducts);
 router.post('/products', productAdminController.createProduct);

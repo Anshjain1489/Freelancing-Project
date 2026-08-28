@@ -57,6 +57,13 @@ router.use('/payments', paymentRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/notification-preferences', notificationRoutes);
 router.use('/admin', adminRoutes);
+const replenishmentCustomerController = require('../controllers/replenishmentCustomer.controller');
+const { authenticate } = require('../middleware/auth.middleware');
+
+router.get('/customer/replenishment-recommendations', authenticate, replenishmentCustomerController.getCustomerReplenishments);
+router.post('/customer/replenishment-recommendations/calculate', authenticate, replenishmentCustomerController.generateCustomerReplenishments);
+router.post('/customer/replenishment-recommendations/:id/dismiss', authenticate, replenishmentCustomerController.dismissCustomerReplenishment);
+
 router.use('/chatbot', chatbotRoutes);
 router.use('/', invoiceRoutes);
 

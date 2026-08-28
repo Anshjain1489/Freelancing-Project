@@ -37,6 +37,26 @@ export const adminService = {
     return response.data;
   },
 
+  // Phase 38 Analytics Exports
+  exportAnalyticsCsv: (type, params) => apiClient.get(`/admin/analytics/export/${type}`, { params, responseType: 'blob' }),
+  exportAnalyticsPdfReport: () => apiClient.get('/admin/analytics/report/pdf', { responseType: 'text' }),
+
+  // Phase 39 Operations & Reorder Intelligence
+  getOperationsOverview: () => apiClient.get('/admin/operations/overview'),
+  getReorderRecommendations: (params) => apiClient.get('/admin/reorder-recommendations', { params }),
+  triggerReorderRecommendations: () => apiClient.post('/admin/reorder-recommendations/calculate'),
+  dismissReorderRecommendation: (id) => apiClient.patch(`/admin/reorder-recommendations/${id}/dismiss`),
+  createPurchaseOrderFromRecommendation: (id, payload) => apiClient.post(`/admin/reorder-recommendations/${id}/purchase-order`, payload),
+  getPurchaseOrders: () => apiClient.get('/admin/purchase-orders'),
+  createPurchaseOrder: (payload) => apiClient.post('/admin/purchase-orders', payload),
+  updatePurchaseOrderStatus: (id, status) => apiClient.patch(`/admin/purchase-orders/${id}/status`, { status }),
+  receivePurchaseOrderItems: (id, items) => apiClient.post(`/admin/purchase-orders/${id}/receive`, { items }),
+  getSuppliers: () => apiClient.get('/admin/suppliers'),
+  createSupplier: (payload) => apiClient.post('/admin/suppliers', payload),
+  getAutomationJobRuns: () => apiClient.get('/admin/automation/jobs'),
+  triggerAutomationJob: (jobName) => apiClient.post(`/admin/automation/jobs/${jobName}/run`),
+  getSystemAlerts: () => apiClient.get('/admin/system-alerts'),
+
   getGstReport: async (params = {}) => {
     const response = await apiClient.get('/admin/analytics/gst', { params });
     return response.data;

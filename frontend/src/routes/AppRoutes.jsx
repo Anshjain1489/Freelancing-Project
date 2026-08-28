@@ -68,6 +68,7 @@ const AdminReplacementsPage = lazy(() => import('../pages/admin/AdminReplacement
 const ActivityPage = lazy(() => import('../pages/admin/ActivityPage').then(m => ({ default: m.ActivityPage })));
 const PosBillingPage = lazy(() => import('../pages/admin/PosBillingPage').then(m => ({ default: m.PosBillingPage })));
 const AdminInvoicesPage = lazy(() => import('../pages/admin/AdminInvoicesPage').then(m => ({ default: m.AdminInvoicesPage })));
+const OperationsDashboardPage = lazy(() => import('../pages/admin/OperationsDashboardPage').then(m => ({ default: m.OperationsDashboardPage })));
 
 // Protected Route Guards
 import { useAuth } from '../hooks/useAuth';
@@ -227,6 +228,7 @@ export const AppRoutes = () => {
           <Route path="/admin/activity" element={<ActivityPage />} />
           <Route path="/admin/pos" element={<PosBillingPage />} />
           <Route path="/admin/invoices" element={<AdminInvoicesPage />} />
+          <Route path="/admin/operations" element={<OperationsDashboardPage />} />
         </Route>
 
         {/* Fallback 404 Route */}
