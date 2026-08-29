@@ -27,7 +27,7 @@ const calculateFinancials = (items = [], options = {}) => {
 
   const processedItems = items.map(item => {
     const qty = parseFloat(item.quantity || 1);
-    const unitPrice = parseFloat(item.sellingPrice || item.unitPrice || item.price || 0);
+    const unitPrice = parseFloat(item.sellingPrice ?? item.unitPrice ?? item.unit_price ?? item.price ?? 0);
     const mrp = parseFloat(item.mrp || unitPrice);
     const lineDiscount = parseFloat(item.discountAmount || 0);
     const taxPct = parseFloat(item.taxPercentage || item.tax_percentage || 0);
@@ -153,7 +153,7 @@ const generateInvoiceForOrder = async (orderId) => {
     throw new AppError('Order ID is required to generate invoice', HTTP_STATUS.BAD_REQUEST);
   }
 
-  // Idempotency check: Return existing invoice if already generated
+  // Idempotency check: Return existing invoice if already generated (unless corrupted with 0 subtotal when order has value)
   if (supabase && isUuid(orderId)) {
     const { data: existingInv } = await supabase
       .from('invoices')
@@ -162,13 +162,31 @@ const generateInvoiceForOrder = async (orderId) => {
       .maybeSingle();
 
     if (existingInv) {
-      return existingInv;
+      const { data: ordCheck } = await supabase.from('orders').select('subtotal, total_amount').eq('id', orderId).maybeSingle();
+      const orderHasValue = ordCheck && (parseFloat(ordCheck.subtotal || 0) > 0 || parseFloat(ordCheck.total_amount || 0) > 0);
+      const invIsZero = parseFloat(existingInv.subtotal || 0) === 0 && parseFloat(existingInv.total_amount || 0) === 0;
+
+      if (!invIsZero || !orderHasValue) {
+        return existingInv;
+      }
+
+      // Clear corrupted zero-value invoice record so it gets re-issued correctly below
+      try {
+        await supabase.from('invoice_items').delete().eq('invoice_id', existingInv.id);
+        await supabase.from('invoices').delete().eq('id', existingInv.id);
+      } catch (delErr) {
+        console.error('Invoice cleanup notice:', delErr?.message);
+      }
     }
   }
 
-  for (const inv of mockInvoices.values()) {
+  for (const [invId, inv] of mockInvoices.entries()) {
     if (String(inv.order_id) === String(orderId)) {
-      return inv;
+      if (parseFloat(inv.subtotal || 0) > 0 || parseFloat(inv.total_amount || 0) > 0) {
+        return inv;
+      }
+      mockInvoices.delete(invId);
+      break;
     }
   }
 
@@ -178,7 +196,7 @@ const generateInvoiceForOrder = async (orderId) => {
 
   if (supabase && isUuid(orderId)) {
     const { data: ord } = await supabase.from('orders').select('*').eq('id', orderId).maybeSingle();
-    const { data: items } = await supabase.from('order_items').select('*').eq('order_id', orderId);
+    const { data: items } = await supabase.from('order_items').select('*, products(*)').eq('order_id', orderId);
     const { data: addr } = await supabase.from('order_addresses').select('*').eq('order_id', orderId).maybeSingle();
 
     if (ord) orderData = ord;
@@ -206,15 +224,15 @@ const generateInvoiceForOrder = async (orderId) => {
         if (foundMock.items && foundMock.items.length > 0) {
           orderItemsData = foundMock.items.map(i => ({
             product_id: i.productId || i.id,
-            product_name: i.name || 'Grocery Item',
+            product_name: i.name || i.productName || 'Grocery Item',
             sku: i.sku || 'SKU-GEN',
             unit: i.unit || 'kg',
             quantity: i.quantity,
-            mrp: i.mrp || i.sellingPrice || 100,
-            selling_price: i.sellingPrice || 100,
-            discount_amount: 0,
+            mrp: i.mrp || i.sellingPrice || i.unitPrice || 100,
+            selling_price: i.sellingPrice || i.unitPrice || i.unit_price || 100,
+            discount_amount: i.discountAmount || 0,
             tax_amount: 0,
-            total_amount: (i.sellingPrice || 100) * i.quantity
+            total_amount: (i.sellingPrice || i.unitPrice || 100) * i.quantity
           }));
         }
       }
@@ -239,24 +257,45 @@ const generateInvoiceForOrder = async (orderId) => {
       { product_id: 'prod-001', product_name: 'Aashirvaad Whole Wheat Atta', sku: 'SKU-ATTA-01', unit: 'kg', quantity: 1, mrp: 350, selling_price: 320, discount_amount: 30, tax_amount: 15, total_amount: 305 },
       { product_id: 'prod-002', product_name: 'Fortune Sunflower Oil', sku: 'SKU-OIL-01', unit: 'litre', quantity: 1, mrp: 210, selling_price: 180, discount_amount: 20, tax_amount: 10, total_amount: 170 }
     ];
-    orderAddressData = { recipient_name: 'Walk-in Customer', phone: '9876543210' };
+    orderAddressData = { recipient_name: 'Valued Customer', phone: '9876543210' };
   }
 
   const invoiceNumber = await generateInvoiceNumber();
+
+  const mappedItems = orderItemsData.map(i => {
+    const prod = i.products || {};
+    const sellingPrice = parseFloat(i.selling_price || i.unit_price || i.price || prod.selling_price || prod.price || 0);
+    const mrp = parseFloat(i.mrp || prod.mrp || sellingPrice || 0);
+    const taxPct = parseFloat(i.tax_percentage || i.taxPercentage || prod.tax_percentage || prod.gst_rate || 5);
+    return {
+      productId: i.product_id || i.productId || prod.id,
+      productName: i.product_name || prod.name || i.name || 'Grocery Item',
+      sku: i.sku || prod.sku || 'SKU-GENERIC',
+      brand: i.brand || prod.brand || 'Kirana',
+      unit: i.unit || prod.unit || 'kg',
+      quantity: parseFloat(i.quantity || 1),
+      mrp,
+      sellingPrice,
+      discountAmount: parseFloat(i.discount_amount || i.discount || 0),
+      taxPercentage: taxPct
+    };
+  });
+
   const calculated = calculateFinancials(
-    orderItemsData.map(i => ({
-      productId: i.product_id,
-      productName: i.product_name,
-      sku: i.sku,
-      unit: i.unit,
-      quantity: i.quantity,
-      mrp: i.mrp,
-      sellingPrice: i.selling_price,
-      discountAmount: i.discount_amount,
-      taxPercentage: i.tax_percentage || 5
-    })),
-    { deliveryCharge: orderData.delivery_charge, couponDiscount: orderData.discount_amount }
+    mappedItems,
+    {
+      deliveryCharge: parseFloat(orderData.delivery_charge || orderData.deliveryCharge || 0),
+      couponDiscount: parseFloat(orderData.discount_amount || orderData.discountAmount || 0)
+    }
   );
+
+  // Fallback if line calculation yielded 0 subtotal but orderData has subtotal
+  if (calculated.subtotal === 0 && parseFloat(orderData.subtotal || 0) > 0) {
+    calculated.subtotal = parseFloat(orderData.subtotal);
+    const rawGrand = Math.max(0, calculated.subtotal - calculated.discountAmount + calculated.taxAmount + calculated.deliveryCharge);
+    calculated.totalAmount = Math.round(rawGrand);
+    calculated.roundOff = Math.round((calculated.totalAmount - rawGrand) * 100) / 100;
+  }
 
   const invoiceRecord = {
     id: `inv-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,

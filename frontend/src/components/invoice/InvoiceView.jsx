@@ -133,23 +133,33 @@ export const InvoiceView = ({ invoice, onClose }) => {
             </tr>
           </thead>
           <tbody>
-            {items.map((item, idx) => (
-              <tr key={idx} style={{ borderBottom: '1px solid #E2E8F0' }}>
-                <td style={{ padding: '10px', fontWeight: 700, color: '#0F172A' }}>{item.product_name || item.productName}</td>
-                <td style={{ padding: '10px', textAlign: 'center', color: '#64748B', fontSize: '0.8rem' }}>{item.sku}</td>
-                <td style={{ padding: '10px', textAlign: 'center', fontWeight: 700 }}>{item.quantity} {item.unit || 'kg'}</td>
-                <td style={{ padding: '10px', textAlign: 'right' }}>{formatCurrency(item.selling_price || item.sellingPrice)}</td>
-                <td style={{ padding: '10px', textAlign: 'right', color: '#DC2626' }}>
-                  {(item.discount_amount || item.discountAmount) > 0 ? `-${formatCurrency(item.discount_amount || item.discountAmount)}` : '₹0'}
-                </td>
-                <td style={{ padding: '10px', textAlign: 'right', color: '#0369A1' }}>
-                  {item.tax_percentage || item.taxPercentage || 0}% ({formatCurrency(item.tax_amount || item.taxAmount || 0)})
-                </td>
-                <td style={{ padding: '10px', textAlign: 'right', fontWeight: 800, color: '#0F172A' }}>
-                  {formatCurrency(item.total_amount || item.totalAmount)}
-                </td>
-              </tr>
-            ))}
+            {items.map((item, idx) => {
+              const productName = item.product_name || item.productName || item.name || 'Grocery Item';
+              const sku = item.sku || 'N/A';
+              const sellingPrice = item.selling_price ?? item.sellingPrice ?? item.unit_price ?? item.price ?? 0;
+              const discount = item.discount_amount ?? item.discountAmount ?? 0;
+              const taxPct = item.tax_percentage ?? item.taxPercentage ?? 0;
+              const taxAmt = item.tax_amount ?? item.taxAmount ?? 0;
+              const lineTotal = item.total_amount ?? item.totalAmount ?? item.subtotal ?? (sellingPrice * item.quantity);
+
+              return (
+                <tr key={idx} style={{ borderBottom: '1px solid #E2E8F0' }}>
+                  <td style={{ padding: '10px', fontWeight: 700, color: '#0F172A' }}>{productName}</td>
+                  <td style={{ padding: '10px', textAlign: 'center', color: '#64748B', fontSize: '0.8rem' }}>{sku}</td>
+                  <td style={{ padding: '10px', textAlign: 'center', fontWeight: 700 }}>{item.quantity} {item.unit || 'kg'}</td>
+                  <td style={{ padding: '10px', textAlign: 'right' }}>{formatCurrency(sellingPrice)}</td>
+                  <td style={{ padding: '10px', textAlign: 'right', color: '#DC2626' }}>
+                    {discount > 0 ? `-${formatCurrency(discount)}` : '₹0'}
+                  </td>
+                  <td style={{ padding: '10px', textAlign: 'right', color: '#0369A1' }}>
+                    {taxPct}% ({formatCurrency(taxAmt)})
+                  </td>
+                  <td style={{ padding: '10px', textAlign: 'right', fontWeight: 800, color: '#0F172A' }}>
+                    {formatCurrency(lineTotal)}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
