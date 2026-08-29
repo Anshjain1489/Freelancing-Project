@@ -74,7 +74,7 @@ export const Login = () => {
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
           <GoogleLogin
             onSuccess={handleGoogleSuccess}
-            onError={() => setError('Google Authentication was cancelled or failed.')}
+            onError={() => setError('Google Sign-In failed (origin_mismatch). Please add http://localhost:5173 to Authorized JavaScript Origins in Google Cloud Console, or log in using Mobile Number below.')}
             useOneTap
             shape="pill"
             width="320"

@@ -89,7 +89,7 @@ export const Register = () => {
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
           <GoogleLogin
             onSuccess={handleGoogleSuccess}
-            onError={() => setError('Google Authentication failed.')}
+            onError={() => setError('Google Sign-Up failed (origin_mismatch). Please add http://localhost:5173 to Authorized JavaScript Origins in Google Cloud Console, or use Mobile Number registration / 1-Click Demo below.')}
             text="signup_with"
             shape="pill"
             width="320"
