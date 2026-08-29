@@ -13,12 +13,13 @@ const possibleEnvPaths = [
   path.join(__dirname, '../../.env'),
   path.join(__dirname, '../.env'),
   path.join(process.cwd(), '.env'),
-  path.join(process.cwd(), 'backend/.env')
+  path.join(process.cwd(), 'backend/.env'),
+  path.join(__dirname, '../../../backend/.env')
 ];
 
 for (const envPath of possibleEnvPaths) {
   if (fs.existsSync(envPath)) {
-    dotenv.config({ path: envPath, override: false });
+    dotenv.config({ path: envPath, override: true });
   }
 }
 
