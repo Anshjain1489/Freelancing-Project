@@ -289,11 +289,14 @@ async function runTests() {
     let mockSentBody = '';
     const mockRes = {
       setHeader: (k, v) => { mockResHeader[k] = v; },
-      send: (html) => { mockSentBody = html; return html; }
+      status: function(s) { return this; }
     };
     const mockReq = { params: { id: invCustA.id }, user: { id: custA, role: 'CUSTOMER' } };
 
-    await invoiceController.downloadInvoiceHtml(mockReq, mockRes);
+    await new Promise((resolve) => {
+      mockRes.send = (html) => { mockSentBody = html; resolve(); return html; };
+      invoiceController.downloadInvoiceHtml(mockReq, mockRes, (err) => { resolve(); });
+    });
     check('downloadInvoiceHtml sets Content-Type text/html', mockResHeader['Content-Type'] === 'text/html');
     check('downloadInvoiceHtml renders store title', mockSentBody.includes('CHAUDHARY KIRANA STORE'));
     check('downloadInvoiceHtml renders GST INVOICE header', mockSentBody.includes('GST INVOICE'));

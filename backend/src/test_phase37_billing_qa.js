@@ -366,8 +366,11 @@ async function runTests() {
 
     // Test 4.4: Download HTML Invoice generation headers
     let downloadHtmlResult = '';
-    const mockResHtml = { setHeader: () => {}, send: (h) => { downloadHtmlResult = h; return h; } };
-    await invoiceController.downloadInvoiceHtml({ params: { id: invFirstCall.id }, user: adminUser }, mockResHtml);
+    const mockResHtml = { setHeader: () => {}, status: function(s) { return this; } };
+    await new Promise((resolve) => {
+      mockResHtml.send = (h) => { downloadHtmlResult = h; resolve(); return h; };
+      invoiceController.downloadInvoiceHtml({ params: { id: invFirstCall.id }, user: adminUser }, mockResHtml, (err) => { resolve(); });
+    });
     check('HTML invoice download contains GST INVOICE title', downloadHtmlResult.includes('GST INVOICE'));
     check('HTML invoice download contains Chaudhary Kirana Store', downloadHtmlResult.includes('CHAUDHARY KIRANA STORE'));
     check('HTML invoice download contains invoice number', downloadHtmlResult.includes(invFirstCall.invoice_number));

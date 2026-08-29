@@ -146,6 +146,95 @@ const generatePosSaleNumber = async () => {
 };
 
 /**
+ * Helper to ensure invoice_items array is populated from order_items if missing
+ */
+const ensureInvoiceItems = async (inv) => {
+  if (!inv) return inv;
+  const itemsList = inv.invoice_items || inv.items || [];
+  if (itemsList.length === 0 && inv.order_id) {
+    if (supabase && isUuid(inv.order_id)) {
+      try {
+        const { data: ordItems } = await supabase
+          .from('order_items')
+          .select('*, products(*)')
+          .eq('order_id', inv.order_id);
+
+        if (ordItems && ordItems.length > 0) {
+          const populatedItems = ordItems.map(i => {
+            const prod = i.products || {};
+            const sellingPrice = parseFloat(i.unit_price || i.selling_price || i.price || prod.selling_price || prod.price || 0);
+            const qty = parseFloat(i.quantity || 1);
+            const lineTotal = parseFloat(i.total_price || i.total_amount || (sellingPrice * qty));
+            return {
+              id: i.id,
+              invoice_id: inv.id,
+              product_id: i.product_id || prod.id,
+              product_name: i.product_name || prod.name || i.name || 'Grocery Item',
+              sku: i.sku || prod.sku || 'SKU-GENERIC',
+              brand: i.brand || prod.brand || 'Kirana',
+              unit: i.unit || prod.unit || 'kg',
+              quantity: qty,
+              mrp: parseFloat(i.mrp || prod.mrp || sellingPrice || 0),
+              selling_price: sellingPrice,
+              discount_amount: parseFloat(i.discount_amount || 0),
+              tax_percentage: parseFloat(i.tax_percentage || prod.tax_percentage || prod.gst_rate || 5),
+              tax_amount: parseFloat(i.tax_amount || 0),
+              subtotal: sellingPrice * qty,
+              total_amount: lineTotal
+            };
+          });
+
+          inv.invoice_items = populatedItems;
+
+          try {
+            const dbPayload = populatedItems.map(item => ({
+              invoice_id: isUuid(inv.id) ? inv.id : null,
+              product_id: isUuid(item.product_id) ? item.product_id : null,
+              product_name: item.product_name,
+              sku: item.sku,
+              brand: item.brand,
+              unit: item.unit,
+              quantity: item.quantity,
+              mrp: item.mrp,
+              selling_price: item.selling_price,
+              discount_amount: item.discount_amount,
+              tax_percentage: item.tax_percentage,
+              tax_amount: item.tax_amount,
+              subtotal: item.subtotal,
+              total_amount: item.total_amount
+            })).filter(x => x.invoice_id);
+
+            if (dbPayload.length > 0) {
+              await supabase.from('invoice_items').insert(dbPayload);
+            }
+          } catch (insertErr) {}
+        }
+      } catch (err) {}
+    } else {
+      try {
+        const orderService = require('./order.service');
+        const foundMock = (orderService.mockOrders || []).find(o => String(o.id) === String(inv.order_id) || String(o.orderNumber) === String(inv.order_id));
+        if (foundMock && foundMock.items) {
+          inv.invoice_items = foundMock.items.map(i => ({
+            product_id: i.productId || i.id,
+            product_name: i.name || i.productName || 'Grocery Item',
+            sku: i.sku || 'SKU-GENERIC',
+            unit: i.unit || 'kg',
+            quantity: i.quantity,
+            mrp: i.mrp || i.sellingPrice || i.unitPrice || 100,
+            selling_price: i.sellingPrice || i.unitPrice || i.unit_price || 100,
+            discount_amount: i.discountAmount || 0,
+            tax_amount: 0,
+            total_amount: (i.sellingPrice || i.unitPrice || 100) * i.quantity
+          }));
+        }
+      } catch (e) {}
+    }
+  }
+  return inv;
+};
+
+/**
  * 4. Generate Invoice for Online Order (Idempotent)
  */
 const generateInvoiceForOrder = async (orderId) => {
@@ -167,7 +256,7 @@ const generateInvoiceForOrder = async (orderId) => {
       const invIsZero = parseFloat(existingInv.subtotal || 0) === 0 && parseFloat(existingInv.total_amount || 0) === 0;
 
       if (!invIsZero || !orderHasValue) {
-        return existingInv;
+        return await ensureInvoiceItems(existingInv);
       }
 
       // Clear corrupted zero-value invoice record so it gets re-issued correctly below
@@ -183,7 +272,7 @@ const generateInvoiceForOrder = async (orderId) => {
   for (const [invId, inv] of mockInvoices.entries()) {
     if (String(inv.order_id) === String(orderId)) {
       if (parseFloat(inv.subtotal || 0) > 0 || parseFloat(inv.total_amount || 0) > 0) {
-        return inv;
+        return await ensureInvoiceItems(inv);
       }
       mockInvoices.delete(invId);
       break;
@@ -706,7 +795,7 @@ const getInvoiceById = async (invoiceId, userId, userRole) => {
     }
   }
 
-  return inv;
+  return await ensureInvoiceItems(inv);
 };
 
 /**
@@ -743,7 +832,7 @@ const getInvoiceByOrderId = async (orderId, userId, userRole) => {
     }
   }
 
-  return inv;
+  return await ensureInvoiceItems(inv);
 };
 
 /**
