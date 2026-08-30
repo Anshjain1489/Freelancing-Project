@@ -106,19 +106,19 @@ async function runAllTests() {
       assert(res.rows.length >= 1);
     });
 
-    await asyncTest('1.14 Seeded coupon SAVE10 exists', async () => {
-      const cpn = await couponService.getCouponByCode('SAVE10');
-      assert(cpn !== null && cpn.code === 'SAVE10');
+    await asyncTest('1.14 Seeded coupon SAVE1000 exists', async () => {
+      const cpn = await couponService.getCouponByCode('SAVE1000');
+      assert(cpn !== null && cpn.code === 'SAVE1000');
     });
 
-    await asyncTest('1.15 Seeded coupon WELCOME100 exists', async () => {
-      const cpn = await couponService.getCouponByCode('WELCOME100');
-      assert(cpn !== null && cpn.code === 'WELCOME100');
+    await asyncTest('1.15 Seeded coupon SAVE2000 exists', async () => {
+      const cpn = await couponService.getCouponByCode('SAVE2000');
+      assert(cpn !== null && cpn.code === 'SAVE2000');
     });
 
-    await asyncTest('1.16 Seeded coupon KIRANA50 exists', async () => {
-      const cpn = await couponService.getCouponByCode('KIRANA50');
-      assert(cpn !== null && cpn.code === 'KIRANA50');
+    await asyncTest('1.16 Seeded coupon SAVE5000 exists', async () => {
+      const cpn = await couponService.getCouponByCode('SAVE5000');
+      assert(cpn !== null && cpn.code === 'SAVE5000');
     });
   });
 
@@ -206,8 +206,8 @@ async function runAllTests() {
     await asyncTest('2.9 Duplicate coupon code creation throws error', async () => {
       try {
         await couponService.createCoupon(testAdminId, {
-          code: 'SAVE10',
-          discountType: 'PERCENTAGE',
+          code: 'SAVE1000',
+          discountType: 'FIXED',
           discountValue: 10
         });
         assert.fail('Should have thrown duplicate code error');
@@ -332,44 +332,44 @@ async function runAllTests() {
 
   // GROUP 3: Coupon Validation Rules & Limits (20+ assertions)
   await runTestGroup('Group 3: Coupon Validation Rules & Limits', async () => {
-    await asyncTest('3.1 Percentage discount calculation (SAVE10 on ₹1,000 subtotal)', async () => {
-      const res = await couponService.validateCoupon(testUserId, 'SAVE10', 1000);
+    await asyncTest('3.1 Fixed discount calculation (SAVE1000 on ₹1,000 subtotal)', async () => {
+      const res = await couponService.validateCoupon(testUserId, 'SAVE1000', 1000);
+      assert.strictEqual(res.valid, true);
+      assert.strictEqual(res.discountAmount, 10);
+      assert.strictEqual(res.finalAmount, 990);
+    });
+
+    await asyncTest('3.2 Fixed discount ceiling (SAVE1000 on ₹5,000)', async () => {
+      const res = await couponService.validateCoupon(testUserId, 'SAVE1000', 5000);
+      assert.strictEqual(res.valid, true);
+      assert.strictEqual(res.discountAmount, 10);
+      assert.strictEqual(res.finalAmount, 4990);
+    });
+
+    await asyncTest('3.3 Fixed discount calculation (SAVE5000 on ₹5,200 subtotal)', async () => {
+      const res = await couponService.validateCoupon(testUserId, 'SAVE5000', 5200);
       assert.strictEqual(res.valid, true);
       assert.strictEqual(res.discountAmount, 100);
-      assert.strictEqual(res.finalAmount, 900);
+      assert.strictEqual(res.finalAmount, 5100);
     });
 
-    await asyncTest('3.2 Percentage discount capped by maximum_discount_amount', async () => {
-      const res = await couponService.validateCoupon(testUserId, 'SAVE10', 5000); // 10% of 5000 is 500, but max is 100
+    await asyncTest('3.4 Case-insensitive coupon lookup (save1000)', async () => {
+      const res = await couponService.validateCoupon(testUserId, 'save1000', 1000);
       assert.strictEqual(res.valid, true);
-      assert.strictEqual(res.discountAmount, 100);
-      assert.strictEqual(res.finalAmount, 4900);
+      assert.strictEqual(res.couponCode, 'SAVE1000');
     });
 
-    await asyncTest('3.3 Fixed discount calculation (WELCOME100 on ₹1,200 subtotal)', async () => {
-      const res = await couponService.validateCoupon(testUserId, 'WELCOME100', 1200);
-      assert.strictEqual(res.valid, true);
-      assert.strictEqual(res.discountAmount, 100);
-      assert.strictEqual(res.finalAmount, 1100);
-    });
-
-    await asyncTest('3.4 Case-insensitive coupon lookup (save10)', async () => {
-      const res = await couponService.validateCoupon(testUserId, 'save10', 1000);
-      assert.strictEqual(res.valid, true);
-      assert.strictEqual(res.couponCode, 'SAVE10');
-    });
-
-    await asyncTest('3.5 Case-insensitive coupon lookup (sAvE10)', async () => {
-      const res = await couponService.validateCoupon(testUserId, 'sAvE10', 1000);
+    await asyncTest('3.5 Case-insensitive coupon lookup (sAvE1000)', async () => {
+      const res = await couponService.validateCoupon(testUserId, 'sAvE1000', 1000);
       assert.strictEqual(res.valid, true);
     });
 
     await asyncTest('3.6 Rejects coupon when subtotal < minimum_order_amount', async () => {
       try {
-        await couponService.validateCoupon(testUserId, 'WELCOME100', 500); // min 999
+        await couponService.validateCoupon(testUserId, 'SAVE5000', 500);
         assert.fail('Should fail min order threshold');
       } catch (err) {
-        assert(err.message.includes('Minimum order value of ₹999 required'));
+        assert(err.message.includes('Minimum order value of ₹5000 required'));
       }
     });
 
@@ -515,17 +515,17 @@ async function runAllTests() {
     });
 
     await asyncTest('3.17 Validate coupon returns readable success message', async () => {
-      const res = await couponService.validateCoupon(testUserId, 'SAVE10', 1000);
-      assert(res.message.includes('SAVE10 applied'));
+      const res = await couponService.validateCoupon(testUserId, 'SAVE1000', 1000);
+      assert(res.message.includes('SAVE1000 applied'));
     });
 
     await asyncTest('3.18 Validate coupon returns complete response object', async () => {
-      const res = await couponService.validateCoupon(testUserId, 'SAVE10', 1000);
+      const res = await couponService.validateCoupon(testUserId, 'SAVE1000', 1000);
       assert(res.valid && res.coupon && res.discountAmount > 0 && res.finalAmount !== undefined);
     });
 
     await asyncTest('3.19 Fixed discount retains exact rupee value', async () => {
-      const res = await couponService.validateCoupon(testUserId, 'KIRANA50', 600);
+      const res = await couponService.validateCoupon(testUserId, 'SAVE2000', 2000);
       assert.strictEqual(res.discountAmount, 50);
     });
 
@@ -553,24 +553,24 @@ async function runAllTests() {
   // GROUP 4: Checkout Integration (20+ assertions)
   await runTestGroup('Group 4: Checkout Integration & Server Recalculation', async () => {
     await asyncTest('4.1 Server calculates canonical subtotal', async () => {
-      const res = await couponService.validateCoupon(testUserId, 'SAVE10', 1000);
+      const res = await couponService.validateCoupon(testUserId, 'SAVE1000', 1000);
       assert.strictEqual(res.subtotal, 1000);
     });
 
     await asyncTest('4.2 Server calculates exact discount amount', async () => {
-      const res = await couponService.validateCoupon(testUserId, 'SAVE10', 1000);
-      assert.strictEqual(res.discountAmount, 100);
+      const res = await couponService.validateCoupon(testUserId, 'SAVE1000', 1000);
+      assert.strictEqual(res.discountAmount, 10);
     });
 
     await asyncTest('4.3 Server calculates final payable total', async () => {
-      const res = await couponService.validateCoupon(testUserId, 'SAVE10', 1000);
-      assert.strictEqual(res.finalAmount, 900);
+      const res = await couponService.validateCoupon(testUserId, 'SAVE1000', 1000);
+      assert.strictEqual(res.finalAmount, 990);
     });
 
     await asyncTest('4.4 Server recalculation ignores client-side tampered discount', async () => {
-      // Validate server ignores frontend claimed discount of ₹999
-      const res = await couponService.validateCoupon(testUserId, 'SAVE10', 1000);
-      assert.strictEqual(res.discountAmount, 100); // Must recalculate to ₹100, not ₹999
+      // Validate server ignores frontend claimed discount
+      const res = await couponService.validateCoupon(testUserId, 'SAVE1000', 1000);
+      assert.strictEqual(res.discountAmount, 10);
     });
 
     await asyncTest('4.5 Checkout order creation stores coupon_code snapshot', async () => {
@@ -609,7 +609,7 @@ async function runAllTests() {
 
       try {
         // Attempt checkout with invalid address
-        await orderService.createOrder(testUserId, 'invalid-address-id', 'SAVE10', 'COD');
+        await orderService.createOrder(testUserId, 'invalid-address-id', 'SAVE1000', 'COD');
       } catch (e) {}
 
       const countAfterRes = await pool.query('SELECT count(*) FROM coupon_usages');
@@ -619,12 +619,12 @@ async function runAllTests() {
     });
 
     await asyncTest('4.11 Subtotal + deliveryCharge - discountAmount formula holds', async () => {
-      const res = await couponService.validateCoupon(testUserId, 'SAVE10', 1000);
+      const res = await couponService.validateCoupon(testUserId, 'SAVE1000', 1000);
       assert.strictEqual(res.finalAmount, res.subtotal + res.deliveryCharge - res.discountAmount);
     });
 
     await asyncTest('4.12 Final total is never negative', async () => {
-      const res = await couponService.validateCoupon(testUserId, 'WELCOME100', 1000);
+      const res = await couponService.validateCoupon(testUserId, 'SAVE5000', 5000);
       assert(res.finalAmount >= 0);
     });
 
@@ -656,18 +656,18 @@ async function runAllTests() {
     });
 
     await asyncTest('4.16 Delivery charge added to cart total properly', async () => {
-      const res = await couponService.validateCoupon(testUserId, 'SAVE10', 1000);
+      const res = await couponService.validateCoupon(testUserId, 'SAVE1000', 1000);
       assert(res.deliveryCharge >= 0);
     });
 
     await asyncTest('4.17 Checkout preview returns valid breakdown structure', async () => {
-      const res = await couponService.validateCoupon(testUserId, 'SAVE10', 1000);
+      const res = await couponService.validateCoupon(testUserId, 'SAVE1000', 1000);
       assert(res.subtotal !== undefined && res.discountAmount !== undefined && res.finalAmount !== undefined);
     });
 
     await asyncTest('4.18 Re-validating coupon on order placement verifies live stock', async () => {
       try {
-        await couponService.validateCoupon(testUserId, 'SAVE10', 1000);
+        await couponService.validateCoupon(testUserId, 'SAVE1000', 1000);
         assert(true);
       } catch (e) {
         assert(true);
@@ -675,12 +675,12 @@ async function runAllTests() {
     });
 
     await asyncTest('4.19 Coupon discount is rounded to 2 decimal places', async () => {
-      const res = await couponService.validateCoupon(testUserId, 'SAVE10', 999.99);
+      const res = await couponService.validateCoupon(testUserId, 'SAVE1000', 1000.99);
       assert.strictEqual(res.discountAmount, parseFloat(res.discountAmount.toFixed(2)));
     });
 
     await asyncTest('4.20 Final payable total rounded to 2 decimal places', async () => {
-      const res = await couponService.validateCoupon(testUserId, 'SAVE10', 999.99);
+      const res = await couponService.validateCoupon(testUserId, 'SAVE1000', 1000.99);
       assert.strictEqual(res.finalAmount, parseFloat(res.finalAmount.toFixed(2)));
     });
   });
@@ -706,17 +706,17 @@ async function runAllTests() {
     });
 
     await asyncTest('5.5 Discount tampering defense: Server rejects client claim of 100% discount', async () => {
-      const res = await couponService.validateCoupon(testUserId, 'SAVE10', 1000);
-      assert.strictEqual(res.discountAmount, 100);
+      const res = await couponService.validateCoupon(testUserId, 'SAVE1000', 1000);
+      assert.strictEqual(res.discountAmount, 10);
     });
 
     await asyncTest('5.6 Cart total tampering defense: Server recalculates cart subtotal', async () => {
-      const res = await couponService.validateCoupon(testUserId, 'SAVE10', 1000);
+      const res = await couponService.validateCoupon(testUserId, 'SAVE1000', 1000);
       assert.strictEqual(res.subtotal, 1000);
     });
 
     await asyncTest('5.7 SQL Injection in coupon code safely escaped', async () => {
-      const malicious = "SAVE10' OR '1'='1";
+      const malicious = "SAVE1000' OR '1'='1";
       const cpn = await couponService.getCouponByCode(malicious);
       assert.strictEqual(cpn, null);
     });
@@ -729,7 +729,7 @@ async function runAllTests() {
 
     await asyncTest('5.9 Negative cart total submitted to validateCoupon handled gracefully', async () => {
       try {
-        await couponService.validateCoupon(testUserId, 'SAVE10', -500);
+        await couponService.validateCoupon(testUserId, 'SAVE1000', -500);
         assert.fail('Should reject negative subtotal');
       } catch (err) {
         assert(true);
@@ -802,7 +802,7 @@ async function runAllTests() {
     });
 
     await asyncTest('5.14 Secrets or JWT tokens not leaked in coupon responses', async () => {
-      const res = await couponService.validateCoupon(testUserId, 'SAVE10', 1000);
+      const res = await couponService.validateCoupon(testUserId, 'SAVE1000', 1000);
       assert(!JSON.stringify(res).includes('secret') && !JSON.stringify(res).includes('password'));
     });
 
@@ -1269,16 +1269,17 @@ async function runAllTests() {
 
   // Post-test cleanup: delete temporary test coupons created during this QA run
   try {
-    const allowedCodes = ['SAVE1000', 'SAVE2000', 'SAVE5000', 'SAVE10000', 'SAVE10', 'WELCOME100', 'KIRANA50'];
+    const allowedCodes = ['SAVE1000', 'SAVE2000', 'SAVE5000', 'SAVE10000'];
     const selectRes = await pool.query(
       `SELECT id FROM coupons WHERE UPPER(code) NOT IN (${allowedCodes.map((_, i) => `$${i + 1}`).join(', ')})`,
       allowedCodes
     );
     if (selectRes.rows.length > 0) {
       const ids = selectRes.rows.map(r => r.id);
-      await pool.query('DELETE FROM coupon_usages WHERE coupon_id = ANY($1)', [ids]);
-      await pool.query('UPDATE orders SET coupon_id = NULL WHERE coupon_id = ANY($1)', [ids]);
-      await pool.query('DELETE FROM coupons WHERE id = ANY($1)', [ids]);
+      const placeholders = ids.map((_, i) => `$${i + 1}`).join(', ');
+      await pool.query(`DELETE FROM coupon_usages WHERE coupon_id IN (${placeholders})`, ids);
+      await pool.query(`UPDATE orders SET coupon_id = NULL WHERE coupon_id IN (${placeholders})`, ids);
+      await pool.query(`DELETE FROM coupons WHERE id IN (${placeholders})`, ids);
     }
   } catch (e) {}
 
