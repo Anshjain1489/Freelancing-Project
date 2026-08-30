@@ -116,9 +116,17 @@ const createOrder = async (userId, addressId, couponCode = null, paymentMethod =
       const orderItemRows = cart.items.map(item => ({
         order_id: newOrder.id,
         product_id: item.productId,
+        product_name: item.name || item.productName || 'Grocery Item',
+        sku: item.sku || 'SKU-GENERIC',
+        unit: item.unit || 'kg',
         quantity: item.quantity,
-        unit_price: item.sellingPrice,
-        total_price: item.itemSubtotal
+        mrp: parseFloat(item.mrp || item.sellingPrice || 0),
+        selling_price: parseFloat(item.sellingPrice || 0),
+        discount_amount: parseFloat(item.discountAmount || 0),
+        tax_amount: parseFloat(item.taxAmount || 0),
+        total_amount: parseFloat(item.itemSubtotal || (item.sellingPrice * item.quantity) || 0),
+        unit_price: parseFloat(item.sellingPrice || 0),
+        total_price: parseFloat(item.itemSubtotal || (item.sellingPrice * item.quantity) || 0)
       }));
       await supabase.from('order_items').insert(orderItemRows);
 

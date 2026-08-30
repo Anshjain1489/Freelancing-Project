@@ -174,7 +174,15 @@ export const AdminInvoicesPage = () => {
                     <td style={{ padding: '12px', textAlign: 'center' }}>
                       <button
                         type="button"
-                        onClick={() => setSelectedInvoice(inv)}
+                        onClick={async () => {
+                          try {
+                            const res = await invoiceService.getInvoiceById(inv.id);
+                            const fullInv = res.data?.invoice || res.invoice || res;
+                            setSelectedInvoice(fullInv);
+                          } catch (e) {
+                            setSelectedInvoice(inv);
+                          }
+                        }}
                         style={{
                           padding: '6px 12px',
                           borderRadius: '6px',
