@@ -19,10 +19,18 @@ export const Footer = () => {
       }}>
         {/* Store Identity */}
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-            <div style={{ width: '32px', height: '32px', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '1rem', fontWeight: 800 }}>
-              🌾
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+            <img
+              src="/logo.png"
+              alt="Chaudhary Kirana Store Logo"
+              style={{
+                width: '38px',
+                height: '38px',
+                objectFit: 'contain',
+                borderRadius: '50%',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.12)'
+              }}
+            />
             <span style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--color-text-primary)' }}>
               Chaudhary Kirana Store
             </span>

@@ -55,10 +55,18 @@ export const Navbar = () => {
         gap: '16px'
       }}>
         {/* Brand Logo */}
-        <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div style={{ width: '38px', height: '38px', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '1.2rem', fontWeight: 800 }}>
-            🌾
-          </div>
+        <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <img
+            src="/logo.png"
+            alt="Chaudhary Kirana Store Logo"
+            style={{
+              width: '42px',
+              height: '42px',
+              objectFit: 'contain',
+              borderRadius: '50%',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.12)'
+            }}
+          />
           <div>
             <span style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-text-primary)', display: 'block', lineHeight: 1.1 }}>
               Chaudhary Kirana

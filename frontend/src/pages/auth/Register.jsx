@@ -73,6 +73,18 @@ export const Register = () => {
     <div style={{ maxWidth: '440px', margin: '40px auto', padding: '0 16px' }}>
       <Card padding="32px">
         <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+          <img
+            src="/logo.png"
+            alt="Chaudhary Kirana Store Logo"
+            style={{
+              width: '64px',
+              height: '64px',
+              objectFit: 'contain',
+              borderRadius: '50%',
+              margin: '0 auto 12px auto',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.12)'
+            }}
+          />
           <h2 className="text-h1">Create Account 🛒</h2>
           <p style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
             Join Chaudhary Kirana Store for fast local delivery

@@ -103,10 +103,18 @@ export const AdminLayout = () => {
         transition: 'transform 0.3s ease'
       }}>
         {/* Sidebar Brand Header */}
-        <div style={{ padding: '20px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{ width: '36px', height: '36px', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800 }}>
-            🌾
-          </div>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <img
+            src="/logo.png"
+            alt="Chaudhary Kirana Logo"
+            style={{
+              width: '40px',
+              height: '40px',
+              objectFit: 'contain',
+              borderRadius: '50%',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.12)'
+            }}
+          />
           <div>
             <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--color-text-primary)' }}>Chaudhary Kirana</div>
             <div style={{ fontSize: '0.7rem', color: 'var(--color-primary-dark)', fontWeight: 700 }}>Admin Portal</div>

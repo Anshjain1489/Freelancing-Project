@@ -104,8 +104,13 @@ export const InvoiceView = ({ invoice, onClose }) => {
       {/* Printable Invoice Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #06C167', paddingBottom: '16px', marginBottom: '20px' }}>
         <div>
-          <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#06C167', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Store size={22} /> CHAUDHARY KIRANA STORE
+          <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#06C167', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <img
+              src="/logo.png"
+              alt="Logo"
+              style={{ width: '40px', height: '40px', objectFit: 'contain', borderRadius: '50%' }}
+            />
+            CHAUDHARY KIRANA STORE
           </div>
           <div style={{ fontSize: '0.82rem', color: '#64748B', marginTop: '4px' }}>
             Near Bada Jain Mandir, Tikamgarh Road, Mahruni (284405)<br />
