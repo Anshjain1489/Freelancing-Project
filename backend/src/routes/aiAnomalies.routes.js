@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const aiAnomaliesController = require('../controllers/aiAnomalies.controller');
-const { authenticateToken, authorizeRole } = require('../middleware/auth.middleware');
+const { authenticate, authorizeRoles, authorizeRole } = require('../middleware/auth.middleware');
 
-router.use(authenticateToken);
+router.use(authenticate);
 
 router.get('/', authorizeRole(['ADMIN', 'SUPER_ADMIN', 'STORE_MANAGER']), aiAnomaliesController.getAnomalies);
 router.post('/scan', authorizeRole(['ADMIN', 'SUPER_ADMIN']), aiAnomaliesController.scanAnomalies);

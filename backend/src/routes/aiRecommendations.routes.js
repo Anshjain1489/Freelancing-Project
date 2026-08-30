@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const aiRecommendationsController = require('../controllers/aiRecommendations.controller');
-const { authenticateToken, authorizeRole } = require('../middleware/auth.middleware');
+const { authenticate, authorizeRoles, authorizeRole } = require('../middleware/auth.middleware');
 
-router.use(authenticateToken);
+router.use(authenticate);
 
 router.get('/products', aiRecommendationsController.getCustomerRecommendations);
 router.get('/campaigns', authorizeRole(['ADMIN', 'SUPER_ADMIN', 'STORE_MANAGER']), aiRecommendationsController.getCampaignProposals);

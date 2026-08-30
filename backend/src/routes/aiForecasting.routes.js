@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const aiForecastingController = require('../controllers/aiForecasting.controller');
-const { authenticateToken, authorizeRole } = require('../middleware/auth.middleware');
+const { authenticate, authorizeRoles, authorizeRole } = require('../middleware/auth.middleware');
 
-router.use(authenticateToken);
+router.use(authenticate);
 
 router.get('/demand', authorizeRole(['ADMIN', 'SUPER_ADMIN', 'STORE_MANAGER']), aiForecastingController.getDemandForecasts);
 router.post('/demand/generate', authorizeRole(['ADMIN', 'SUPER_ADMIN']), aiForecastingController.generateDemandForecasts);

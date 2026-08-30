@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const aiRiskPricingController = require('../controllers/aiRiskPricing.controller');
-const { authenticateToken, authorizeRole } = require('../middleware/auth.middleware');
+const { authenticate, authorizeRoles, authorizeRole } = require('../middleware/auth.middleware');
 
-router.use(authenticateToken);
+router.use(authenticate);
 
 router.get('/pricing', authorizeRole(['ADMIN', 'SUPER_ADMIN', 'STORE_MANAGER']), aiRiskPricingController.getPricingRecommendations);
 router.post('/pricing/analyze', authorizeRole(['ADMIN', 'SUPER_ADMIN']), aiRiskPricingController.analyzePricing);

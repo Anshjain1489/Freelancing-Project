@@ -52,12 +52,21 @@ const authorizeDeliveryPartner = (req, res, next) => {
 };
 
 const authorizeRoles = (...roles) => {
+  const allowed = Array.isArray(roles[0]) ? roles[0] : roles;
   return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
+    if (!req.user || !allowed.includes(req.user.role)) {
       return next(new AppError(`Forbidden: Access denied`, HTTP_STATUS.FORBIDDEN, ERROR_CODES.FORBIDDEN));
     }
     next();
   };
 };
 
-module.exports = { authenticate, optionalAuth, authorizeAdmin, authorizeDeliveryPartner, authorizeRoles };
+module.exports = {
+  authenticate,
+  authenticateToken: authenticate,
+  optionalAuth,
+  authorizeAdmin,
+  authorizeDeliveryPartner,
+  authorizeRoles,
+  authorizeRole: authorizeRoles
+};
