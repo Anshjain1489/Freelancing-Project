@@ -47,6 +47,21 @@ router.get('/store-config/public', async (req, res, next) => {
 router.use('/webhooks', webhookRoutes);
 router.use('/webhooks', whatsappWebhookRoutes);
 
+const storeCreditRoutes = require('./storeCredit.routes');
+const loyaltyRoutes = require('./loyalty.routes');
+const subscriptionRoutes = require('./subscription.routes');
+const branchRoutes = require('./branch.routes');
+const crmRoutes = require('./crm.routes');
+const marketingRoutes = require('./marketing.routes');
+const referralRoutes = require('./referral.routes');
+const engagementRoutes = require('./engagement.routes');
+const customerAnalyticsRoutes = require('./customerAnalytics.routes');
+const aiCopilotRoutes = require('./aiCopilot.routes');
+const aiForecastingRoutes = require('./aiForecasting.routes');
+const aiRiskPricingRoutes = require('./aiRiskPricing.routes');
+const aiRecommendationsRoutes = require('./aiRecommendations.routes');
+const aiAnomaliesRoutes = require('./aiAnomalies.routes');
+
 // 5. Feature Routes
 router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
@@ -67,6 +82,20 @@ router.use('/delivery-partner', deliveryPartnerRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/notification-preferences', notificationRoutes);
+router.use('/credit', storeCreditRoutes);
+router.use('/loyalty', loyaltyRoutes);
+router.use('/subscriptions', subscriptionRoutes);
+router.use('/branches', branchRoutes);
+router.use('/crm', crmRoutes);
+router.use('/marketing', marketingRoutes);
+router.use('/referrals', referralRoutes);
+router.use('/engagement', engagementRoutes);
+router.use('/customer-analytics', customerAnalyticsRoutes);
+router.use('/ai/copilot', aiCopilotRoutes);
+router.use('/ai/forecasting', aiForecastingRoutes);
+router.use('/ai/risk-pricing', aiRiskPricingRoutes);
+router.use('/ai/recommendations', aiRecommendationsRoutes);
+router.use('/ai/anomalies', aiAnomaliesRoutes);
 router.use('/admin', adminRoutes);
 
 const replenishmentCustomerController = require('../controllers/replenishmentCustomer.controller');
@@ -80,3 +109,4 @@ router.use('/chatbot', chatbotRoutes);
 router.use('/', invoiceRoutes);
 
 module.exports = router;
+

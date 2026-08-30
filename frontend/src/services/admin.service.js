@@ -217,5 +217,36 @@ export const adminService = {
   getCostHistory: async (productId) => {
     const response = await apiClient.get('/admin/procurement/cost-history', { params: { productId } });
     return response.data;
+  },
+
+  // Coupon Management APIs
+  getCoupons: async () => {
+    const response = await apiClient.get('/admin/coupons');
+    return response.data;
+  },
+
+  getCouponById: async (id) => {
+    const response = await apiClient.get(`/admin/coupons/${id}`);
+    return response.data;
+  },
+
+  createCoupon: async (couponData) => {
+    const response = await apiClient.post('/admin/coupons', couponData);
+    return response.data;
+  },
+
+  updateCoupon: async (id, updateData) => {
+    const response = await apiClient.put(`/admin/coupons/${id}`, updateData);
+    return response.data;
+  },
+
+  toggleCouponStatus: async (id, isActive) => {
+    const response = await apiClient.patch(`/admin/coupons/${id}/status`, { isActive });
+    return response.data;
+  },
+
+  deleteCoupon: async (id) => {
+    const response = await apiClient.delete(`/admin/coupons/${id}`);
+    return response.data;
   }
 };

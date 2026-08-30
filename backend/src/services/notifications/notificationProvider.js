@@ -57,9 +57,42 @@ const NotificationProvider = {
 };
 
 /**
- * 3. Secure WhatsApp Invoice Token Generator
+ * 3. Secure WhatsApp Invoice Token Generator (Reuse active tokens & Configurable Public URL)
  */
 const generateSecureInvoiceToken = async (invoiceId, customerId = null, expiresInHours = 24) => {
+  if (!invoiceId) throw new AppError('Invoice/Order ID is required', HTTP_STATUS.BAD_REQUEST);
+
+  const baseUrl = (process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || process.env.APP_URL || 'https://chaudharykiranastore.com').replace(/\/$/, '');
+
+  // Step 6: Prevent Token Duplication (Reuse existing valid non-expired token if available)
+  for (const record of mockInvoiceTokensMap.values()) {
+    if (String(record.invoice_id) === String(invoiceId) && !record.is_used) {
+      if (new Date(record.expires_at).getTime() > Date.now()) {
+        const shareableUrl = `${baseUrl}/invoice/share/${record.token}`;
+        return { token: record.token, expiresAt: record.expires_at, shareableUrl, invoice_url: shareableUrl };
+      }
+    }
+  }
+
+  if (supabase) {
+    try {
+      const { data: existingToken } = await supabase.from('invoice_sharing_tokens')
+        .select('*')
+        .eq('invoice_id', invoiceId)
+        .eq('is_used', false)
+        .gt('expires_at', new Date().toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingToken) {
+        mockInvoiceTokensMap.set(existingToken.token, existingToken);
+        const shareableUrl = `${baseUrl}/invoice/share/${existingToken.token}`;
+        return { token: existingToken.token, expiresAt: existingToken.expires_at, shareableUrl, invoice_url: shareableUrl };
+      }
+    } catch (e) {}
+  }
+
   const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + expiresInHours * 60 * 60 * 1000).toISOString();
   const id = `token-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
@@ -82,8 +115,8 @@ const generateSecureInvoiceToken = async (invoiceId, customerId = null, expiresI
     } catch (e) {}
   }
 
-  const shareableUrl = `https://chaudharykiranastore.com/invoice/share?token=${token}`;
-  return { token, expiresAt, shareableUrl };
+  const shareableUrl = `${baseUrl}/invoice/share/${token}`;
+  return { token, expiresAt, shareableUrl, invoice_url: shareableUrl };
 };
 
 /**

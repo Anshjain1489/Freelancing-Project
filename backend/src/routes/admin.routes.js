@@ -169,14 +169,18 @@ router.post('/deliveries/:orderId/reassign', deliveryAdminController.reassignFai
 router.post('/deliveries/:orderId/retry', deliveryAdminController.retryFailedDelivery);
 router.post('/deliveries/:orderId/return-to-store', deliveryAdminController.returnOrderToStore);
 router.post('/deliveries/:orderId/cancel-after-failure', deliveryAdminController.cancelOrderAfterDeliveryFailure);
+router.get('/deliveries/:orderId/whatsapp-link', deliveryAdminController.getWhatsAppClickToChatLink);
 router.post('/deliveries/:orderId/whatsapp-link', deliveryAdminController.getWhatsAppClickToChatLink);
 router.post('/deliveries/:orderId/whatsapp/resend', deliveryAdminController.getWhatsAppClickToChatLink);
 router.get('/deliveries/:orderId/notifications', deliveryAdminController.getWhatsAppClickToChatLink);
 
 // Coupon Management
 router.get('/coupons', couponAdminController.getAdminCoupons);
+router.get('/coupons/:id', couponAdminController.getCouponById);
 router.post('/coupons', couponAdminController.createCoupon);
+router.put('/coupons/:id', couponAdminController.updateCoupon);
 router.patch('/coupons/:id', couponAdminController.updateCoupon);
+router.patch('/coupons/:id/status', couponAdminController.toggleCouponStatus);
 router.delete('/coupons/:id', couponAdminController.deleteCoupon);
 
 // Customer Management
@@ -193,5 +197,11 @@ router.post('/banners', promotionAdminController.createBanner);
 
 // Activity Audit Log
 router.get('/activity', activityAdminController.getAdminActivityLogs);
+
+// System Status & Monitoring (Phase 43 Production Hardening)
+const productionMonitoringController = require('../controllers/admin/productionMonitoring.controller');
+router.get('/system-status', productionMonitoringController.getSystemStatus);
+router.get('/monitoring/alerts', productionMonitoringController.getSystemAlerts);
+router.post('/monitoring/alerts/:id/acknowledge', productionMonitoringController.acknowledgeAlert);
 
 module.exports = router;

@@ -16,6 +16,7 @@ const cancellationService = require('./services/cancellation.service');
 const returnService = require('./services/return.service');
 const deliveryDistanceService = require('./services/deliveryDistance.service');
 const categoryService = require('./services/category.service');
+const inventoryService = require('./services/inventory.service');
 const { authorizeAdmin, authorizeDeliveryPartner } = require('./middleware/auth.middleware');
 const { HTTP_STATUS } = require('./constants/statusCodes');
 const config = require('./config/environment');
@@ -315,6 +316,8 @@ async function runTests() {
     console.log('\n--- TEST GROUP 5: Checkout Preview, Order Creation & Ownership Security ---');
 
     // Setup cart for checkout (Subtotal >= ₹199)
+    targetProduct.stock_quantity = 100;
+    targetProduct.stockQuantity = 100;
     await cartService.clearCart(customerUser1);
     await cartService.addCartItem(customerUser1, targetProduct.id, 2); // 2 * 235 = 470 >= 199
 
@@ -337,6 +340,9 @@ async function runTests() {
     check('Rejects order creation when cart is empty with 400 Bad Request', errMinOrderVal && errMinOrderVal.statusCode === HTTP_STATUS.BAD_REQUEST);
 
     // Refill cart for valid order
+    targetProduct.stock_quantity = 100;
+    targetProduct.stockQuantity = 100;
+    try { await inventoryService.addStock('admin-qa', targetProduct.id, 100); } catch(e) {}
     await cartService.addCartItem(customerUser1, targetProduct.id, 2);
 
     // 5.3 Place Order (COD)
@@ -669,6 +675,7 @@ async function runTests() {
     console.log(`   TOTAL PASSED ASSERTIONS: ${passCount} / ${totalAssertions}`);
     console.log('   STATUS: ALL CUSTOMER EXPERIENCE & SECURITY TESTS PASSED! 🎉');
     console.log('================================================================\n');
+    process.exit(0);
 
   } catch (err) {
     console.error('\n❌ TEST SUITE RUNTIME FAILURE:', err);

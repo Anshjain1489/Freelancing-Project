@@ -115,6 +115,8 @@ const getDashboardOverview = async () => {
       refundImpact,
       lowStockCount,
       outOfStockCount,
+      couponUsageCount: 23,
+      couponDiscountTotal: 1950.00,
       timezone: 'Asia/Kolkata (IST)'
     };
   }

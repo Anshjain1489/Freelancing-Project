@@ -59,8 +59,9 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Base API Routes V1
+// Base API Routes V1 & /api compatibility mount
 app.use('/api/v1', apiRoutes);
+app.use('/api', apiRoutes);
 
 // Root Health Fallback
 app.get('/', (req, res) => {

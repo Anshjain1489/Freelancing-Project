@@ -53,7 +53,7 @@ const recordLedgerEntry = async (entryData) => {
     createdBy = 'SYSTEM'
   } = entryData;
 
-  const validTypes = ['SALE', 'REFUND', 'EXPENSE', 'SUPPLIER_PAYMENT', 'INVENTORY_WRITE_OFF', 'CASH_ADJUSTMENT', 'PAYMENT_RECEIVED'];
+  const validTypes = ['SALE', 'REFUND', 'EXPENSE', 'SUPPLIER_PAYMENT', 'INVENTORY_WRITE_OFF', 'CASH_ADJUSTMENT', 'PAYMENT_RECEIVED', 'STORE_CREDIT_REPAYMENT', 'STORE_CREDIT_PURCHASE'];
   if (!validTypes.includes(entryType)) {
     throw new AppError(`Invalid ledger entry type "${entryType}"`, HTTP_STATUS.BAD_REQUEST);
   }

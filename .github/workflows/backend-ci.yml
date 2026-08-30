@@ -1,4 +1,4 @@
-name: Backend CI & Automated Audit
+name: Backend CI & Security Validation
 
 on:
   push:
@@ -7,34 +7,49 @@ on:
     branches: [ main ]
 
 jobs:
-  test-backend:
+  backend-ci:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
       - name: Setup Node.js 18.x
         uses: actions/setup-node@v3
         with:
           node-version: 18.x
 
-      - name: Install Backend Dependencies
+      - name: Install Dependencies
         working-directory: ./backend
         run: npm ci
 
-      - name: Diagnostic Environment Gate
-        run: |
-          echo "✓ Node.js runtime environment ready"
-          echo "✓ Pre-deployment audit script initialized"
-
-      - name: Run Environment & Security Check
+      - name: Safe Environment Presence Diagnostic
         working-directory: ./backend
         env:
-          NODE_ENV: production
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL || vars.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || vars.SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || vars.SUPABASE_SERVICE_ROLE_KEY }}
-          JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET || vars.JWT_ACCESS_SECRET }}
-          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET || vars.JWT_REFRESH_SECRET }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL || vars.DATABASE_URL }}
-        run: node src/scripts/preDeploymentCheck.js
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+        run: |
+          echo "=== CI Secret Configuration Status ==="
+          echo "SUPABASE_URL: $(if [ -n "$SUPABASE_URL" ]; then echo 'CONFIGURED'; else echo 'MISSING'; fi)"
+          echo "SUPABASE_ANON_KEY: $(if [ -n "$SUPABASE_ANON_KEY" ]; then echo 'CONFIGURED'; else echo 'MISSING'; fi)"
+          echo "SUPABASE_SERVICE_ROLE_KEY: $(if [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; then echo 'CONFIGURED'; else echo 'MISSING'; fi)"
+          echo "DATABASE_URL: $(if [ -n "$DATABASE_URL" ]; then echo 'CONFIGURED'; else echo 'MISSING'; fi)"
+          echo "JWT_ACCESS_SECRET: $(if [ -n "$JWT_ACCESS_SECRET" ]; then echo 'CONFIGURED'; else echo 'MISSING'; fi)"
+          echo "JWT_REFRESH_SECRET: $(if [ -n "$JWT_REFRESH_SECRET" ]; then echo 'CONFIGURED'; else echo 'MISSING'; fi)"
+          echo "======================================"
+
+      - name: Run Phase 43 Automated Security & Production QA Suite
+        working-directory: ./backend
+        env:
+          NODE_ENV: test
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+        run: node src/test_phase43_production_qa.js

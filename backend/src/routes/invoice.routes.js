@@ -4,6 +4,10 @@ const { authenticate, authorizeAdmin, optionalAuth } = require('../middleware/au
 
 const router = express.Router();
 
+// Public Secure Invoice Share Endpoints (Token Protected, No Auth Required)
+router.get('/invoices/share/:token', invoiceController.getSharedInvoiceByToken);
+router.get('/invoice/share/:token', invoiceController.getSharedInvoiceByToken);
+
 // Customer / Authenticated Invoice Lookup
 router.get('/invoices/:id', authenticate, invoiceController.getInvoiceById);
 router.get('/orders/:id/invoice', authenticate, invoiceController.getInvoiceByOrderId);

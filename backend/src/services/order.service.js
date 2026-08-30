@@ -103,6 +103,15 @@ const createOrder = async (userId, addressId, couponCode = null, paymentMethod =
         throw new AppError('Failed to initialize order record: ' + (createErr?.message || 'Database error'), HTTP_STATUS.INTERNAL_SERVER_ERROR);
       }
 
+      // Record coupon usage if coupon was applied
+      if (coupon && coupon.id) {
+        try {
+          await couponService.recordCouponUsage(coupon.id, userId, newOrder.id, discountAmount);
+        } catch (couponErr) {
+          console.error('Failed to record coupon usage:', couponErr?.message);
+        }
+      }
+
       // Insert order items
       const orderItemRows = cart.items.map(item => ({
         order_id: newOrder.id,
@@ -111,7 +120,6 @@ const createOrder = async (userId, addressId, couponCode = null, paymentMethod =
         unit_price: item.sellingPrice,
         total_price: item.itemSubtotal
       }));
-      await supabase.from('cart_items');
       await supabase.from('order_items').insert(orderItemRows);
 
       // Snapshot delivery address

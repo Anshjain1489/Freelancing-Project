@@ -22,11 +22,30 @@ import {
   DollarSign,
   Wallet,
   Receipt,
-  Building2
+  Building2,
+  ShieldCheck,
+  BookOpen,
+  Award,
+  Calendar
 } from 'lucide-react';
 
 const ADMIN_NAV_ITEMS = [
   { label: 'Dashboard', to: '/admin/dashboard', icon: LayoutDashboard },
+  { label: 'AI Copilot 🤖', to: '/admin/ai-copilot', icon: LayoutDashboard },
+  { label: 'AI Retail Insights 🧠', to: '/admin/ai-insights', icon: TrendingUp },
+  { label: 'Predictive Analytics 📈', to: '/admin/ai-forecasting', icon: TrendingUp },
+  { label: 'Risk Intelligence 🛡️', to: '/admin/ai-risk', icon: ShieldCheck },
+  { label: 'AI Recommendation Queue 🎯', to: '/admin/ai-recommendations', icon: Tag },
+  { label: 'Customer CRM 👥', to: '/admin/crm', icon: Users },
+  { label: 'Customer Segments 🏷️', to: '/admin/crm/segments', icon: FolderTree },
+  { label: 'Marketing Campaigns 📣', to: '/admin/marketing', icon: Tag },
+  { label: 'Cart Recovery 🛒', to: '/admin/marketing/abandoned-carts', icon: ShoppingBag },
+  { label: 'Referral Program 🎁', to: '/admin/referrals', icon: Award },
+  { label: 'System Status 🛡️', to: '/admin/system-status', icon: ShieldCheck },
+  { label: 'Udhar Khata 📖', to: '/admin/khata', icon: BookOpen },
+  { label: 'Loyalty Rewards ⭐', to: '/admin/loyalty', icon: Award },
+  { label: 'Subscriptions 🥛', to: '/admin/subscriptions', icon: Calendar },
+  { label: 'Store Branches 🏪', to: '/admin/branches', icon: Building2 },
   { label: 'Finance 💰', to: '/admin/finance', icon: DollarSign },
   { label: 'Profit & Loss 📈', to: '/admin/profit-loss', icon: TrendingUp },
   { label: 'Expenses 💸', to: '/admin/expenses', icon: Receipt },
@@ -46,6 +65,7 @@ const ADMIN_NAV_ITEMS = [
   { label: 'Promotions', to: '/admin/promotions', icon: Tag },
   { label: 'Activity Logs', to: '/admin/activity', icon: History }
 ];
+
 
 export const AdminLayout = () => {
   const navigate = useNavigate();

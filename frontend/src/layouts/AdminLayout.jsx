@@ -17,6 +17,7 @@ export const AdminLayout = () => {
     { to: '/admin/customers', label: 'Customers', icon: Users },
     { to: '/admin/payments', label: 'Payments', icon: CreditCard },
     { to: '/admin/sales', label: 'Sales & Analytics', icon: BarChart2 },
+    { to: '/admin/coupons', label: 'Coupons & Offers', icon: Tag },
     { to: '/admin/promotions', label: 'Promotions', icon: Tag },
     { to: '/admin/banners', label: 'Banners', icon: Image },
     { to: '/admin/settings', label: 'Store Settings', icon: Settings }

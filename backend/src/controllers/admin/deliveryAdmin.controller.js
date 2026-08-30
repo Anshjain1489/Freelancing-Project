@@ -55,8 +55,8 @@ const reassignDeliveryPartner = asyncHandler(async (req, res) => {
 
 const getWhatsAppClickToChatLink = asyncHandler(async (req, res) => {
   const { partnerId } = req.body || {};
-  const result = await whatsappService.getWhatsAppClickToChatLink(req.user.id, req.params.orderId, partnerId);
-  return ApiResponse.success(res, HTTP_STATUS.OK, 'WhatsApp Click-to-Chat link generated', result);
+  const result = await whatsappService.getWhatsAppClickToChatLink(req.user.id, req.params.orderId, partnerId, req);
+  return res.status(HTTP_STATUS.OK).json(result);
 });
 
 const getFailedDeliveries = asyncHandler(async (req, res) => {

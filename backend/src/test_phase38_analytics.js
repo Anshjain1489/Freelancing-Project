@@ -260,6 +260,7 @@ async function runTests() {
     console.log(`   TOTAL PASSED ASSERTIONS: ${passCount} / ${totalAssertions}`);
     console.log('   STATUS: ALL PHASE 38 BI & ANALYTICS QA TESTS PASSED SUCCESSFULLY! 🎉');
     console.log('================================================================\n');
+    process.exit(0);
 
   } catch (err) {
     console.error('\n❌ TEST SUITE RUNTIME FAILURE:', err);

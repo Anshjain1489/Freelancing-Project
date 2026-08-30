@@ -4,8 +4,9 @@ const couponService = require('../services/coupon.service');
 const { HTTP_STATUS } = require('../constants/statusCodes');
 
 const validateCoupon = asyncHandler(async (req, res) => {
-  const { couponCode, addressId } = req.body;
-  const result = await couponService.validateCoupon(req.user.id, couponCode, addressId);
+  const code = req.body.couponCode || req.body.code;
+  const addressIdOrCartTotal = req.body.cartTotal || req.body.cartSubtotal || req.body.addressId || null;
+  const result = await couponService.validateCoupon(req.user.id, code, addressIdOrCartTotal);
   return ApiResponse.success(res, HTTP_STATUS.OK, result.message, result);
 });
 

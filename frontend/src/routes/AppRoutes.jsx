@@ -23,6 +23,7 @@ const TermsOfService = lazy(() => import('../pages/public/TermsOfService').then(
 const PrivacyPolicy = lazy(() => import('../pages/public/PrivacyPolicy').then(m => ({ default: m.PrivacyPolicy })));
 const ComponentShowcase = lazy(() => import('../pages/dev/ComponentShowcase').then(m => ({ default: m.ComponentShowcase })));
 const OfflinePage = lazy(() => import('../pages/OfflinePage').then(m => ({ default: m.OfflinePage })));
+const PublicInvoiceSharePage = lazy(() => import('../pages/public/PublicInvoiceSharePage').then(m => ({ default: m.PublicInvoiceSharePage })));
 
 // Lazy-Loaded Auth Pages
 const Login = lazy(() => import('../pages/auth/Login').then(m => ({ default: m.Login })));
@@ -85,6 +86,37 @@ const StoreConfigurationPage = lazy(() => import('../pages/admin/StoreConfigurat
 const ClientOnboardingPage = lazy(() => import('../pages/admin/ClientOnboardingPage').then(m => ({ default: m.ClientOnboardingPage })));
 const SystemHealthPage = lazy(() => import('../pages/admin/SystemHealthPage').then(m => ({ default: m.SystemHealthPage })));
 const DeploymentStatusPage = lazy(() => import('../pages/admin/DeploymentStatusPage').then(m => ({ default: m.DeploymentStatusPage })));
+const SystemStatusPage = lazy(() => import('../pages/admin/SystemStatusPage').then(m => ({ default: m.SystemStatusPage })));
+
+// Lazy-Loaded Phase 44 Pages
+const StoreCreditPage = lazy(() => import('../pages/customer/StoreCreditPage'));
+const LoyaltyPointsPage = lazy(() => import('../pages/customer/LoyaltyPointsPage'));
+const GrocerySubscriptionsPage = lazy(() => import('../pages/customer/GrocerySubscriptionsPage'));
+
+const CustomerKhataLedgerPage = lazy(() => import('../pages/admin/CustomerKhataLedgerPage'));
+const LoyaltyManagementPage = lazy(() => import('../pages/admin/LoyaltyManagementPage'));
+const SubscriptionsAdminPage = lazy(() => import('../pages/admin/SubscriptionsAdminPage'));
+const StoreBranchesPage = lazy(() => import('../pages/admin/StoreBranchesPage'));
+
+// Lazy-Loaded Phase 45 Pages
+const CustomerInsightsPage = lazy(() => import('../pages/customer/CustomerInsightsPage'));
+const ReferralPage = lazy(() => import('../pages/customer/ReferralPage'));
+const MyOffersPage = lazy(() => import('../pages/customer/MyOffersPage'));
+
+const CustomerCRMPage = lazy(() => import('../pages/admin/CustomerCRMPage'));
+const CustomerCRMDetailPage = lazy(() => import('../pages/admin/CustomerCRMDetailPage'));
+const CustomerSegmentsPage = lazy(() => import('../pages/admin/CustomerSegmentsPage'));
+const MarketingCampaignsPage = lazy(() => import('../pages/admin/MarketingCampaignsPage'));
+const AbandonedCartPage = lazy(() => import('../pages/admin/AbandonedCartPage'));
+const ReferralManagementPage = lazy(() => import('../pages/admin/ReferralManagementPage'));
+
+// Lazy-Loaded Phase 46 Pages
+const CustomerPersonalizedHub = lazy(() => import('../pages/customer/CustomerPersonalizedHub'));
+const AIBusinessCopilotPage = lazy(() => import('../pages/admin/AIBusinessCopilotPage'));
+const AIInsightsDashboardPage = lazy(() => import('../pages/admin/AIInsightsDashboardPage'));
+const AIPredictiveAnalyticsPage = lazy(() => import('../pages/admin/AIPredictiveAnalyticsPage'));
+const AIRiskIntelligencePage = lazy(() => import('../pages/admin/AIRiskIntelligencePage'));
+const AIRecommendationHubPage = lazy(() => import('../pages/admin/AIRecommendationHubPage'));
 
 // Protected Route Guards
 import { useAuth } from '../hooks/useAuth';
@@ -132,6 +164,8 @@ export const AppRoutes = () => {
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route path="/dev/components" element={<ComponentShowcase />} />
           <Route path="/offline" element={<OfflinePage />} />
+          <Route path="/invoice/share/:token" element={<PublicInvoiceSharePage />} />
+          <Route path="/invoice/share" element={<PublicInvoiceSharePage />} />
 
           {/* Auth Pages */}
           <Route path="/login" element={<Login />} />
@@ -199,6 +233,58 @@ export const AppRoutes = () => {
               <NotificationsPage />
             </ProtectedCustomerRoute>
           } />
+          <Route path="/account/credit" element={
+            <ProtectedCustomerRoute>
+              <StoreCreditPage />
+            </ProtectedCustomerRoute>
+          } />
+          <Route path="/credit" element={
+            <ProtectedCustomerRoute>
+              <StoreCreditPage />
+            </ProtectedCustomerRoute>
+          } />
+          <Route path="/account/loyalty" element={
+            <ProtectedCustomerRoute>
+              <LoyaltyPointsPage />
+            </ProtectedCustomerRoute>
+          } />
+          <Route path="/loyalty" element={
+            <ProtectedCustomerRoute>
+              <LoyaltyPointsPage />
+            </ProtectedCustomerRoute>
+          } />
+          <Route path="/account/subscriptions" element={
+            <ProtectedCustomerRoute>
+              <GrocerySubscriptionsPage />
+            </ProtectedCustomerRoute>
+          } />
+          <Route path="/subscriptions" element={
+            <ProtectedCustomerRoute>
+              <GrocerySubscriptionsPage />
+            </ProtectedCustomerRoute>
+          } />
+
+          {/* Phase 45 Customer CRM & Growth Routes */}
+          <Route path="/account/insights" element={
+            <ProtectedCustomerRoute>
+              <CustomerInsightsPage />
+            </ProtectedCustomerRoute>
+          } />
+          <Route path="/account/referrals" element={
+            <ProtectedCustomerRoute>
+              <ReferralPage />
+            </ProtectedCustomerRoute>
+          } />
+          <Route path="/account/offers" element={
+            <ProtectedCustomerRoute>
+              <MyOffersPage />
+            </ProtectedCustomerRoute>
+          } />
+          <Route path="/account/smart-hub" element={
+            <ProtectedCustomerRoute>
+              <CustomerPersonalizedHub />
+            </ProtectedCustomerRoute>
+          } />
 
           {/* Delivery Partner Protected Routes */}
           <Route path="/delivery/dashboard" element={
@@ -254,12 +340,35 @@ export const AppRoutes = () => {
           <Route path="/admin/payables" element={<SupplierPayablesPage />} />
           <Route path="/admin/profit-loss" element={<ProfitLossPage />} />
 
-          {/* Phase 42 Admin Routes */}
+          {/* Phase 44 Enterprise Admin Routes */}
+          <Route path="/admin/khata" element={<CustomerKhataLedgerPage />} />
+          <Route path="/admin/loyalty" element={<LoyaltyManagementPage />} />
+          <Route path="/admin/subscriptions" element={<SubscriptionsAdminPage />} />
+          <Route path="/admin/branches" element={<StoreBranchesPage />} />
+
+          {/* Phase 45 Enterprise CRM & Growth Admin Routes */}
+          <Route path="/admin/crm" element={<CustomerCRMPage />} />
+          <Route path="/admin/crm/customers/:id" element={<CustomerCRMDetailPage />} />
+          <Route path="/admin/crm/segments" element={<CustomerSegmentsPage />} />
+          <Route path="/admin/marketing" element={<MarketingCampaignsPage />} />
+          <Route path="/admin/marketing/abandoned-carts" element={<AbandonedCartPage />} />
+          <Route path="/admin/referrals" element={<ReferralManagementPage />} />
+
+          {/* Phase 46 Retail Intelligence Admin Routes */}
+          <Route path="/admin/ai-copilot" element={<AIBusinessCopilotPage />} />
+          <Route path="/admin/ai-insights" element={<AIInsightsDashboardPage />} />
+          <Route path="/admin/ai-forecasting" element={<AIPredictiveAnalyticsPage />} />
+          <Route path="/admin/ai-risk" element={<AIRiskIntelligencePage />} />
+          <Route path="/admin/ai-recommendations" element={<AIRecommendationHubPage />} />
+
+          {/* Phase 42 & 43 Admin Routes */}
           <Route path="/admin/store-configuration" element={<StoreConfigurationPage />} />
           <Route path="/admin/onboarding" element={<ClientOnboardingPage />} />
           <Route path="/admin/system-health" element={<SystemHealthPage />} />
           <Route path="/admin/deployment-status" element={<DeploymentStatusPage />} />
+          <Route path="/admin/system-status" element={<SystemStatusPage />} />
         </Route>
+
 
         {/* Fallback 404 Route */}
         <Route path="*" element={<Navigate to="/" replace />} />

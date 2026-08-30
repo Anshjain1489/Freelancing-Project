@@ -1,0 +1,79 @@
+name: Production Deployment Pipeline
+
+on:
+  push:
+    branches: [ production ]
+    tags:
+      - 'v*'
+
+jobs:
+  production-deployment:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Checkout Code
+        uses: actions/checkout@v3
+
+      - name: 2. Setup Node.js 18.x
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18.x
+
+      - name: 3. Install Dependencies
+        run: |
+          cd backend && npm ci
+          cd ../frontend && npm ci
+
+      - name: 4. Safe Secret Presence Check
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+        run: |
+          echo "=== PRODUCTION SECRET PRESENCE CHECK ==="
+          echo "✓ SUPABASE_URL: $(if [ -n "$SUPABASE_URL" ]; then echo 'CONFIGURED'; else echo 'MISSING'; fi)"
+          echo "✓ SUPABASE_ANON_KEY: $(if [ -n "$SUPABASE_ANON_KEY" ]; then echo 'CONFIGURED'; else echo 'MISSING'; fi)"
+          echo "✓ SUPABASE_SERVICE_ROLE_KEY: $(if [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; then echo 'CONFIGURED'; else echo 'MISSING'; fi)"
+          echo "✓ DATABASE_URL: $(if [ -n "$DATABASE_URL" ]; then echo 'CONFIGURED'; else echo 'MISSING'; fi)"
+          echo "✓ JWT_ACCESS_SECRET: $(if [ -n "$JWT_ACCESS_SECRET" ]; then echo 'CONFIGURED'; else echo 'MISSING'; fi)"
+          echo "✓ JWT_REFRESH_SECRET: $(if [ -n "$JWT_REFRESH_SECRET" ]; then echo 'CONFIGURED'; else echo 'MISSING'; fi)"
+          echo "========================================"
+
+      - name: 5. Environment & Security Pre-Deployment Check
+        working-directory: ./backend
+        env:
+          NODE_ENV: production
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: node src/scripts/preDeploymentCheck.js
+
+      - name: 6. Run Phase 43 Automated Security & Production QA Suite
+        working-directory: ./backend
+        env:
+          NODE_ENV: test
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+        run: node src/test_phase43_production_qa.js
+
+      - name: 7. Build Frontend Production Dist
+        working-directory: ./frontend
+        env:
+          VITE_API_BASE_URL: https://api.chaudharykiranastore.com/api/v1
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: npm run build
+
+      - name: 8. Post-Deployment Verification Notice
+        run: |
+          echo "✅ Production Deployment Verification Pipeline Completed Successfully"

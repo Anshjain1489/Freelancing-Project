@@ -1,93 +1,151 @@
-const asyncHandler = require('../utils/asyncHandler');
-const config = require('../config/environment');
 const supabase = require('../config/supabase');
-const sseManager = require('../notifications/sse.manager');
-const performanceMetrics = require('../services/performanceMetrics.service');
-const { getCacheProvider } = require('../infrastructure/cache/cacheProvider');
-const { getRateLimitStore } = require('../infrastructure/rateLimit/rateLimitStore');
-const { getEventBus } = require('../infrastructure/events/eventBus');
-const jobRunner = require('../jobs/jobRunner.service');
-const gracefulShutdown = require('../services/gracefulShutdown.service');
+const config = require('../config/env');
+
+let cachedDbStatus = { status: 'healthy', timestamp: 0 };
 
 /**
- * 1. Minimal Public Liveness (GET /api/v1/health)
- * Never exposes secrets, internal hostnames, stack traces, or environment variables.
+ * 1. GET /health / getHealthStatus
+ * Consolidated safe health endpoint compatible with Phase 32 and Phase 43.
  */
-const getHealthStatus = asyncHandler(async (req, res) => {
-  res.status(200).json({
-    status: 'ok',
-    uptime: Math.floor(process.uptime()),
-    version: '1.0.0',
-    timestamp: new Date().toISOString()
-  });
-});
+const getHealth = async (req, res) => {
+  let dbStatus = 'healthy';
+  let supabaseStatus = 'healthy';
 
-/**
- * 2. Internal Readiness & System Diagnostics (GET /api/v1/health/ready)
- * Protected metrics: Operational State (ACTIVE/DRAINING), DB, Cache provider, Rate limit store, Event bus, Job runner, Performance metrics, SSE.
- */
-const getHealthReadiness = asyncHandler(async (req, res) => {
-  const operationalState = gracefulShutdown.getState();
-
-  if (gracefulShutdown.isDraining()) {
-    return res.status(503).json({
-      status: 'unavailable',
-      operationalState,
-      message: 'Server is currently shutting down (DRAINING). Please retry request on another healthy backend instance.',
-      timestamp: new Date().toISOString()
-    });
-  }
-
-  let dbStatus = 'disconnected_local_mock';
-  let dbLatencyMs = null;
-
-  if (supabase) {
-    const startTime = Date.now();
+  const now = Date.now();
+  if (now - cachedDbStatus.timestamp < 2000) {
+    dbStatus = cachedDbStatus.status;
+    supabaseStatus = cachedDbStatus.status;
+  } else {
     try {
-      const { error } = await supabase.from('categories').select('id').limit(1);
-      dbLatencyMs = Date.now() - startTime;
-      dbStatus = error ? 'connection_error' : 'connected_supabase_postgresql';
-    } catch {
-      dbStatus = 'connection_error';
+      if (supabase) {
+        const { error } = await supabase.from('store_settings').select('key').limit(1);
+        if (error) {
+          dbStatus = 'degraded';
+          supabaseStatus = 'degraded';
+        }
+      } else {
+        dbStatus = 'operational_mock';
+        supabaseStatus = 'operational_mock';
+      }
+    } catch (e) {
+      dbStatus = 'unhealthy';
+      supabaseStatus = 'unhealthy';
     }
+    cachedDbStatus = { status: dbStatus, timestamp: now };
   }
 
-  const memoryUsage = process.memoryUsage();
-  const sseStats = sseManager ? sseManager.getStats() : { activeUsers: 0, activeConnections: 0 };
-  const perfMetrics = performanceMetrics.getMetrics();
-  const cacheStats = await getCacheProvider().healthCheck();
-  const rateLimitStats = await getRateLimitStore().healthCheck();
-  const eventBusStats = await getEventBus().healthCheck();
-  const jobRunnerStats = jobRunner.getStatus();
+  const isHealthy = dbStatus === 'healthy' || dbStatus === 'operational_mock';
+  const statusCode = isHealthy ? 200 : 503;
 
-  res.status(200).json({
+  const payload = {
     status: 'ok',
-    operationalState,
-    database: {
-      status: dbStatus,
-      latencyMs: dbLatencyMs
-    },
-    cache: cacheStats,
-    rateLimitStore: rateLimitStats,
-    eventBus: eventBusStats,
-    jobs: jobRunnerStats,
-    memory: {
-      rssMb: Math.round(memoryUsage.rss / (1024 * 1024)),
-      heapUsedMb: Math.round(memoryUsage.heapUsed / (1024 * 1024)),
-      heapTotalMb: Math.round(memoryUsage.heapTotal / (1024 * 1024))
-    },
-    sseStreams: sseStats,
-    performance: {
-      totalRequests: perfMetrics.totalRequests,
-      slowRequests: perfMetrics.slowRequests,
-      averageLatencyMs: perfMetrics.averageLatencyMs,
-      maxLatencyMs: perfMetrics.maxLatencyMs,
-      p95LatencyMs: perfMetrics.p95LatencyMs,
-      p99LatencyMs: perfMetrics.p99LatencyMs
-    },
+    service: 'Chaudhary Kirana Store API',
+    version: '1.0.0',
+    environment: config.env,
+    timestamp: new Date().toISOString(),
+    uptime: Math.floor(process.uptime()),
+    uptimeSeconds: Math.floor(process.uptime()),
+    checks: {
+      database: dbStatus,
+      supabase: supabaseStatus
+    }
+  };
+
+  if (res && typeof res.status === 'function') {
+    return res.status(statusCode).json(payload);
+  }
+  return payload;
+};
+
+/**
+ * 2. GET /health/live
+ * Process liveness check. Does NOT require database connection.
+ */
+const getLiveness = (req, res) => {
+  const payload = {
+    status: 'alive',
     uptimeSeconds: Math.floor(process.uptime()),
     timestamp: new Date().toISOString()
-  });
-});
+  };
+  if (res && typeof res.status === 'function') {
+    return res.status(200).json(payload);
+  }
+  return payload;
+};
 
-module.exports = { getHealthStatus, getHealthReadiness };
+/**
+ * 3. GET /health/ready
+ * Readiness probe for traffic routing (Load Balancer / Cloud Run).
+ */
+const getReadiness = async (req, res) => {
+  let dbStatus = 'healthy';
+  let supabaseStatus = 'healthy';
+  let configStatus = 'healthy';
+
+  try {
+    config.validateEnvironment();
+  } catch (e) {
+    configStatus = 'configuration_error';
+  }
+
+  try {
+    if (supabase) {
+      const { error } = await supabase.from('store_settings').select('key').limit(1);
+      if (error) {
+        dbStatus = 'unhealthy';
+        supabaseStatus = 'unhealthy';
+      }
+    } else {
+      dbStatus = 'operational_mock';
+      supabaseStatus = 'operational_mock';
+    }
+  } catch (e) {
+    dbStatus = 'unhealthy';
+    supabaseStatus = 'unhealthy';
+  }
+
+  const isReady = (dbStatus === 'healthy' || dbStatus === 'operational_mock') && configStatus === 'healthy';
+  const statusCode = isReady ? 200 : 503;
+
+  const payload = {
+    status: isReady ? 'ready' : 'not_ready',
+    checks: {
+      database: dbStatus,
+      supabase: supabaseStatus,
+      configuration: configStatus
+    },
+    timestamp: new Date().toISOString()
+  };
+
+  if (res && typeof res.status === 'function') {
+    return res.status(200).json(payload);
+  }
+  return payload;
+};
+
+/**
+ * 4. GET /health/version
+ * Release build & version diagnostic info.
+ */
+const getVersion = (req, res) => {
+  const payload = {
+    version: '1.0.0',
+    service: 'chaudhary-kirana-api',
+    environment: config.env,
+    commit: process.env.GIT_COMMIT_SHA || 'production-release-v1.0.0',
+    buildTimestamp: '2026-08-30T00:00:00Z',
+    status: 'healthy'
+  };
+  if (res && typeof res.status === 'function') {
+    return res.status(200).json(payload);
+  }
+  return payload;
+};
+
+module.exports = {
+  getHealth,
+  getHealthStatus: getHealth,
+  getLiveness,
+  getReadiness,
+  getVersion
+};

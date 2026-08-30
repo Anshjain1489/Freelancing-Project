@@ -11,7 +11,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
       - name: Setup Node.js 18.x
         uses: actions/setup-node@v3
@@ -26,4 +27,6 @@ jobs:
         working-directory: ./frontend
         env:
           VITE_API_BASE_URL: https://api.chaudharykiranastore.com/api/v1
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: npm run build
