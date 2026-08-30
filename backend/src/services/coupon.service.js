@@ -19,6 +19,10 @@ const isUuid = (val) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
 
 // In-memory fallback mock coupons store
 const mockCoupons = [
+  { id: 'cpn-save1000', code: 'SAVE1000', description: '₹10 OFF on orders above ₹1,000', minimum_order_amount: 1000.00, maximum_discount_amount: 10.00, discount_type: 'FIXED', discount_value: 10.00, is_active: true, created_at: new Date().toISOString() },
+  { id: 'cpn-save2000', code: 'SAVE2000', description: '₹50 OFF on orders above ₹2,000', minimum_order_amount: 2000.00, maximum_discount_amount: 50.00, discount_type: 'FIXED', discount_value: 50.00, is_active: true, created_at: new Date().toISOString() },
+  { id: 'cpn-save5000', code: 'SAVE5000', description: '₹100 OFF on orders above ₹5,000', minimum_order_amount: 5000.00, maximum_discount_amount: 100.00, discount_type: 'FIXED', discount_value: 100.00, is_active: true, created_at: new Date().toISOString() },
+  { id: 'cpn-save10000', code: 'SAVE10000', description: '₹200 OFF on orders above ₹10,000', minimum_order_amount: 10000.00, maximum_discount_amount: 200.00, discount_type: 'FIXED', discount_value: 200.00, is_active: true, created_at: new Date().toISOString() },
   { id: 'cpn-1', code: 'SAVE10', description: '10% OFF on orders above ₹500', minimum_order_amount: 500.00, maximum_discount_amount: 100.00, discount_type: 'PERCENTAGE', discount_value: 10.00, usage_limit: 100, usage_limit_per_user: 1, is_active: true, created_at: new Date().toISOString() },
   { id: 'cpn-2', code: 'WELCOME100', description: 'Flat ₹100 OFF on orders above ₹999', minimum_order_amount: 999.00, maximum_discount_amount: 100.00, discount_type: 'FIXED', discount_value: 100.00, usage_limit: 50, usage_limit_per_user: 1, is_active: true, created_at: new Date().toISOString() },
   { id: 'cpn-3', code: 'KIRANA50', description: 'Flat ₹50 OFF on orders above ₹499', minimum_order_amount: 499.00, maximum_discount_amount: 50.00, discount_type: 'FIXED', discount_value: 50.00, usage_limit: 200, usage_limit_per_user: 2, is_active: true, created_at: new Date().toISOString() }
@@ -296,6 +300,16 @@ const getAvailableCoupons = async (userId) => {
     });
   }
 
+  const priorityCodes = ['SAVE1000', 'SAVE2000', 'SAVE5000', 'SAVE10000'];
+  eligibleCoupons.sort((a, b) => {
+    const indexA = priorityCodes.indexOf(String(a.code).toUpperCase());
+    const indexB = priorityCodes.indexOf(String(b.code).toUpperCase());
+    if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+    if (indexA !== -1) return -1;
+    if (indexB !== -1) return 1;
+    return a.minimumOrderAmount - b.minimumOrderAmount;
+  });
+
   return {
     cartSubtotal,
     coupons: eligibleCoupons
@@ -328,7 +342,8 @@ const getAdminCoupons = async () => {
     }
   }
 
-  return couponsList.map(c => ({
+  const priorityCodes = ['SAVE1000', 'SAVE2000', 'SAVE5000', 'SAVE10000'];
+  const mapped = couponsList.map(c => ({
     id: c.id,
     code: c.code,
     description: c.description,
@@ -344,6 +359,17 @@ const getAdminCoupons = async () => {
     isActive: c.is_active,
     createdAt: c.created_at
   }));
+
+  mapped.sort((a, b) => {
+    const indexA = priorityCodes.indexOf(String(a.code).toUpperCase());
+    const indexB = priorityCodes.indexOf(String(b.code).toUpperCase());
+    if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+    if (indexA !== -1) return -1;
+    if (indexB !== -1) return 1;
+    return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+  });
+
+  return mapped;
 };
 
 /**
