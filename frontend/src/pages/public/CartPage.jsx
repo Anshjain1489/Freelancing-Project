@@ -34,7 +34,6 @@ export const CartPage = () => {
               { name: 'Atta & Grains', slug: 'atta-grains' },
               { name: 'Rice & Pulses', slug: 'rice-pulses' },
               { name: 'Snacks & Munchies', slug: 'snacks-munchies' },
-              { name: 'Dairy & Fresh', slug: 'dairy-fresh' },
               { name: 'Beverages', slug: 'beverages' }
             ].map(cat => (
               <button

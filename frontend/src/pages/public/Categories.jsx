@@ -6,7 +6,7 @@ export const Categories = () => {
   const navigate = useNavigate();
   const categories = [
     'Atta & Grains', 'Rice & Pulses', 'Oil & Ghee', 'Spices', 'Snacks',
-    'Biscuits', 'Beverages', 'Dairy', 'Personal Care', 'Cleaning & Household',
+    'Biscuits', 'Beverages', 'Personal Care', 'Cleaning & Household',
     'Instant Food', 'Daily Essentials'
   ];
 

@@ -4,7 +4,6 @@ export const CATEGORY_IMAGES = {
   'rice-pulses': 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=400&q=80', // Basmati Rice & Lentils
   'oil-ghee': 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?auto=format&fit=crop&w=400&q=80',    // Mustard Oil & Desi Ghee
   'spices': 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=400&q=80',      // Indian Spices (Haldi, Mirch, Masala)
-  'dairy': 'https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=400&q=80',       // 100% Pure Fresh Milk Glass & Bottle (Pure Veg)
   'snacks': 'https://images.unsplash.com/photo-1621939514649-280e2ee25f60?auto=format&fit=crop&w=400&q=80',      // Bhujia, Namkeen & Chips
   'biscuits': 'https://images.unsplash.com/photo-1558961363-fa8fdf82db35?auto=format&fit=crop&w=400&q=80',    // Tea Biscuits & Cookies
   'beverages': 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?auto=format&fit=crop&w=400&q=80',   // Tea, Coffee & Cold Drinks
@@ -30,7 +29,6 @@ export const getCategoryImage = (category) => {
     if (nameLower.includes('rice') || nameLower.includes('pulse') || nameLower.includes('dal')) return CATEGORY_IMAGES['rice-pulses'];
     if (nameLower.includes('oil') || nameLower.includes('ghee')) return CATEGORY_IMAGES['oil-ghee'];
     if (nameLower.includes('spice') || nameLower.includes('masala')) return CATEGORY_IMAGES['spices'];
-    if (nameLower.includes('dairy') || nameLower.includes('milk')) return CATEGORY_IMAGES['dairy'];
     if (nameLower.includes('snack') || nameLower.includes('namkeen')) return CATEGORY_IMAGES['snacks'];
     if (nameLower.includes('biscuit') || nameLower.includes('cookie')) return CATEGORY_IMAGES['biscuits'];
     if (nameLower.includes('beverage') || nameLower.includes('tea') || nameLower.includes('drink')) return CATEGORY_IMAGES['beverages'];
