@@ -662,10 +662,14 @@ async function runPhase43Tests() {
 }
 
 if (require.main === module) {
-  runPhase43Tests().catch(err => {
-    console.error('\n❌ PHASE 43 QA TEST SUITE FAILED:', err);
-    process.exit(1);
-  });
+  runPhase43Tests()
+    .then(() => {
+      process.exit(0);
+    })
+    .catch(err => {
+      console.error('\n❌ PHASE 43 QA TEST SUITE FAILED:', err);
+      process.exit(1);
+    });
 }
 
 module.exports = runPhase43Tests;

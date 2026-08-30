@@ -1173,7 +1173,14 @@ async function runPhase45QASuite() {
 }
 
 if (require.main === module) {
-  runPhase45QASuite();
+  runPhase45QASuite()
+    .then(() => {
+      process.exit(0);
+    })
+    .catch(err => {
+      console.error('\n❌ PHASE 45 QA TEST SUITE FAILED:', err);
+      process.exit(1);
+    });
 }
 
 module.exports = { runPhase45QASuite };

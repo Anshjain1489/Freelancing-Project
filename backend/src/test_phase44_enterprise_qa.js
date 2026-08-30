@@ -452,10 +452,14 @@ async function runPhase44QA() {
 }
 
 if (require.main === module) {
-  runPhase44QA().catch(err => {
-    console.error('\n❌ PHASE 44 QA TEST SUITE FAILED:', err);
-    process.exit(1);
-  });
+  runPhase44QA()
+    .then(() => {
+      process.exit(0);
+    })
+    .catch(err => {
+      console.error('\n❌ PHASE 44 QA TEST SUITE FAILED:', err);
+      process.exit(1);
+    });
 }
 
 module.exports = { runPhase44QA };
